@@ -1,14 +1,16 @@
 """Workout data management module."""
 import csv
+import os
 from pathlib import Path
 from datetime import datetime
 
-# CSV file paths
-CSV_FILE = Path("workouts.csv")
+# CSV file paths - use DATA_DIR environment variable or current directory
+DATA_DIR = Path(os.getenv("DATA_DIR", "."))
+CSV_FILE = DATA_DIR / "workouts.csv"
 CSV_HEADERS = ["Date", "Exercise", "Category", "Weight", "Weight Unit", "Reps",
                "Distance", "Distance Unit", "Time", "Comment"]
 
-UPCOMING_CSV_FILE = Path("upcoming_workouts.csv")
+UPCOMING_CSV_FILE = DATA_DIR / "upcoming_workouts.csv"
 UPCOMING_CSV_HEADERS = ["Session", "Exercise", "Category", "Weight", "Weight Unit", "Reps",
                         "Distance", "Distance Unit", "Time", "Comment"]
 
@@ -247,7 +249,7 @@ def calculate_estimated_1rm(weight, reps):
         estimated_1rm = (0.033 * reps_num * weight_num) + weight_num
         return estimated_1rm
     except (ValueError, TypeError):
-        return float(weight) if weight else 0
+        return 0
 
 
 def get_progression_data(exercise_name):

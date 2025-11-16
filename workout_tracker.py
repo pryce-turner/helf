@@ -102,6 +102,8 @@ def calendar_view():
                 'color=primary')
             ui.button('View Progression', on_click=lambda: ui.navigate.to('/progression')).props(
                 'color=secondary')
+            ui.button('Upcoming Workouts', on_click=lambda: ui.navigate.to('/upcoming')).props(
+                'color=accent')
 
 
 @ui.page('/day/{selected_date}')
@@ -468,23 +470,46 @@ def workout_session_view(selected_date: str):
             status_label.classes('text-green-600')
 
         # Buttons - different sets for create vs edit mode
-        button_container = ui.row().classes('mt-4 gap-2')
+        with ui.column().classes('mt-4 gap-2') as button_container:
+            # Main action buttons row
+            with ui.row().classes('gap-2'):
+                # Create mode button (default)
+                create_button = ui.button('Log Workout', on_click=save_workout).props('color=primary')
 
-        with button_container:
-            # Create mode button (default)
-            create_button = ui.button('Log Workout', on_click=save_workout).props('color=primary')
+                # Edit mode buttons (hidden by default)
+                with ui.row().classes('gap-2') as edit_buttons_row:
+                    new_entry_button = ui.button('New Entry', on_click=save_workout).props('color=primary')
+                    update_button = ui.button('Update', on_click=lambda: update_workout_handler()).props('color=positive')
+                    delete_button = ui.button('Delete', on_click=delete_workout_handler).props('color=negative')
 
-            # Edit mode buttons (hidden by default)
-            with ui.row().classes('gap-2') as edit_buttons_row:
-                new_entry_button = ui.button('New Entry', on_click=save_workout).props('color=primary')
-                update_button = ui.button('Update', on_click=lambda: update_workout_handler()).props('color=positive')
-                delete_button = ui.button('Delete', on_click=delete_workout_handler).props('color=negative')
+                edit_buttons_row.visible = False
 
-            edit_buttons_row.visible = False
+            # View progression button (always visible)
+            def view_progression():
+                """Navigate to progression view for the selected exercise."""
+                # Get current exercise
+                if exercise_select.value == '➕ Add new exercise':
+                    exercise_name = new_exercise_input.value
+                elif exercise_select.value:
+                    exercise_name = exercise_select.value
+                else:
+                    ui.notify('Please select an exercise first', type='warning')
+                    return
+
+                if exercise_name:
+                    # Navigate to progression page with exercise parameter
+                    import urllib.parse
+                    encoded_exercise = urllib.parse.quote(exercise_name)
+                    ui.navigate.to(f'/progression/{encoded_exercise}')
+                else:
+                    ui.notify('Please select an exercise first', type='warning')
+
+            ui.button('📊 View Progression', on_click=view_progression).props('flat color=secondary').classes('text-sm')
 
 
 @ui.page('/progression')
-def progression_view():
+@ui.page('/progression/{exercise_name}')
+def progression_view(exercise_name: str = None):
     """Progression tracking view showing historical and upcoming workouts."""
     ui.page_title('Progression Tracker')
     ui.dark_mode().enable()
@@ -492,12 +517,20 @@ def progression_view():
     with ui.card().classes('w-full max-w-7xl mx-auto mt-8 p-6'):
         # Header with navigation
         with ui.row().classes('w-full justify-between items-center mb-6'):
-            ui.button('← Back to Calendar', on_click=lambda: ui.navigate.to('/')).props('flat')
+            ui.button('← Back', on_click=lambda: ui.navigate.back()).props('flat')
             ui.label('Progression Tracker').classes('text-3xl font-bold')
 
         # Exercise selection dropdown
         main_lifts = workout_data.get_main_lifts()
-        selected_exercise = {'value': main_lifts[0] if main_lifts else None}
+
+        # Decode exercise name from URL if provided
+        initial_exercise = None
+        if exercise_name:
+            import urllib.parse
+            initial_exercise = urllib.parse.unquote(exercise_name)
+
+        # Use provided exercise or default to first available
+        selected_exercise = {'value': initial_exercise if initial_exercise in main_lifts else (main_lifts[0] if main_lifts else None)}
 
         def on_exercise_change(e):
             """Handle exercise selection change."""
@@ -754,5 +787,71 @@ def progression_view():
         update_progression_view()
 
 
+@ui.page('/upcoming')
+def upcoming_workouts_view():
+    """View all upcoming workouts grouped by session."""
+    ui.page_title('Upcoming Workouts')
+    ui.dark_mode().enable()
+
+    with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
+        # Header with navigation
+        with ui.row().classes('w-full justify-between items-center mb-6'):
+            ui.button('← Back to Calendar', on_click=lambda: ui.navigate.to('/')).props('flat')
+            ui.label('Upcoming Workouts').classes('text-3xl font-bold')
+
+        # Load upcoming workouts
+        upcoming_workouts = workout_data.read_upcoming_workouts()
+
+        if not upcoming_workouts:
+            ui.label('No upcoming workouts planned.').classes('text-gray-500 italic mb-4')
+            ui.label('Add workouts to upcoming_workouts.csv to see them here.').classes('text-sm text-gray-400')
+        else:
+            # Group workouts by session
+            sessions = {}
+            for workout in upcoming_workouts:
+                session = workout.get('Session', '0')
+                if session not in sessions:
+                    sessions[session] = []
+                sessions[session].append(workout)
+
+            # Display each session
+            for session_num in sorted(sessions.keys(), key=lambda x: int(x) if x.isdigit() else 0):
+                with ui.expansion(f'Session {session_num}', icon='fitness_center').classes('w-full mb-4'):
+                    session_workouts = sessions[session_num]
+
+                    # Add indicator for optional fields
+                    for workout in session_workouts:
+                        has_optional = bool(workout.get('Distance') or workout.get('Time') or workout.get('Comment'))
+                        workout['_indicator'] = '💬' if has_optional else ''
+
+                    # Create table for this session
+                    ui.table(
+                        columns=[
+                            {'name': 'exercise', 'label': 'Exercise', 'field': 'Exercise', 'align': 'left'},
+                            {'name': 'category', 'label': 'Category', 'field': 'Category', 'align': 'left'},
+                            {'name': 'weight', 'label': 'Weight', 'field': 'Weight', 'align': 'left'},
+                            {'name': 'weight_unit', 'label': 'Unit', 'field': 'Weight Unit', 'align': 'left'},
+                            {'name': 'reps', 'label': 'Reps', 'field': 'Reps', 'align': 'left'},
+                            {'name': '_indicator', 'label': '', 'field': '_indicator', 'align': 'center'},
+                        ],
+                        rows=session_workouts,
+                        row_key='Exercise'
+                    ).classes('w-full')
+
+            # Summary stats
+            ui.separator().classes('my-6')
+            total_sessions = len(sessions)
+            total_exercises = len(upcoming_workouts)
+
+            with ui.row().classes('w-full gap-8 justify-center'):
+                with ui.card().classes('p-4'):
+                    ui.label('Total Sessions').classes('text-sm text-gray-400')
+                    ui.label(str(total_sessions)).classes('text-3xl font-bold text-blue-400')
+
+                with ui.card().classes('p-4'):
+                    ui.label('Total Exercises').classes('text-sm text-gray-400')
+                    ui.label(str(total_exercises)).classes('text-3xl font-bold text-green-400')
+
+
 # Run the app
-ui.run(title='Workout Tracker', port=8080, reload=True, host='0.0.0.0', storage_secret='fitniz-secret-key-2024')
+ui.run(title='Workout Tracker', port=8080, reload=True, host='0.0.0.0', storage_secret='helf-secret-key-2024')

@@ -5,13 +5,14 @@ services:
     build: .
     container_name: helf-app
     ports:
-      - "8080:8080"
+      - "30171:8080"
     volumes:
       # Persist workout data
       - ./data:/app/data
     environment:
       - DATA_DIR=/app/data
+      - MQTT_BROKER_HOST=host.docker.internal
+      - MQTT_BROKER_PORT=1883
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
-    # Uncomment to set a custom storage secret
-    # environment:
-    #   - STORAGE_SECRET=your-custom-secret-here

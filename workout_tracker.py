@@ -1,9 +1,12 @@
 """Multi-page Workout Tracker with Calendar and Session views."""
+import os
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from nicegui import ui, app
 import workout_data
+import body_composition_data
 import plotly.graph_objects as go
+from mqtt_service import MQTTService
 
 
 @ui.page('/')
@@ -13,7 +16,11 @@ def calendar_view():
     ui.dark_mode().enable()
 
     with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
-        ui.label('Workout Calendar').classes('text-3xl font-bold mb-6')
+        with ui.row().classes('w-full justify-between items-center mb-6'):
+            ui.label('Workout Calendar').classes('text-3xl font-bold')
+            with ui.row().classes('gap-2'):
+                ui.button('⚖️ Body Comp', on_click=lambda: ui.navigate.to('/body-composition')).props('flat')
+                ui.button('📋 Upcoming', on_click=lambda: ui.navigate.to('/upcoming')).props('flat')
 
         # Get workout counts for highlighting
         workout_counts = workout_data.get_workout_count_by_date()
@@ -853,5 +860,167 @@ def upcoming_workouts_view():
                     ui.label(str(total_exercises)).classes('text-3xl font-bold text-green-400')
 
 
+@ui.page('/body-composition')
+def body_composition_view():
+    """Body composition tracking view with graphs."""
+    ui.page_title('Body Composition')
+    ui.dark_mode().enable()
+
+    with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
+        # Header with navigation
+        with ui.row().classes('w-full justify-between items-center mb-6'):
+            ui.label('Body Composition').classes('text-3xl font-bold')
+            with ui.row().classes('gap-2'):
+                ui.button('📅 Calendar', on_click=lambda: ui.navigate.to('/')).props('flat')
+                ui.button('📊 Workouts', on_click=lambda: ui.navigate.to('/upcoming')).props('flat')
+
+        # Get stats
+        stats = body_composition_data.get_stats_summary()
+        measurements = body_composition_data.read_measurements()
+
+        # Summary cards
+        if stats:
+            with ui.row().classes('w-full gap-4 mb-6'):
+                # Latest weight
+                with ui.card().classes('flex-1 p-4'):
+                    ui.label('Current Weight').classes('text-sm text-gray-400')
+                    weight_val = stats.get('latest_weight')
+                    if weight_val:
+                        ui.label(f"{weight_val:.1f} kg").classes('text-3xl font-bold text-blue-400')
+                    else:
+                        ui.label('—').classes('text-3xl font-bold text-gray-600')
+
+                # Weight change
+                with ui.card().classes('flex-1 p-4'):
+                    ui.label('Weight Change').classes('text-sm text-gray-400')
+                    change = stats.get('weight_change')
+                    if change is not None:
+                        color = 'text-green-400' if change < 0 else 'text-red-400'
+                        ui.label(f"{change:+.1f} kg").classes(f'text-3xl font-bold {color}')
+                    else:
+                        ui.label('—').classes('text-3xl font-bold text-gray-600')
+
+                # Body fat
+                with ui.card().classes('flex-1 p-4'):
+                    ui.label('Body Fat %').classes('text-sm text-gray-400')
+                    bf = stats.get('latest_body_fat')
+                    if bf:
+                        ui.label(f"{bf:.1f}%").classes('text-3xl font-bold text-purple-400')
+                    else:
+                        ui.label('—').classes('text-3xl font-bold text-gray-600')
+
+                # Total measurements
+                with ui.card().classes('flex-1 p-4'):
+                    ui.label('Measurements').classes('text-sm text-gray-400')
+                    ui.label(str(stats.get('total_measurements', 0))).classes('text-3xl font-bold text-cyan-400')
+
+        # Graphs
+        if measurements:
+            ui.separator().classes('my-6')
+
+            # Weight trend graph
+            dates = [m['Date'] for m in measurements]
+            weights = [float(m['Weight']) if m['Weight'] else None for m in measurements]
+
+            fig_weight = go.Figure()
+            fig_weight.add_trace(go.Scatter(
+                x=dates,
+                y=weights,
+                mode='lines+markers',
+                name='Weight',
+                line=dict(color='#60A5FA', width=3),
+                marker=dict(size=8)
+            ))
+            fig_weight.update_layout(
+                title='Weight Trend',
+                xaxis_title='Date',
+                yaxis_title='Weight (kg)',
+                template='plotly_dark',
+                height=400,
+                hovermode='x unified'
+            )
+            ui.plotly(fig_weight).classes('w-full')
+
+            # Body composition graph (body fat, muscle mass)
+            body_fats = [float(m['Body Fat %']) if m.get('Body Fat %') else None for m in measurements]
+            muscle_masses = [float(m['Muscle Mass']) if m.get('Muscle Mass') else None for m in measurements]
+
+            if any(body_fats) or any(muscle_masses):
+                ui.separator().classes('my-6')
+
+                fig_comp = go.Figure()
+
+                if any(body_fats):
+                    fig_comp.add_trace(go.Scatter(
+                        x=dates,
+                        y=body_fats,
+                        mode='lines+markers',
+                        name='Body Fat %',
+                        line=dict(color='#F472B6', width=3),
+                        marker=dict(size=8)
+                    ))
+
+                if any(muscle_masses):
+                    fig_comp.add_trace(go.Scatter(
+                        x=dates,
+                        y=muscle_masses,
+                        mode='lines+markers',
+                        name='Muscle Mass',
+                        line=dict(color='#34D399', width=3),
+                        marker=dict(size=8)
+                    ))
+
+                fig_comp.update_layout(
+                    title='Body Composition',
+                    xaxis_title='Date',
+                    yaxis_title='Percentage / Mass',
+                    template='plotly_dark',
+                    height=400,
+                    hovermode='x unified'
+                )
+                ui.plotly(fig_comp).classes('w-full')
+
+        else:
+            ui.label('No measurements yet. Step on your scale to start tracking!').classes('text-center text-gray-400 mt-8')
+
+        # Recent measurements table
+        if measurements:
+            ui.separator().classes('my-6')
+            ui.label('Recent Measurements').classes('text-2xl font-bold mb-4')
+
+            # Show last 10 measurements
+            recent = sorted(measurements, key=lambda x: x['Timestamp'], reverse=True)[:10]
+
+            table_data = []
+            for m in recent:
+                row = {
+                    'Date': m['Date'],
+                    'Weight': f"{m['Weight']} {m.get('Weight Unit', 'kg')}" if m['Weight'] else '—',
+                    'Body Fat %': f"{m['Body Fat %']}%" if m.get('Body Fat %') else '—',
+                    'Muscle Mass': m.get('Muscle Mass', '—'),
+                    'BMI': m.get('BMI', '—'),
+                }
+                table_data.append(row)
+
+            ui.table(
+                columns=[
+                    {'name': 'Date', 'label': 'Date', 'field': 'Date', 'align': 'left'},
+                    {'name': 'Weight', 'label': 'Weight', 'field': 'Weight', 'align': 'left'},
+                    {'name': 'Body Fat %', 'label': 'Body Fat %', 'field': 'Body Fat %', 'align': 'left'},
+                    {'name': 'Muscle Mass', 'label': 'Muscle Mass', 'field': 'Muscle Mass', 'align': 'left'},
+                    {'name': 'BMI', 'label': 'BMI', 'field': 'BMI', 'align': 'left'},
+                ],
+                rows=table_data,
+                row_key='Date'
+            ).classes('w-full')
+
+
+# Initialize and start MQTT service
+mqtt_broker_host = os.getenv("MQTT_BROKER_HOST", "localhost")
+mqtt_broker_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+mqtt_service = MQTTService(broker_host=mqtt_broker_host, broker_port=mqtt_broker_port)
+app.on_startup(lambda: mqtt_service.start())
+app.on_shutdown(lambda: mqtt_service.stop())
+
 # Run the app
-ui.run(title='Workout Tracker', port=8080, reload=True, host='0.0.0.0', storage_secret='helf-secret-key-2024')
+ui.run(title='Helf - Health & Fitness Tracker', port=8080, reload=True, host='0.0.0.0', storage_secret='helf-secret-key-2024')

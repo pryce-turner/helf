@@ -1,17 +1,27 @@
-# Helf - Workout Tracker
+# Helf - Health & Fitness Tracker
 
-A simple, lightweight workout tracking application built with NiceGUI and CSV-based storage. Track your workouts, monitor progression, and plan upcoming sessions.
+A simple, lightweight health and fitness tracking application built with NiceGUI and CSV-based storage. Track your workouts, monitor body composition, and plan upcoming sessions.
 
 ## Features
 
+### Workout Tracking
 - 📅 **Calendar View** - Visual overview of all workout dates
 - 📝 **Workout Logging** - Easy-to-use interface for logging exercises
 - 📊 **Progression Tracking** - Interactive graphs showing estimated 1RM over time
 - 🔮 **Upcoming Workouts** - Plan and schedule future training sessions
 - 🎯 **Category-based Exercise Organization** - Filter exercises by category
+
+### Body Composition Tracking
+- ⚖️ **MQTT Integration** - Automatic data ingestion from smart scales via MQTT (supports openScale-sync)
+- 📈 **Weight Trends** - Track weight changes over time with interactive graphs
+- 💪 **Body Composition** - Monitor body fat %, muscle mass, BMI, and more
+- 📊 **Statistics Dashboard** - Summary cards showing current metrics and changes
+
+### General
 - 💾 **CSV Storage** - Simple, portable data format (no database required)
 - 📱 **Mobile Responsive** - Works on desktop and mobile devices
 - 🌙 **Dark Theme** - Easy on the eyes
+- 🐳 **Docker Ready** - Easy deployment with Docker Compose
 
 ## Quick Start
 
@@ -114,6 +124,8 @@ python workout_tracker.py
 
 - `DATA_DIR` - Directory for CSV files (default: current directory)
 - `STORAGE_SECRET` - Secret key for NiceGUI user storage (set in workout_tracker.py)
+- `MQTT_BROKER_HOST` - MQTT broker hostname (default: localhost, use `host.docker.internal` in Docker to connect to host)
+- `MQTT_BROKER_PORT` - MQTT broker port (default: 1883)
 
 ### Data Persistence
 
@@ -123,6 +135,35 @@ To backup your data, simply copy the CSV files from the data directory:
 ```bash
 cp data/*.csv /your/backup/location/
 ```
+
+### MQTT Integration for Body Composition
+
+Helf automatically connects to an MQTT broker to receive body composition measurements from smart scales (via openScale-sync or similar apps).
+
+**Docker Setup:**
+The docker-compose.yml is pre-configured to connect to a Mosquitto broker running on your host machine:
+- Broker host: `host.docker.internal` (maps to host machine)
+- Broker port: `1883`
+
+**Local Development:**
+When running locally (not in Docker), Helf connects to `localhost:1883` by default.
+
+**Supported MQTT Topics:**
+- `openScaleSync/measurements/insert` - New measurements
+- `openScaleSync/measurements/update` - Updated measurements
+
+**Message Format:**
+```json
+{
+  "date": 1572082380000,
+  "weight": 80.0,
+  "fat": 18.5,
+  "muscle": 45.2,
+  "bmi": 24.8
+}
+```
+
+The app will automatically save measurements to `data/body_composition.csv` when received.
 
 ### Production Deployment
 

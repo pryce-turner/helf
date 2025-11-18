@@ -9,6 +9,7 @@ dependencies = [
     "plotly>=5.24.0",
     "paho-mqtt>=2.0.0",
     "numpy>=2.3.5",
+    "uvicorn[standard]>=0.30.0",
 ]
 
 [project.optional-dependencies]

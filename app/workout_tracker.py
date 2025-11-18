@@ -277,8 +277,78 @@ def workout_session_view(selected_date: str):
                 # Hide new exercise input
                 new_exercise_input.visible = False
 
+        # Toggle for showing recent sets
+        show_history = ui.checkbox('Show recent sets for reference').classes('mt-4 mb-2')
+
+        # Container for recent sets history
+        history_container = ui.column().classes('w-full mb-4').bind_visibility_from(show_history, 'value')
+
+        def update_exercise_history():
+            """Display recent sets for the selected exercise."""
+            history_container.clear()
+
+            # Get exercise name
+            exercise_name = None
+            if exercise_select.value == '➕ Add new exercise':
+                exercise_name = new_exercise_input.value
+            elif exercise_select.value:
+                exercise_name = exercise_select.value
+
+            if not exercise_name:
+                with history_container:
+                    ui.label('Select an exercise to see recent sets').classes('text-sm text-gray-500 italic')
+                return
+
+            # Get recent workouts for this exercise (last 5 workouts)
+            all_workouts = workout_data.read_workouts()
+            exercise_workouts = [
+                w for w in all_workouts
+                if w.get('Exercise') == exercise_name
+            ]
+
+            # Sort by date descending and take last 5
+            exercise_workouts.sort(key=lambda x: x.get('Date', ''), reverse=True)
+            recent_workouts = exercise_workouts[:5]
+
+            if not recent_workouts:
+                with history_container:
+                    ui.label(f'No previous sets found for {exercise_name}').classes('text-sm text-gray-500 italic')
+                return
+
+            # Display recent sets
+            with history_container:
+                ui.label(f'Recent sets for {exercise_name}:').classes('text-sm font-semibold text-blue-400 mb-2')
+
+                for workout in recent_workouts:
+                    weight = workout.get('Weight', '')
+                    unit = workout.get('Weight Unit', 'lbs')
+                    reps = workout.get('Reps', '')
+                    date = workout.get('Date', '')
+                    comment = workout.get('Comment', '')
+
+                    # Build display string
+                    set_info = f"{date}: "
+                    if weight:
+                        set_info += f"{weight} {unit}"
+                    if reps:
+                        set_info += f" × {reps} reps"
+                    if comment:
+                        set_info += f" ({comment})"
+
+                    ui.label(set_info).classes('text-sm text-gray-300')
+
+        # Update history when exercise changes or history checkbox is toggled
+        def on_exercise_change_with_history(e):
+            """Handle exercise selection change and update history."""
+            on_exercise_change(e)
+            if show_history.value:
+                update_exercise_history()
+
+        # Set up event handlers
         category_select.on('update:model-value', on_category_change)
-        exercise_select.on('update:model-value', on_exercise_change)
+        exercise_select.on('update:model-value', on_exercise_change_with_history)
+        new_exercise_input.on('blur', lambda: update_exercise_history() if show_history.value else None)
+        show_history.on('update:model-value', lambda: update_exercise_history())
 
         with ui.row().classes('w-full gap-2'):
             weight_input = ui.number(label='Weight', placeholder='0.0', format='%.1f').classes('flex-1')

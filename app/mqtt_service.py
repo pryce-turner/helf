@@ -3,8 +3,13 @@ import json
 import logging
 import os
 from typing import Callable
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import paho.mqtt.client as mqtt
-import body_composition_data
+from app import body_composition_data
+
+# Pacific timezone
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,8 +49,8 @@ class MQTTService:
 
             # Subscribe to openScaleSync topics
             topics = [
-                ("openScaleSync/measurements/insert", 0),
-                ("openScaleSync/measurements/update", 0),
+                ("openScaleSync/measurements/last", 0),  # Single measurement from scale
+                ("openScaleSync/measurements/all", 0),   # Bulk sync from app
             ]
             for topic, qos in topics:
                 client.subscribe(topic, qos)
@@ -67,62 +72,63 @@ class MQTTService:
             logger.info(f"Received message on {msg.topic}: {payload}")
 
             # Extract measurements
-            timestamp = payload.get('date')  # Unix timestamp in milliseconds
+            # Format: {"date":"2025-11-17T08:56-0800","fat":23.8,"id":179,"muscle":39.1,"water":50.89,"weight":87.15}
+            date_str = payload.get('date')  # ISO 8601 format
             weight = payload.get('weight')
 
-            if timestamp and weight:
-                # Optional fields (may be added by openScale-sync in the future)
-                body_fat = payload.get('fat')
-                muscle_mass = payload.get('muscle')
-                bmi = payload.get('bmi')
-                water = payload.get('water')
-                bone_mass = payload.get('bone')
-                visceral_fat = payload.get('visceralFat')
-                metabolic_age = payload.get('metabolicAge')
-                protein = payload.get('protein')
-                weight_unit = payload.get('unit', 'kg')
+            if date_str and weight:
+                # Parse ISO 8601 date string to datetime and convert to Pacific time
+                try:
+                    # Parse ISO 8601 with timezone offset
+                    dt = datetime.fromisoformat(date_str)
+                    # Convert to Pacific time if timezone-aware, otherwise assume Pacific
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=PACIFIC_TZ)
+                    else:
+                        dt = dt.astimezone(PACIFIC_TZ)
+                except ValueError:
+                    # Fallback: try parsing without timezone and assume Pacific
+                    dt = datetime.fromisoformat(date_str.replace('T', ' ').split('-')[0])
+                    dt = dt.replace(tzinfo=PACIFIC_TZ)
 
-                # Save to CSV
-                if msg.topic == "openScaleSync/measurements/insert":
-                    body_composition_data.write_measurement(
-                        timestamp=timestamp,
-                        weight=weight,
-                        weight_unit=weight_unit,
-                        body_fat=body_fat,
-                        muscle_mass=muscle_mass,
-                        bmi=bmi,
-                        water=water,
-                        bone_mass=bone_mass,
-                        visceral_fat=visceral_fat,
-                        metabolic_age=metabolic_age,
-                        protein=protein
-                    )
-                    logger.info(f"Saved body composition measurement: {weight} {weight_unit}")
+                # Convert to Unix timestamp in milliseconds for consistency
+                timestamp = int(dt.timestamp() * 1000)
 
-                    # Call callback if provided
-                    if self.on_measurement_callback:
-                        self.on_measurement_callback(payload)
+                # Extract optional fields from payload
+                body_fat = payload.get('fat')         # Body fat percentage
+                muscle_mass = payload.get('muscle')   # Muscle mass
+                water = payload.get('water')          # Water percentage
+                bmi = payload.get('bmi')              # BMI
+                bone_mass = payload.get('bone')       # Bone mass
+                visceral_fat = payload.get('visceralFat')  # Visceral fat
+                metabolic_age = payload.get('metabolicAge')  # Metabolic age
+                protein = payload.get('protein')      # Protein percentage
+                weight_unit = 'kg'  # openScale uses kg - store as-is
 
-                elif msg.topic == "openScaleSync/measurements/update":
-                    # For updates, we'd need to identify which measurement to update
-                    # For now, treat it as insert
-                    logger.info("Received update message, treating as insert")
-                    body_composition_data.write_measurement(
-                        timestamp=timestamp,
-                        weight=weight,
-                        weight_unit=weight_unit,
-                        body_fat=body_fat,
-                        muscle_mass=muscle_mass,
-                        bmi=bmi,
-                        water=water,
-                        bone_mass=bone_mass,
-                        visceral_fat=visceral_fat,
-                        metabolic_age=metabolic_age,
-                        protein=protein
-                    )
+                # Save to CSV as received (append-only, no conversion, deduplicated)
+                saved = body_composition_data.write_measurement(
+                    timestamp=timestamp,
+                    weight=weight,
+                    weight_unit=weight_unit,
+                    body_fat=body_fat,
+                    muscle_mass=muscle_mass,
+                    bmi=bmi,
+                    water=water,
+                    bone_mass=bone_mass,
+                    visceral_fat=visceral_fat,
+                    metabolic_age=metabolic_age,
+                    protein=protein
+                )
 
-                    if self.on_measurement_callback:
-                        self.on_measurement_callback(payload)
+                topic_type = msg.topic.split('/')[-1]  # 'last' or 'all'
+                if saved:
+                    logger.info(f"Saved {topic_type} measurement: {weight} kg (fat: {body_fat}%, muscle: {muscle_mass}%)")
+                else:
+                    logger.info(f"Skipped duplicate {topic_type} measurement: {weight} kg")
+
+                # Call callback if provided
+                if self.on_measurement_callback:
+                    self.on_measurement_callback(payload)
 
             else:
                 logger.warning(f"Missing required fields in payload: {payload}")
@@ -130,7 +136,7 @@ class MQTTService:
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON payload: {e}")
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            logger.error(f"Error processing message: {e}", exc_info=True)
 
     def start(self):
         """Start the MQTT client and connect to broker."""

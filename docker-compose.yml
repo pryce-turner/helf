@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   helf:
     build: .
@@ -8,7 +6,7 @@ services:
       - "30171:8080"
     volumes:
       # Persist workout data
-      - ./data:/app/data
+      - /mnt/fast/apps/helf/data:/app/data
     environment:
       - DATA_DIR=/app/data
       - MQTT_BROKER_HOST=host.docker.internal

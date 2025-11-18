@@ -3,12 +3,16 @@ import csv
 import os
 from pathlib import Path
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# Pacific timezone
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 # CSV file paths - use DATA_DIR environment variable or current directory
-DATA_DIR = Path(os.getenv("DATA_DIR", "."))
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 CSV_FILE = DATA_DIR / "workouts.csv"
 CSV_HEADERS = ["Date", "Exercise", "Category", "Weight", "Weight Unit", "Reps",
-               "Distance", "Distance Unit", "Time", "Comment"]
+               "Distance", "Distance Unit", "Time", "Comment", "Order"]
 
 UPCOMING_CSV_FILE = DATA_DIR / "upcoming_workouts.csv"
 UPCOMING_CSV_HEADERS = ["Session", "Exercise", "Category", "Weight", "Weight Unit", "Reps",
@@ -29,13 +33,33 @@ def read_workouts():
 
 
 def read_workouts_by_date(target_date):
-    """Read workouts for a specific date."""
+    """Read workouts for a specific date, sorted by order."""
     all_workouts = read_workouts()
-    return [w for w in all_workouts if w['Date'] == target_date]
+    date_workouts = [w for w in all_workouts if w['Date'] == target_date]
+
+    # Sort by order (handle missing order field)
+    def get_order(workout):
+        try:
+            return int(workout.get('Order', 999))
+        except (ValueError, TypeError):
+            return 999
+
+    date_workouts.sort(key=get_order)
+    return date_workouts
 
 
 def write_workout(workout_data):
     """Write a single workout to CSV file."""
+    # If order not specified, assign next available order for the date
+    if 'Order' not in workout_data or not workout_data['Order']:
+        date = workout_data.get('Date', '')
+        existing_workouts = read_workouts_by_date(date)
+        if existing_workouts:
+            max_order = max(int(w.get('Order', 0)) for w in existing_workouts if w.get('Order', '').isdigit())
+            workout_data['Order'] = str(max_order + 1)
+        else:
+            workout_data['Order'] = '1'
+
     file_exists = CSV_FILE.exists()
 
     # Check if file exists and doesn't end with newline
@@ -157,6 +181,57 @@ def delete_workout(workout_to_delete):
         writer.writerows(workouts)
 
 
+def reorder_workout(target_date, workout_index, direction):
+    """
+    Reorder a workout within a specific date by moving it up or down.
+
+    Args:
+        target_date: Date of the workouts to reorder
+        workout_index: Index of the workout in the date's workout list
+        direction: 'up' to move earlier, 'down' to move later
+
+    Returns:
+        True if successful, False if at boundary
+    """
+    # Get all workouts for this date
+    date_workouts = read_workouts_by_date(target_date)
+
+    if not date_workouts or workout_index < 0 or workout_index >= len(date_workouts):
+        return False
+
+    # Check boundaries
+    if direction == 'up' and workout_index == 0:
+        return False
+    if direction == 'down' and workout_index == len(date_workouts) - 1:
+        return False
+
+    # Swap with adjacent workout
+    if direction == 'up':
+        date_workouts[workout_index], date_workouts[workout_index - 1] = \
+            date_workouts[workout_index - 1], date_workouts[workout_index]
+    else:  # down
+        date_workouts[workout_index], date_workouts[workout_index + 1] = \
+            date_workouts[workout_index + 1], date_workouts[workout_index]
+
+    # Reassign order numbers
+    for i, workout in enumerate(date_workouts):
+        workout['Order'] = str(i + 1)
+
+    # Get all workouts and replace the ones for this date
+    all_workouts = read_workouts()
+    other_workouts = [w for w in all_workouts if w['Date'] != target_date]
+
+    # Combine and write back
+    all_workouts = other_workouts + date_workouts
+
+    with open(CSV_FILE, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+        writer.writeheader()
+        writer.writerows(all_workouts)
+
+    return True
+
+
 # Upcoming workouts functions
 def read_upcoming_workouts():
     """Read all upcoming workouts from CSV file."""
@@ -201,7 +276,7 @@ def pop_upcoming_workout_session(target_date):
     remaining_workouts = [w for w in upcoming if w.get('Session') != str(lowest_session)]
 
     # Add session workouts to historical database
-    for workout in session_workouts:
+    for i, workout in enumerate(session_workouts):
         historical_workout = {
             'Date': target_date,
             'Exercise': workout.get('Exercise', ''),
@@ -212,7 +287,8 @@ def pop_upcoming_workout_session(target_date):
             'Distance': workout.get('Distance', ''),
             'Distance Unit': workout.get('Distance Unit', ''),
             'Time': workout.get('Time', ''),
-            'Comment': workout.get('Comment', '')
+            'Comment': workout.get('Comment', ''),
+            'Order': str(i + 1)  # Assign order based on position in session
         }
         write_workout(historical_workout)
 
@@ -314,10 +390,10 @@ def get_progression_data(exercise_name):
             last_date = datetime.fromisoformat(last_date_str)
             start_date = last_date + timedelta(days=2)
         except (ValueError, TypeError):
-            start_date = datetime.now()
+            start_date = datetime.now(PACIFIC_TZ)
     else:
-        # No historical data, start from today
-        start_date = datetime.now()
+        # No historical data, start from today (Pacific time)
+        start_date = datetime.now(PACIFIC_TZ)
 
     # Map ALL session numbers to dates (one date per session, regardless of exercise)
     session_to_date = {}

@@ -2,11 +2,35 @@
 import os
 from datetime import date, datetime, timedelta
 from calendar import monthrange
+from zoneinfo import ZoneInfo
 from nicegui import ui, app
-import workout_data
-import body_composition_data
+from app import workout_data
+from app import body_composition_data
 import plotly.graph_objects as go
-from mqtt_service import MQTTService
+from app.mqtt_service import MQTTService
+
+# Pacific timezone
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def create_nav_bar(current_page: str, page_title: str):
+    """Create a consistent navigation bar for all pages.
+
+    Args:
+        current_page: One of 'calendar', 'body-comp', 'main-lifts', 'upcoming'
+        page_title: Title to display on the left side
+    """
+    with ui.row().classes('w-full justify-between items-center mb-6'):
+        ui.label(page_title).classes('text-3xl font-bold')
+        with ui.row().classes('gap-2'):
+            if current_page != 'calendar':
+                ui.button('📅 Calendar', on_click=lambda: ui.navigate.to('/')).props('flat')
+            if current_page != 'body-comp':
+                ui.button('⚖️ Body Comp', on_click=lambda: ui.navigate.to('/body-composition')).props('flat')
+            if current_page != 'main-lifts':
+                ui.button('💪 Main Lifts', on_click=lambda: ui.navigate.to('/progression')).props('flat')
+            if current_page != 'upcoming':
+                ui.button('📋 Upcoming', on_click=lambda: ui.navigate.to('/upcoming')).props('flat')
 
 
 @ui.page('/')
@@ -16,17 +40,13 @@ def calendar_view():
     ui.dark_mode().enable()
 
     with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
-        with ui.row().classes('w-full justify-between items-center mb-6'):
-            ui.label('Workout Calendar').classes('text-3xl font-bold')
-            with ui.row().classes('gap-2'):
-                ui.button('⚖️ Body Comp', on_click=lambda: ui.navigate.to('/body-composition')).props('flat')
-                ui.button('📋 Upcoming', on_click=lambda: ui.navigate.to('/upcoming')).props('flat')
+        create_nav_bar('calendar', 'Workout Calendar')
 
         # Get workout counts for highlighting
         workout_counts = workout_data.get_workout_count_by_date()
 
-        # Current month/year selector
-        today = date.today()
+        # Current month/year selector (use Pacific time)
+        today = datetime.now(PACIFIC_TZ).date()
         current_month = app.storage.user.get('current_month', today.month)
         current_year = app.storage.user.get('current_year', today.year)
 
@@ -103,15 +123,6 @@ def calendar_view():
 
         create_calendar()
 
-        # Quick navigation to today and progression
-        with ui.row().classes('w-full justify-center gap-4 mt-6'):
-            ui.button('Go to Today', on_click=lambda: ui.navigate.to(f'/day/{today.isoformat()}')).props(
-                'color=primary')
-            ui.button('View Progression', on_click=lambda: ui.navigate.to('/progression')).props(
-                'color=secondary')
-            ui.button('Upcoming Workouts', on_click=lambda: ui.navigate.to('/upcoming')).props(
-                'color=accent')
-
 
 @ui.page('/day/{selected_date}')
 def workout_session_view(selected_date: str):
@@ -139,6 +150,7 @@ def workout_session_view(selected_date: str):
 
             workout_table = ui.table(
                 columns=[
+                    {'name': 'actions', 'label': '', 'field': 'actions', 'align': 'center'},
                     {'name': 'exercise', 'label': 'Exercise', 'field': 'Exercise', 'align': 'left'},
                     {'name': 'category', 'label': 'Category', 'field': 'Category', 'align': 'left'},
                     {'name': 'weight', 'label': 'Weight', 'field': 'Weight', 'align': 'left'},
@@ -149,6 +161,16 @@ def workout_session_view(selected_date: str):
                 rows=existing_workouts,
                 row_key='Exercise'
             ).classes('w-full mb-2')
+
+            # Add custom slot for action buttons
+            workout_table.add_slot('body-cell-actions', '''
+                <q-td :props="props">
+                    <q-btn flat dense round icon="arrow_upward" size="sm" color="primary"
+                           @click.stop="$parent.$emit('move_up', props.rowIndex)" />
+                    <q-btn flat dense round icon="arrow_downward" size="sm" color="primary"
+                           @click.stop="$parent.$emit('move_down', props.rowIndex)" />
+                </q-td>
+            ''')
 
             # Container for clear button (will be populated after form inputs are created)
             clear_button_container = ui.row().classes('w-full justify-end mb-4')
@@ -368,6 +390,24 @@ def workout_session_view(selected_date: str):
         if existing_workouts:
             workout_table.on('rowClick', lambda e: populate_form(e.args[1]))
 
+            # Add reorder handlers
+            def move_workout_up(e):
+                """Move workout up in the order."""
+                index = e.args
+                if workout_data.reorder_workout(selected_date, index, 'up'):
+                    update_table()
+                    ui.notify('Exercise moved up', type='positive')
+
+            def move_workout_down(e):
+                """Move workout down in the order."""
+                index = e.args
+                if workout_data.reorder_workout(selected_date, index, 'down'):
+                    update_table()
+                    ui.notify('Exercise moved down', type='positive')
+
+            workout_table.on('move_up', move_workout_up)
+            workout_table.on('move_down', move_workout_down)
+
             # Add clear button to the container created earlier
             with clear_button_container:
                 ui.button('Add New Entry', on_click=clear_form).props('flat color=primary')
@@ -517,35 +557,162 @@ def workout_session_view(selected_date: str):
 @ui.page('/progression')
 @ui.page('/progression/{exercise_name}')
 def progression_view(exercise_name: str = None):
-    """Progression tracking view showing historical and upcoming workouts."""
-    ui.page_title('Progression Tracker')
+    """Progression tracking view showing main lifts."""
+    ui.page_title('Main Lifts')
     ui.dark_mode().enable()
 
     with ui.card().classes('w-full max-w-7xl mx-auto mt-8 p-6'):
-        # Header with navigation
-        with ui.row().classes('w-full justify-between items-center mb-6'):
-            ui.button('← Back', on_click=lambda: ui.navigate.back()).props('flat')
-            ui.label('Progression Tracker').classes('text-3xl font-bold')
+        create_nav_bar('main-lifts', 'Main Lifts')
 
-        # Exercise selection dropdown
+        def create_exercise_chart(exercise_name, title=None):
+            """Create a chart for a specific exercise with 30-day moving average."""
+            import numpy as np
+
+            if title is None:
+                title = exercise_name
+
+            # Get progression data
+            data = workout_data.get_progression_data(exercise_name)
+            historical = data['historical']
+            upcoming = data['upcoming']
+
+            if not historical and not upcoming:
+                ui.label(f'No data available for {title}').classes('text-gray-500 italic text-center my-8')
+                return
+
+            # Prepare historical data
+            hist_dates = []
+            hist_estimated_1rm = []
+            hist_labels = []
+
+            for workout in enumerate(historical):
+                hist_dates.append(workout[1].get('Date', ''))
+                estimated_1rm = workout[1].get('estimated_1rm', 0)
+                hist_estimated_1rm.append(estimated_1rm)
+                weight = workout[1].get('Weight', '')
+                reps = workout[1].get('Reps', '')
+                hist_labels.append(f"{weight} lbs x {reps}<br>Est 1RM: {estimated_1rm:.1f} lbs")
+
+            # Prepare upcoming data
+            future_dates = []
+            future_estimated_1rm = []
+            future_labels = []
+
+            for workout in upcoming:
+                projected_date = workout.get('projected_date', '')
+                future_dates.append(projected_date)
+                estimated_1rm = workout.get('estimated_1rm', 0)
+                future_estimated_1rm.append(estimated_1rm)
+                weight = workout.get('Weight', '')
+                reps = workout.get('Reps', '')
+                future_labels.append(f"{weight} lbs x {reps}<br>Est 1RM: {estimated_1rm:.1f} lbs")
+
+            # Create plotly figure
+            fig = go.Figure()
+
+            # Add historical data (markers only, no lines)
+            if hist_estimated_1rm:
+                fig.add_trace(go.Scatter(
+                    x=hist_dates,
+                    y=hist_estimated_1rm,
+                    mode='markers',
+                    name='Past Workouts',
+                    marker=dict(size=8, color='#4CAF50', symbol='circle'),
+                    text=hist_labels,
+                    hovertemplate='<b>%{x}</b><br>%{text}<extra></extra>'
+                ))
+
+            # Add upcoming data (markers only, no lines)
+            if future_estimated_1rm:
+                fig.add_trace(go.Scatter(
+                    x=future_dates,
+                    y=future_estimated_1rm,
+                    mode='markers',
+                    name='Future Workouts (Projected)',
+                    marker=dict(size=8, color='#2196F3', symbol='circle'),
+                    text=future_labels,
+                    hovertemplate='<b>%{x}</b><br>%{text}<extra></extra>'
+                ))
+
+            # Calculate 30-day moving average for historical data only
+            if len(hist_estimated_1rm) >= 2:
+                try:
+                    # Calculate 30-day moving average
+                    window_size = min(30, len(hist_estimated_1rm))
+                    moving_avg = []
+
+                    for i in range(len(hist_estimated_1rm)):
+                        start_idx = max(0, i - window_size + 1)
+                        window = hist_estimated_1rm[start_idx:i+1]
+                        moving_avg.append(np.mean(window))
+
+                    fig.add_trace(go.Scatter(
+                        x=hist_dates,
+                        y=moving_avg,
+                        mode='lines',
+                        name='30-Day Average',
+                        line=dict(color='#FFD700', width=3, shape='spline', smoothing=1.3),
+                        hovertemplate='<b>30-Day MA:</b> %{y:.1f} lbs<extra></extra>',
+                        connectgaps=False
+                    ))
+                except (ImportError, ValueError, TypeError):
+                    pass
+
+            # Add vertical line to mark today
+            if hist_dates and future_dates:
+                from datetime import datetime as dt
+                last_hist_date = hist_dates[-1]
+                first_future_date = future_dates[0]
+
+                try:
+                    last_dt = dt.fromisoformat(last_hist_date)
+                    first_ft = dt.fromisoformat(first_future_date)
+                    midpoint = last_dt + (first_ft - last_dt) / 2
+
+                    fig.add_vline(
+                        x=midpoint.isoformat()[:10],
+                        line_width=2,
+                        line_dash="dash",
+                        line_color="gray",
+                        annotation_text="Today",
+                        annotation_position="top"
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+            fig.update_layout(
+                title=title,
+                xaxis_title='Date',
+                yaxis_title='Estimated 1RM (lbs)',
+                hovermode='closest',
+                showlegend=True,
+                height=400,
+                template='plotly_dark',
+                xaxis=dict(type='date'),
+                margin=dict(l=50, r=50, t=50, b=50)
+            )
+
+            ui.plotly(fig).classes('w-full')
+
+        # Show 3 main lifts by default
+        main_exercises = ['Flat Barbell Bench Press', 'Barbell Squat', 'Deadlift']
+
+        for exercise in main_exercises:
+            create_exercise_chart(exercise)
+            ui.separator().classes('my-6')
+
+        # 4th chart with dropdown for any exercise
+        ui.label('Custom Exercise').classes('text-2xl font-bold mt-4 mb-2')
+
         main_lifts = workout_data.get_main_lifts()
-
-        # Decode exercise name from URL if provided
-        initial_exercise = None
-        if exercise_name:
-            import urllib.parse
-            initial_exercise = urllib.parse.unquote(exercise_name)
-
-        # Use provided exercise or default to first available
-        selected_exercise = {'value': initial_exercise if initial_exercise in main_lifts else (main_lifts[0] if main_lifts else None)}
+        selected_exercise = {'value': main_lifts[0] if main_lifts else None}
 
         def on_exercise_change(e):
             """Handle exercise selection change."""
             selected_exercise['value'] = e.value
-            update_progression_view()
+            update_custom_chart()
 
-        # Exercise dropdown at the top
-        with ui.row().classes('w-full mb-6'):
+        with ui.row().classes('w-full mb-4'):
             ui.select(
                 options=main_lifts,
                 label='Select Exercise',
@@ -553,245 +720,22 @@ def progression_view(exercise_name: str = None):
                 on_change=on_exercise_change
             ).classes('w-64')
 
-        # Container for chart and table
         chart_container = ui.column().classes('w-full')
-        table_container = ui.column().classes('w-full mt-8')
 
-        def update_progression_view():
-            """Update the chart and table based on selected exercise."""
+        def update_custom_chart():
+            """Update the custom chart based on selected exercise."""
             chart_container.clear()
-            table_container.clear()
 
             if not selected_exercise['value']:
                 with chart_container:
                     ui.label('Please select an exercise').classes('text-gray-500 italic')
                 return
 
-            # Get progression data
-            data = workout_data.get_progression_data(selected_exercise['value'])
-            historical = data['historical']
-            upcoming = data['upcoming']
-
-            # Create chart
             with chart_container:
-                if not historical and not upcoming:
-                    ui.label(f'No data available for {selected_exercise["value"]}').classes('text-gray-500 italic')
-                else:
-                    # Prepare historical data
-                    hist_dates = []
-                    hist_estimated_1rm = []
-                    hist_labels = []
-
-                    for i, workout in enumerate(historical):
-                        hist_dates.append(workout.get('Date', ''))
-                        estimated_1rm = workout.get('estimated_1rm', 0)
-                        hist_estimated_1rm.append(estimated_1rm)
-                        weight = workout.get('Weight', '')
-                        reps = workout.get('Reps', '')
-                        hist_labels.append(f"{weight} lbs x {reps}<br>Est 1RM: {estimated_1rm:.1f} lbs")
-
-                    # Prepare upcoming data - use projected dates
-                    future_dates = []
-                    future_estimated_1rm = []
-                    future_labels = []
-
-                    for i, workout in enumerate(upcoming):
-                        projected_date = workout.get('projected_date', '')
-                        future_dates.append(projected_date)
-                        estimated_1rm = workout.get('estimated_1rm', 0)
-                        future_estimated_1rm.append(estimated_1rm)
-                        weight = workout.get('Weight', '')
-                        reps = workout.get('Reps', '')
-                        future_labels.append(f"{weight} lbs x {reps}<br>Est 1RM: {estimated_1rm:.1f} lbs")
-
-                    # Create plotly figure
-                    fig = go.Figure()
-
-                    # Add historical data
-                    if hist_estimated_1rm:
-                        fig.add_trace(go.Scatter(
-                            x=hist_dates,
-                            y=hist_estimated_1rm,
-                            mode='lines+markers',
-                            name='Past Workouts',
-                            line=dict(color='#4CAF50', width=2),
-                            marker=dict(size=8, symbol='circle'),
-                            text=hist_labels,
-                            hovertemplate='<b>%{x}</b><br>%{text}<extra></extra>'
-                        ))
-
-                    # Add upcoming data with projected dates
-                    if future_estimated_1rm:
-                        fig.add_trace(go.Scatter(
-                            x=future_dates,
-                            y=future_estimated_1rm,
-                            mode='lines+markers',
-                            name='Future Workouts (Projected)',
-                            line=dict(color='#2196F3', width=2),
-                            marker=dict(size=8, symbol='circle'),
-                            text=future_labels,
-                            hovertemplate='<b>%{x}</b><br>%{text}<extra></extra>'
-                        ))
-
-                    # Calculate moving average trendline for all data (past + future)
-                    if hist_estimated_1rm or future_estimated_1rm:
-                        try:
-                            import numpy as np
-
-                            # Combine historical and future data
-                            all_dates = hist_dates + future_dates
-                            all_values = hist_estimated_1rm + future_estimated_1rm
-
-                            if len(all_values) >= 3:
-                                # Calculate moving average with window size of 5 (or less if not enough data)
-                                window_size = min(5, len(all_values))
-                                moving_avg = []
-
-                                for i in range(len(all_values)):
-                                    # Get window around current point
-                                    start_idx = max(0, i - window_size // 2)
-                                    end_idx = min(len(all_values), i + window_size // 2 + 1)
-                                    window = all_values[start_idx:end_idx]
-                                    moving_avg.append(np.mean(window))
-
-                                fig.add_trace(go.Scatter(
-                                    x=all_dates,
-                                    y=moving_avg,
-                                    mode='lines',
-                                    name='Moving Average',
-                                    line=dict(color='#FFD700', width=3),
-                                    hovertemplate='<b>MA:</b> %{y:.1f} lbs<extra></extra>'
-                                ))
-                        except (ImportError, ValueError, TypeError):
-                            pass  # Skip trendline if numpy not available or data issues
-
-                        # Add vertical line to mark transition from past to future
-                        if hist_dates and future_dates:
-                            # Add a vertical line at the last historical date
-                            from datetime import datetime as dt, timedelta
-                            last_hist_date = hist_dates[-1]
-                            first_future_date = future_dates[0]
-
-                            # Calculate midpoint for the vertical line
-                            try:
-                                last_dt = dt.fromisoformat(last_hist_date)
-                                first_ft = dt.fromisoformat(first_future_date)
-                                midpoint = last_dt + (first_ft - last_dt) / 2
-
-                                fig.add_vline(
-                                    x=midpoint.isoformat()[:10],
-                                    line_width=2,
-                                    line_color="yellow",
-                                    annotation_text="Today",
-                                    annotation_position="top"
-                                )
-                            except (ValueError, TypeError):
-                                pass
-
-                    # Add range slider and selector buttons for different time scales
-                    fig.update_xaxes(
-                        rangeslider_visible=True,
-                        rangeselector=dict(
-                            buttons=list([
-                                dict(count=1, label="1m", step="month", stepmode="backward"),
-                                dict(count=3, label="3m", step="month", stepmode="backward"),
-                                dict(count=6, label="6m", step="month", stepmode="backward"),
-                                dict(count=1, label="1y", step="year", stepmode="backward"),
-                                dict(step="all", label="All")
-                            ]),
-                            bgcolor="#1e1e1e",
-                            activecolor="#2196F3",
-                            x=0,
-                            y=1.1
-                        )
-                    )
-
-                    fig.update_layout(
-                        xaxis_title='Date',
-                        yaxis_title='Estimated 1RM (lbs)',
-                        hovermode='closest',
-                        showlegend=True,
-                        height=650,
-                        template='plotly_dark',
-                        xaxis=dict(
-                            rangeselector=dict(font=dict(color='white')),
-                            type='date'
-                        ),
-                        dragmode='zoom'
-                    )
-
-                    ui.plotly(fig).classes('w-full')
-
-            # Create tables
-            with table_container:
-                ui.label('Training Log Details').classes('text-2xl font-bold mb-4')
-
-                # Historical workouts table
-                if historical:
-                    ui.label('Past Workouts (Best Set Per Day)').classes('text-xl font-semibold mt-4 mb-2')
-                    hist_table_data = []
-                    for workout in historical:
-                        estimated_1rm = workout.get('estimated_1rm', 0)
-                        hist_table_data.append({
-                            'Date': workout.get('Date', ''),
-                            'Weight': workout.get('Weight', ''),
-                            'Unit': workout.get('Weight Unit', ''),
-                            'Reps': workout.get('Reps', ''),
-                            'Est 1RM': f"{estimated_1rm:.1f}",
-                            'Comment': workout.get('Comment', '')
-                        })
-
-                    ui.table(
-                        columns=[
-                            {'name': 'date', 'label': 'Date', 'field': 'Date', 'align': 'left'},
-                            {'name': 'weight', 'label': 'Weight', 'field': 'Weight', 'align': 'left'},
-                            {'name': 'unit', 'label': 'Unit', 'field': 'Unit', 'align': 'left'},
-                            {'name': 'reps', 'label': 'Reps', 'field': 'Reps', 'align': 'left'},
-                            {'name': 'est_1rm', 'label': 'Est 1RM', 'field': 'Est 1RM', 'align': 'left'},
-                            {'name': 'comment', 'label': 'Comment', 'field': 'Comment', 'align': 'left'},
-                        ],
-                        rows=hist_table_data,
-                        row_key='Date',
-                        pagination={'rowsPerPage': 10, 'sortBy': 'date', 'descending': True}
-                    ).classes('w-full').props('rows-per-page-options="[10, 25, 50, 0]"')
-                else:
-                    ui.label('No past workouts logged yet').classes('text-gray-500 italic mt-4')
-
-                # Upcoming workouts table
-                if upcoming:
-                    ui.label('Future Workouts (Best Set Per Session)').classes('text-xl font-semibold mt-6 mb-2')
-                    future_table_data = []
-                    for workout in upcoming:
-                        estimated_1rm = workout.get('estimated_1rm', 0)
-                        future_table_data.append({
-                            'Projected Date': workout.get('projected_date', ''),
-                            'Session': workout.get('Session', ''),
-                            'Weight': workout.get('Weight', ''),
-                            'Unit': workout.get('Weight Unit', ''),
-                            'Reps': workout.get('Reps', ''),
-                            'Est 1RM': f"{estimated_1rm:.1f}",
-                            'Comment': workout.get('Comment', '')
-                        })
-
-                    ui.table(
-                        columns=[
-                            {'name': 'projected_date', 'label': 'Projected Date', 'field': 'Projected Date', 'align': 'left'},
-                            {'name': 'session', 'label': 'Session', 'field': 'Session', 'align': 'left'},
-                            {'name': 'weight', 'label': 'Weight', 'field': 'Weight', 'align': 'left'},
-                            {'name': 'unit', 'label': 'Unit', 'field': 'Unit', 'align': 'left'},
-                            {'name': 'reps', 'label': 'Reps', 'field': 'Reps', 'align': 'left'},
-                            {'name': 'est_1rm', 'label': 'Est 1RM', 'field': 'Est 1RM', 'align': 'left'},
-                            {'name': 'comment', 'label': 'Comment', 'field': 'Comment', 'align': 'left'},
-                        ],
-                        rows=future_table_data,
-                        row_key='Session',
-                        pagination={'rowsPerPage': 10, 'sortBy': 'projected_date', 'descending': False}
-                    ).classes('w-full').props('rows-per-page-options="[10, 25, 50, 0]"')
-                else:
-                    ui.label('No upcoming workouts planned').classes('text-gray-500 italic mt-6')
+                create_exercise_chart(selected_exercise['value'])
 
         # Initial load
-        update_progression_view()
+        update_custom_chart()
 
 
 @ui.page('/upcoming')
@@ -801,10 +745,7 @@ def upcoming_workouts_view():
     ui.dark_mode().enable()
 
     with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
-        # Header with navigation
-        with ui.row().classes('w-full justify-between items-center mb-6'):
-            ui.button('← Back to Calendar', on_click=lambda: ui.navigate.to('/')).props('flat')
-            ui.label('Upcoming Workouts').classes('text-3xl font-bold')
+        create_nav_bar('upcoming', 'Upcoming Workouts')
 
         # Load upcoming workouts
         upcoming_workouts = workout_data.read_upcoming_workouts()
@@ -867,12 +808,7 @@ def body_composition_view():
     ui.dark_mode().enable()
 
     with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
-        # Header with navigation
-        with ui.row().classes('w-full justify-between items-center mb-6'):
-            ui.label('Body Composition').classes('text-3xl font-bold')
-            with ui.row().classes('gap-2'):
-                ui.button('📅 Calendar', on_click=lambda: ui.navigate.to('/')).props('flat')
-                ui.button('📊 Workouts', on_click=lambda: ui.navigate.to('/upcoming')).props('flat')
+        create_nav_bar('body-comp', 'Body Composition')
 
         # Get stats
         stats = body_composition_data.get_stats_summary()
@@ -886,7 +822,8 @@ def body_composition_view():
                     ui.label('Current Weight').classes('text-sm text-gray-400')
                     weight_val = stats.get('latest_weight')
                     if weight_val:
-                        ui.label(f"{weight_val:.1f} kg").classes('text-3xl font-bold text-blue-400')
+                        weight_lbs = weight_val * 2.20462  # Convert kg to lbs in memory
+                        ui.label(f"{weight_lbs:.1f} lbs").classes('text-3xl font-bold text-blue-400')
                     else:
                         ui.label('—').classes('text-3xl font-bold text-gray-600')
 
@@ -895,8 +832,9 @@ def body_composition_view():
                     ui.label('Weight Change').classes('text-sm text-gray-400')
                     change = stats.get('weight_change')
                     if change is not None:
-                        color = 'text-green-400' if change < 0 else 'text-red-400'
-                        ui.label(f"{change:+.1f} kg").classes(f'text-3xl font-bold {color}')
+                        change_lbs = change * 2.20462  # Convert kg to lbs in memory
+                        color = 'text-green-400' if change_lbs < 0 else 'text-red-400'
+                        ui.label(f"{change_lbs:+.1f} lbs").classes(f'text-3xl font-bold {color}')
                     else:
                         ui.label('—').classes('text-3xl font-bold text-gray-600')
 
@@ -918,67 +856,133 @@ def body_composition_view():
         if measurements:
             ui.separator().classes('my-6')
 
-            # Weight trend graph
-            dates = [m['Date'] for m in measurements]
-            weights = [float(m['Weight']) if m['Weight'] else None for m in measurements]
+            # Helper function to calculate moving average
+            def calculate_moving_average(values, window=7):
+                """Calculate moving average with given window size."""
+                ma = []
+                for i in range(len(values)):
+                    if values[i] is None:
+                        ma.append(None)
+                    else:
+                        # Get window of valid values
+                        window_values = [v for v in values[max(0, i-window+1):i+1] if v is not None]
+                        if window_values:
+                            ma.append(sum(window_values) / len(window_values))
+                        else:
+                            ma.append(None)
+                return ma
 
+            # Helper function to convert kg to lbs in memory
+            def kg_to_lbs(kg_value):
+                """Convert kg to lbs."""
+                if kg_value is None:
+                    return None
+                return kg_value * 2.20462
+
+            dates = [m['Date'] for m in measurements]
+            # Convert weights from kg to lbs in memory for display
+            weights_kg = [float(m['Weight']) if m['Weight'] else None for m in measurements]
+            weights = [kg_to_lbs(w) for w in weights_kg]
+            body_fats = [float(m['Body Fat %']) if m.get('Body Fat %') else None for m in measurements]
+            muscle_masses = [float(m['Muscle Mass']) if m.get('Muscle Mass') else None for m in measurements]
+
+            # Calculate 30-day moving averages
+            weight_ma = calculate_moving_average(weights, window=30)
+            body_fat_ma = calculate_moving_average(body_fats, window=30)
+            muscle_ma = calculate_moving_average(muscle_masses, window=30)
+
+            # Weight trend graph with 30-day moving average
             fig_weight = go.Figure()
             fig_weight.add_trace(go.Scatter(
                 x=dates,
                 y=weights,
-                mode='lines+markers',
-                name='Weight',
-                line=dict(color='#60A5FA', width=3),
-                marker=dict(size=8)
+                mode='markers',
+                name='Daily Weight',
+                marker=dict(size=6, color='#60A5FA', opacity=0.4),
+                showlegend=True
+            ))
+            fig_weight.add_trace(go.Scatter(
+                x=dates,
+                y=weight_ma,
+                mode='lines',
+                name='30-Day Average',
+                line=dict(color='#60A5FA', width=3, shape='spline', smoothing=1.3),
+                connectgaps=False,
+                showlegend=True
             ))
             fig_weight.update_layout(
                 title='Weight Trend',
                 xaxis_title='Date',
-                yaxis_title='Weight (kg)',
+                yaxis_title='Weight (lbs)',
                 template='plotly_dark',
                 height=400,
                 hovermode='x unified'
             )
             ui.plotly(fig_weight).classes('w-full')
 
-            # Body composition graph (body fat, muscle mass)
-            body_fats = [float(m['Body Fat %']) if m.get('Body Fat %') else None for m in measurements]
-            muscle_masses = [float(m['Muscle Mass']) if m.get('Muscle Mass') else None for m in measurements]
-
-            if any(body_fats) or any(muscle_masses):
+            # Body Fat % graph with 30-day moving average
+            if any(body_fats):
                 ui.separator().classes('my-6')
 
-                fig_comp = go.Figure()
-
-                if any(body_fats):
-                    fig_comp.add_trace(go.Scatter(
-                        x=dates,
-                        y=body_fats,
-                        mode='lines+markers',
-                        name='Body Fat %',
-                        line=dict(color='#F472B6', width=3),
-                        marker=dict(size=8)
-                    ))
-
-                if any(muscle_masses):
-                    fig_comp.add_trace(go.Scatter(
-                        x=dates,
-                        y=muscle_masses,
-                        mode='lines+markers',
-                        name='Muscle Mass',
-                        line=dict(color='#34D399', width=3),
-                        marker=dict(size=8)
-                    ))
-
-                fig_comp.update_layout(
-                    title='Body Composition',
+                fig_fat = go.Figure()
+                fig_fat.add_trace(go.Scatter(
+                    x=dates,
+                    y=body_fats,
+                    mode='markers',
+                    name='Daily Body Fat %',
+                    marker=dict(size=6, color='#F472B6', opacity=0.4),
+                    showlegend=True
+                ))
+                fig_fat.add_trace(go.Scatter(
+                    x=dates,
+                    y=body_fat_ma,
+                    mode='lines',
+                    name='30-Day Average',
+                    line=dict(color='#F472B6', width=3, shape='spline', smoothing=1.3),
+                    connectgaps=False,
+                    showlegend=True
+                ))
+                fig_fat.update_layout(
+                    title='Body Fat %',
                     xaxis_title='Date',
-                    yaxis_title='Percentage / Mass',
+                    yaxis_title='Body Fat %',
                     template='plotly_dark',
                     height=400,
                     hovermode='x unified'
                 )
-                ui.plotly(fig_comp).classes('w-full')
+                ui.plotly(fig_fat).classes('w-full')
+
+            # Muscle Mass graph with 30-day moving average
+            if any(muscle_masses):
+                ui.separator().classes('my-6')
+
+                fig_muscle = go.Figure()
+                fig_muscle.add_trace(go.Scatter(
+                    x=dates,
+                    y=muscle_masses,
+                    mode='markers',
+                    name='Daily Muscle Mass',
+                    marker=dict(size=6, color='#34D399', opacity=0.4),
+                    showlegend=True
+                ))
+                fig_muscle.add_trace(go.Scatter(
+                    x=dates,
+                    y=muscle_ma,
+                    mode='lines',
+                    name='30-Day Average',
+                    line=dict(color='#34D399', width=3, shape='spline', smoothing=1.3),
+                    connectgaps=False,
+                    showlegend=True
+                ))
+                fig_muscle.update_layout(
+                    title='Muscle Mass',
+                    xaxis_title='Date',
+                    yaxis_title='Muscle Mass (%)',
+                    template='plotly_dark',
+                    height=400,
+                    hovermode='x unified'
+                )
+                ui.plotly(fig_muscle).classes('w-full')
 
         else:
             ui.label('No measurements yet. Step on your scale to start tracking!').classes('text-center text-gray-400 mt-8')
@@ -993,9 +997,13 @@ def body_composition_view():
 
             table_data = []
             for m in recent:
+                # Convert weight from kg to lbs in memory for display
+                weight_kg = float(m['Weight']) if m['Weight'] else None
+                weight_lbs = weight_kg * 2.20462 if weight_kg else None
+
                 row = {
                     'Date': m['Date'],
-                    'Weight': f"{m['Weight']} {m.get('Weight Unit', 'kg')}" if m['Weight'] else '—',
+                    'Weight': f"{weight_lbs:.1f} lbs" if weight_lbs else '—',
                     'Body Fat %': f"{m['Body Fat %']}%" if m.get('Body Fat %') else '—',
                     'Muscle Mass': m.get('Muscle Mass', '—'),
                     'BMI': m.get('BMI', '—'),
@@ -1022,5 +1030,11 @@ mqtt_service = MQTTService(broker_host=mqtt_broker_host, broker_port=mqtt_broker
 app.on_startup(lambda: mqtt_service.start())
 app.on_shutdown(lambda: mqtt_service.stop())
 
-# Run the app
-ui.run(title='Helf - Health & Fitness Tracker', port=8080, reload=True, host='0.0.0.0', storage_secret='helf-secret-key-2024')
+# Run the app - NiceGUI requires this to be called at module level
+ui.run(
+    title='Helf - Health & Fitness Tracker',
+    port=8080,
+    reload=True,
+    host='0.0.0.0',
+    storage_secret='helf-secret-key-2024'
+)

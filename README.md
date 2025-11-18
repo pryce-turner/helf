@@ -66,14 +66,15 @@ docker run -d \
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-2. Install dependencies:
+2. Create virtual environment and install dependencies:
 ```bash
-uv pip install -e .
+uv venv
+uv pip install .
 ```
 
 3. Run the application:
 ```bash
-python workout_tracker.py
+python run.py
 ```
 
 4. Access the app at `http://localhost:8080`
@@ -86,10 +87,10 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install nicegui plotly
+pip install .
 
 # Run the application
-python workout_tracker.py
+python run.py
 ```
 
 ## Data Schema
@@ -149,21 +150,22 @@ The docker-compose.yml is pre-configured to connect to a Mosquitto broker runnin
 When running locally (not in Docker), Helf connects to `localhost:1883` by default.
 
 **Supported MQTT Topics:**
-- `openScaleSync/measurements/insert` - New measurements
-- `openScaleSync/measurements/update` - Updated measurements
+- `openScaleSync/measurements/last` - Latest measurement (when stepping on scale)
+- `openScaleSync/measurements/all` - All measurements (when syncing from app)
 
 **Message Format:**
 ```json
 {
-  "date": 1572082380000,
-  "weight": 80.0,
-  "fat": 18.5,
-  "muscle": 45.2,
-  "bmi": 24.8
+  "date": "2025-11-17T08:56-0800",
+  "weight": 87.15,
+  "fat": 23.8,
+  "muscle": 39.1,
+  "water": 50.89,
+  "id": 179
 }
 ```
 
-The app will automatically save measurements to `data/body_composition.csv` when received.
+The app automatically parses ISO 8601 timestamps and saves all measurements to `data/body_composition.csv`.
 
 ### Production Deployment
 
@@ -192,16 +194,23 @@ pytest
 
 ```
 helf/
-├── workout_tracker.py       # Main UI application
-├── workout_data.py          # Data layer (CSV operations)
-├── test_workout_data.py     # Test suite
+├── app/                      # Application package
+│   ├── __init__.py          # Package initialization
+│   ├── workout_tracker.py   # Main UI application
+│   ├── workout_data.py      # Workout data layer (CSV operations)
+│   ├── body_composition_data.py  # Body composition data layer
+│   └── mqtt_service.py      # MQTT client service
+├── tests/                   # Test suite
+│   └── test_workout_data.py
+├── data/                    # Data storage (created on first run)
+│   ├── workouts.csv
+│   ├── upcoming_workouts.csv
+│   └── body_composition.csv
+├── run.py                   # Application entrypoint
 ├── pyproject.toml           # Project configuration
-├── Dockerfile               # Container definition
+├── Dockerfile               # Production container definition
 ├── docker-compose.yml       # Docker Compose configuration
 ├── .dockerignore           # Docker build exclusions
-├── data/                   # Workout data (created on first run)
-│   ├── workouts.csv
-│   └── upcoming_workouts.csv
 └── README.md
 ```
 

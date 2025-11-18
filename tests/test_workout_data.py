@@ -3,7 +3,7 @@ import pytest
 import csv
 from pathlib import Path
 from datetime import date
-import workout_data
+from app import workout_data
 
 
 @pytest.fixture

@@ -19,7 +19,7 @@ FROM base AS dependencies
 COPY pyproject.toml ./
 COPY README.md ./
 
-# Install dependencies
+# Install dependencies to system Python (not venv)
 RUN uv pip install --system --no-cache .
 
 # Production stage
@@ -37,10 +37,15 @@ RUN mkdir -p /app/data
 
 # Set environment variables for production
 ENV DATA_DIR=/app/data \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PRODUCTION=true
 
 # Expose port
 EXPOSE 8080
 
-# Run the application
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080').read()"
+
+# Run the app - uses NiceGUI's built-in Uvicorn server with production settings
 CMD ["python", "run.py"]

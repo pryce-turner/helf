@@ -1100,11 +1100,16 @@ mqtt_service = MQTTService(broker_host=mqtt_broker_host, broker_port=mqtt_broker
 app.on_startup(lambda: mqtt_service.start())
 app.on_shutdown(lambda: mqtt_service.stop())
 
-# Run the app - NiceGUI requires this to be called at module level
+# Run with NiceGUI's built-in server (which uses Uvicorn)
+# Production settings optimized for single user with long idle periods at the gym
 ui.run(
     title='Helf - Health & Fitness Tracker',
     port=8080,
-    reload=True,
     host='0.0.0.0',
-    storage_secret='helf-secret-key-2024'
+    reload=False,
+    show=False,
+    storage_secret='helf-secret-key-2024',
+    reconnect_timeout=30.0,  # Allow 30 seconds to reconnect after connection drop
+    uvicorn_logging_level='info',
+    uvicorn_reload_dirs=None,  # Disable file watching
 )

@@ -24,6 +24,7 @@ htmlcov/
 
 # CSV data files (will be in mounted volume)
 *.csv
+data/
 
 # IDE
 .vscode/
@@ -31,20 +32,20 @@ htmlcov/
 *.swp
 *.swo
 *~
+.claude/
 
 # Git
 .git/
 .gitignore
 
 # Docker
-Dockerfile
 .dockerignore
 docker-compose.yml
-
-# Documentation
-README.md
-docs/
 
 # UV
 .uv/
 uv.lock
+
+# Other
+generate_wendler_progression.py
+*.bak

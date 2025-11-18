@@ -2,7 +2,11 @@
 import csv
 import os
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
+
+# Pacific timezone
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 # CSV file paths - use DATA_DIR environment variable or current directory
 DATA_DIR = Path(os.getenv("DATA_DIR", "."))
@@ -25,21 +29,33 @@ def read_measurements():
 def write_measurement(timestamp, weight, weight_unit="kg", body_fat=None,
                       muscle_mass=None, bmi=None, water=None, bone_mass=None,
                       visceral_fat=None, metabolic_age=None, protein=None):
-    """Write a new body composition measurement to CSV file."""
-    # Convert timestamp (Unix ms) to datetime
+    """Write a new body composition measurement to CSV file.
+
+    Ensures:
+    - No duplicate measurements (based on timestamp)
+    - Measurements are ordered by date/timestamp
+    - Append-only operation (existing data not modified)
+    """
+    # Convert timestamp (Unix ms) to datetime in Pacific time
     if isinstance(timestamp, (int, float)):
-        dt = datetime.fromtimestamp(timestamp / 1000)
+        dt = datetime.fromtimestamp(timestamp / 1000, tz=PACIFIC_TZ)
     else:
-        dt = datetime.now()
+        dt = datetime.now(PACIFIC_TZ)
 
     measurement_date = dt.date().isoformat()
     timestamp_str = dt.isoformat()
 
-    # Check if file exists
-    file_exists = CSV_FILE.exists()
+    # Read existing measurements
+    existing_measurements = read_measurements()
 
-    # Create the data row
-    row = {
+    # Check for duplicate timestamp
+    for existing in existing_measurements:
+        if existing.get('Timestamp') == timestamp_str:
+            # Measurement already exists, skip
+            return False
+
+    # Create the new measurement row
+    new_row = {
         "Timestamp": timestamp_str,
         "Date": measurement_date,
         "Weight": weight,
@@ -54,25 +70,19 @@ def write_measurement(timestamp, weight, weight_unit="kg", body_fat=None,
         "Protein %": protein or ""
     }
 
-    # Check if we need to add a newline first
-    needs_newline = False
-    if file_exists and CSV_FILE.stat().st_size > 0:
-        with open(CSV_FILE, 'rb') as f:
-            f.seek(-1, 2)
-            needs_newline = f.read(1) != b'\n'
+    # Add new measurement to list
+    existing_measurements.append(new_row)
 
-    # Write the measurement
-    with open(CSV_FILE, 'a', newline='') as f:
-        if needs_newline:
-            f.write('\n')
+    # Sort by timestamp to ensure correct ordering
+    existing_measurements.sort(key=lambda x: x['Timestamp'])
 
+    # Write all measurements back to file (ordered and deduplicated)
+    with open(CSV_FILE, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+        writer.writeheader()
+        writer.writerows(existing_measurements)
 
-        # Write header if file is new
-        if not file_exists or CSV_FILE.stat().st_size == 0:
-            writer.writeheader()
-
-        writer.writerow(row)
+    return True
 
 
 def get_measurements_by_date(target_date):
@@ -123,7 +133,7 @@ def get_measurement_trend(days=30):
 
     # Filter by date range if needed
     if days:
-        cutoff_date = (datetime.now().date() - timedelta(days=days)).isoformat()
+        cutoff_date = (datetime.now(PACIFIC_TZ).date() - timedelta(days=days)).isoformat()
         sorted_measurements = [
             m for m in sorted_measurements
             if m['Date'] >= cutoff_date
@@ -183,33 +193,54 @@ def get_stats_summary():
     if not latest:
         return {}
 
-    # Calculate changes from first to latest
-    first = sorted(measurements, key=lambda x: x['Timestamp'])[0]
-
     def safe_float(value):
         try:
             return float(value) if value else None
         except (ValueError, TypeError):
             return None
 
-    def calculate_change(metric):
-        first_val = safe_float(first.get(metric))
-        latest_val = safe_float(latest.get(metric))
-        if first_val is not None and latest_val is not None:
-            return latest_val - first_val
-        return None
+    # Calculate 30-day average weight change (use Pacific time)
+    now = datetime.now(PACIFIC_TZ)
+    thirty_days_ago = now - timedelta(days=30)
+    sixty_days_ago = now - timedelta(days=60)
+
+    # Get measurements for last 30 days
+    last_30_days = [
+        m for m in measurements
+        if datetime.fromisoformat(m['Timestamp']).replace(tzinfo=PACIFIC_TZ) >= thirty_days_ago
+    ]
+
+    # Get measurements for days 31-60
+    prev_30_days = [
+        m for m in measurements
+        if sixty_days_ago <= datetime.fromisoformat(m['Timestamp']).replace(tzinfo=PACIFIC_TZ) < thirty_days_ago
+    ]
+
+    # Calculate average weight for each period
+    def calculate_avg_weight(measurement_list):
+        weights = [safe_float(m.get('Weight')) for m in measurement_list]
+        weights = [w for w in weights if w is not None]
+        return sum(weights) / len(weights) if weights else None
+
+    avg_weight_last_30 = calculate_avg_weight(last_30_days)
+    avg_weight_prev_30 = calculate_avg_weight(prev_30_days)
+
+    # Calculate weight change (30-day average comparison)
+    weight_change = None
+    if avg_weight_last_30 is not None and avg_weight_prev_30 is not None:
+        weight_change = avg_weight_last_30 - avg_weight_prev_30
+
+    # Get first measurement for overall stats
+    first = sorted(measurements, key=lambda x: x['Timestamp'])[0]
 
     return {
         'total_measurements': len(measurements),
         'latest_weight': safe_float(latest.get('Weight')),
         'latest_body_fat': safe_float(latest.get('Body Fat %')),
         'latest_muscle_mass': safe_float(latest.get('Muscle Mass')),
-        'weight_change': calculate_change('Weight'),
-        'body_fat_change': calculate_change('Body Fat %'),
-        'muscle_mass_change': calculate_change('Muscle Mass'),
+        'weight_change': weight_change,  # 30-day average change
+        'body_fat_change': safe_float(latest.get('Body Fat %')) - safe_float(first.get('Body Fat %')) if safe_float(latest.get('Body Fat %')) and safe_float(first.get('Body Fat %')) else None,
+        'muscle_mass_change': safe_float(latest.get('Muscle Mass')) - safe_float(first.get('Muscle Mass')) if safe_float(latest.get('Muscle Mass')) and safe_float(first.get('Muscle Mass')) else None,
         'first_date': first.get('Date'),
         'latest_date': latest.get('Date')
     }
-
-
-from datetime import timedelta

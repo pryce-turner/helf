@@ -1103,6 +1103,7 @@ app.on_shutdown(lambda: mqtt_service.stop())
 # Run with NiceGUI's built-in server (which uses Uvicorn)
 # Production settings optimized for single user with long idle periods at the gym
 ui.run(
+    favicon='💪',
     title='Helf - Health & Fitness Tracker',
     port=8080,
     host='0.0.0.0',

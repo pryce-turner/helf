@@ -142,7 +142,7 @@ class MQTTService:
         """Start the MQTT client and connect to broker."""
         try:
             logger.info(f"Connecting to MQTT broker at {self.broker_host}:{self.broker_port}...")
-            self.client.connect(self.broker_host, self.broker_port, keepalive=60)
+            self.client.connect(self.broker_host, self.broker_port, keepalive=3600)
             self.client.loop_start()  # Start background thread
             logger.info("MQTT service started")
         except Exception as e:

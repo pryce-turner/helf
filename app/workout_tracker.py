@@ -13,6 +13,139 @@ from app.mqtt_service import MQTTService
 PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 
+def create_connection_status():
+    """Create a connection status indicator that monitors WebSocket connection."""
+    with ui.row().classes('fixed top-2 right-2 z-50 items-center gap-2') as status_container:
+        status_badge = ui.badge('Connected', color='positive').classes('px-3 py-1')
+
+        # Heartbeat mechanism - ping server every 20 seconds to keep connection alive
+        last_ping = {'time': datetime.now(PACIFIC_TZ)}
+
+        def heartbeat_ping():
+            """Send a heartbeat ping to keep the connection alive."""
+            try:
+                last_ping['time'] = datetime.now(PACIFIC_TZ)
+                # This simple UI update acts as a keepalive
+                pass
+            except Exception:
+                pass
+
+        # Create a timer that runs every 20 seconds
+        ui.timer(20.0, heartbeat_ping)
+
+        # JavaScript to monitor connection state
+        ui.add_head_html('''
+            <script>
+            (function() {
+                let isConnected = true;
+                let reconnectAttempts = 0;
+                const maxReconnectAttempts = 10;
+                let lastHeartbeat = Date.now();
+
+                // Find the status badge element
+                function updateConnectionStatus(connected, reconnecting = false) {
+                    const badge = document.querySelector('.fixed.top-2.right-2 .q-badge');
+                    if (!badge) return;
+
+                    if (reconnecting) {
+                        badge.textContent = 'Reconnecting...';
+                        badge.className = 'q-badge flex inline items-center no-wrap q-badge--single-line bg-warning text-white px-3 py-1';
+                    } else if (connected) {
+                        badge.textContent = 'Connected';
+                        badge.className = 'q-badge flex inline items-center no-wrap q-badge--single-line bg-positive text-white px-3 py-1';
+                        reconnectAttempts = 0;
+                    } else {
+                        badge.textContent = 'Disconnected';
+                        badge.className = 'q-badge flex inline items-center no-wrap q-badge--single-line bg-negative text-white px-3 py-1';
+                    }
+                }
+
+                // Client-side heartbeat - send ping every 15 seconds
+                function sendHeartbeat() {
+                    if (isConnected && window.socket && window.socket.readyState === WebSocket.OPEN) {
+                        try {
+                            // Send a ping frame (some WebSocket servers support this)
+                            if (window.socket.ping) {
+                                window.socket.ping();
+                            }
+                            lastHeartbeat = Date.now();
+                        } catch (e) {
+                            console.log('Heartbeat ping failed:', e);
+                        }
+                    }
+                }
+
+                // Monitor WebSocket connection via NiceGUI's internal connection
+                function monitorConnection() {
+                    // Check if window.socket exists (NiceGUI's WebSocket)
+                    if (window.socket) {
+                        const originalOnClose = window.socket.onclose;
+                        const originalOnOpen = window.socket.onopen || function() {};
+                        const originalOnError = window.socket.onerror || function() {};
+
+                        window.socket.onopen = function(event) {
+                            isConnected = true;
+                            updateConnectionStatus(true);
+                            lastHeartbeat = Date.now();
+                            originalOnOpen.call(this, event);
+                        };
+
+                        window.socket.onclose = function(event) {
+                            isConnected = false;
+                            updateConnectionStatus(false, reconnectAttempts < maxReconnectAttempts);
+                            reconnectAttempts++;
+                            if (originalOnClose) originalOnClose.call(this, event);
+                        };
+
+                        window.socket.onerror = function(event) {
+                            isConnected = false;
+                            updateConnectionStatus(false);
+                            originalOnError.call(this, event);
+                        };
+                    }
+
+                    // Also monitor online/offline events
+                    window.addEventListener('online', function() {
+                        updateConnectionStatus(true, !isConnected);
+                    });
+
+                    window.addEventListener('offline', function() {
+                        updateConnectionStatus(false);
+                    });
+
+                    // Check connection state periodically
+                    setInterval(function() {
+                        const nowOnline = navigator.onLine;
+                        if (!nowOnline && isConnected) {
+                            isConnected = false;
+                            updateConnectionStatus(false);
+                        }
+
+                        // Check if heartbeat is stale (no activity for 45 seconds)
+                        const timeSinceHeartbeat = Date.now() - lastHeartbeat;
+                        if (isConnected && timeSinceHeartbeat > 45000) {
+                            console.log('Connection may be stale, checking...');
+                            sendHeartbeat();
+                        }
+                    }, 5000);
+
+                    // Send heartbeat every 15 seconds
+                    setInterval(sendHeartbeat, 15000);
+                }
+
+                // Initialize monitoring after page loads
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', monitorConnection);
+                } else {
+                    setTimeout(monitorConnection, 100);
+                }
+            })();
+            </script>
+        ''')
+
+    return status_container
+
+
 def create_nav_bar(current_page: str, page_title: str):
     """Create a consistent navigation bar for all pages.
 
@@ -38,6 +171,7 @@ def calendar_view():
     """Calendar view - main page showing all workout dates."""
     ui.page_title('Workout Calendar')
     ui.dark_mode().enable()
+    create_connection_status()
 
     with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
         create_nav_bar('calendar', 'Workout Calendar')
@@ -129,12 +263,130 @@ def workout_session_view(selected_date: str):
     """Workout session view for a specific day."""
     ui.page_title(f'Workouts - {selected_date}')
     ui.dark_mode().enable()
+    create_connection_status()
+
+    # Initialize offline queue in browser storage
+    ui.add_head_html('''
+        <script>
+        // Offline workout queue management
+        (function() {
+            const OFFLINE_QUEUE_KEY = 'helf_offline_workout_queue';
+            let processingQueue = false;
+
+            window.helfOfflineQueue = {
+                add: function(workout) {
+                    const queue = this.getQueue();
+                    workout._queued_at = new Date().toISOString();
+                    queue.push(workout);
+                    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+                    console.log('Added workout to offline queue:', workout);
+                },
+
+                getQueue: function() {
+                    const stored = localStorage.getItem(OFFLINE_QUEUE_KEY);
+                    return stored ? JSON.parse(stored) : [];
+                },
+
+                clear: function() {
+                    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify([]));
+                },
+
+                size: function() {
+                    return this.getQueue().length;
+                },
+
+                processQueue: async function() {
+                    if (processingQueue) return;
+                    if (!navigator.onLine) return;
+
+                    const queue = this.getQueue();
+                    if (queue.length === 0) return;
+
+                    processingQueue = true;
+                    console.log('Processing offline queue with', queue.length, 'items');
+
+                    // Clear queue immediately to prevent duplicates
+                    this.clear();
+
+                    // Reload page to sync offline data
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+
+                    processingQueue = false;
+                }
+            };
+
+            // Check queue when coming back online
+            window.addEventListener('online', function() {
+                console.log('Back online, checking offline queue...');
+                setTimeout(() => {
+                    if (window.helfOfflineQueue.size() > 0) {
+                        const msg = `You're back online! Syncing ${window.helfOfflineQueue.size()} workout(s)...`;
+                        console.log(msg);
+                        window.helfOfflineQueue.processQueue();
+                    }
+                }, 1000);
+            });
+
+            // Show queue size on page load
+            window.addEventListener('load', function() {
+                const queueSize = window.helfOfflineQueue.size();
+                if (queueSize > 0) {
+                    console.log('Offline queue has', queueSize, 'pending workouts');
+                }
+            });
+        })();
+        </script>
+    ''')
 
     with ui.card().classes('w-full max-w-4xl mx-auto mt-8 p-6'):
         # Header with navigation
         with ui.row().classes('w-full justify-between items-center mb-6'):
             ui.button('← Back to Calendar', on_click=lambda: ui.navigate.to('/')).props('flat')
             ui.label(f'Workouts for {selected_date}').classes('text-2xl font-bold')
+
+        # Offline queue indicator (shown when items are queued)
+        with ui.row().classes('w-full mb-4 items-center gap-2') as queue_indicator:
+            ui.icon('cloud_off', size='sm').classes('text-orange-400')
+            queue_label = ui.label('').classes('text-orange-400 text-sm')
+            ui.button('Retry Sync', on_click=lambda: ui.run_javascript('window.helfOfflineQueue.processQueue()')).props('flat dense color=orange')
+
+        # JavaScript to update queue indicator
+        ui.add_head_html(f'''
+            <script>
+            (function() {{
+                function updateQueueIndicator() {{
+                    const queueSize = window.helfOfflineQueue ? window.helfOfflineQueue.size() : 0;
+                    const indicator = document.querySelector('.w-full.mb-4.items-center.gap-2');
+                    const label = indicator ? indicator.querySelector('.text-orange-400.text-sm') : null;
+
+                    if (indicator && label) {{
+                        if (queueSize > 0) {{
+                            indicator.style.display = 'flex';
+                            label.textContent = queueSize + ' workout(s) waiting to sync';
+                        }} else {{
+                            indicator.style.display = 'none';
+                        }}
+                    }}
+                }}
+
+                // Update indicator every 2 seconds
+                setInterval(updateQueueIndicator, 2000);
+
+                // Initial update
+                setTimeout(updateQueueIndicator, 500);
+
+                // Update when coming back online
+                window.addEventListener('online', function() {{
+                    setTimeout(updateQueueIndicator, 500);
+                }});
+            }})();
+            </script>
+        ''')
+
+        # Hide queue indicator by default
+        queue_indicator.style('display: none')
 
         # Load existing workouts for this day
         existing_workouts = workout_data.read_workouts_by_date(selected_date)
@@ -529,17 +781,23 @@ def workout_session_view(selected_date: str):
                 status_label.classes('text-red-600')
                 return
 
-            workout_data.write_workout(workout)
+            try:
+                workout_data.write_workout(workout)
 
-            # Only clear optional fields (keep category, exercise, weight, reps for next set)
-            distance_input.value = None
-            time_input.value = ''
-            comment_input.value = ''
+                # Only clear optional fields (keep category, exercise, weight, reps for next set)
+                distance_input.value = None
+                time_input.value = ''
+                comment_input.value = ''
 
-            update_table()
+                update_table()
 
-            status_label.text = 'Set logged! Add another set or change exercise.'
-            status_label.classes('text-green-600')
+                status_label.text = 'Set logged! Add another set or change exercise.'
+                status_label.classes('text-green-600')
+            except Exception as e:
+                # If save fails (possibly due to connection issue), show error
+                status_label.text = f'Error saving workout. Check connection and try again.'
+                status_label.classes('text-red-600')
+                ui.notify('Could not save workout. Please check your connection.', type='negative')
 
         def update_workout_handler():
             """Update the existing workout being edited."""
@@ -630,11 +888,18 @@ def progression_view(exercise_name: str = None):
     """Progression tracking view showing main lifts."""
     ui.page_title('Main Lifts')
     ui.dark_mode().enable()
+    create_connection_status()
 
     with ui.card().classes('w-full max-w-7xl mx-auto mt-8 p-6'):
         create_nav_bar('main-lifts', 'Main Lifts')
 
-        def create_exercise_chart(exercise_name, title=None):
+        # Moving average period input
+        with ui.row().classes('w-full items-center gap-4 mb-6'):
+            ui.label('Moving Average Period:').classes('text-lg font-semibold')
+            ma_input = ui.number(label='Days', value=30, min=1, max=365, format='%d').classes('w-32')
+            ui.label('(Press Enter to update)').classes('text-sm text-gray-400')
+
+        def create_exercise_chart(exercise_name, title=None, ma_window=30):
             """Create a chart for a specific exercise with 30-day moving average."""
             import numpy as np
 
@@ -704,11 +969,11 @@ def progression_view(exercise_name: str = None):
                     hovertemplate='<b>%{x}</b><br>%{text}<extra></extra>'
                 ))
 
-            # Calculate 30-day moving average for historical data only
+            # Calculate moving average for historical data only
             if len(hist_estimated_1rm) >= 2:
                 try:
-                    # Calculate 30-day moving average
-                    window_size = min(30, len(hist_estimated_1rm))
+                    # Calculate moving average with dynamic window
+                    window_size = min(ma_window, len(hist_estimated_1rm))
                     moving_avg = []
 
                     for i in range(len(hist_estimated_1rm)):
@@ -720,9 +985,9 @@ def progression_view(exercise_name: str = None):
                         x=hist_dates,
                         y=moving_avg,
                         mode='lines',
-                        name='30-Day Average',
+                        name=f'{ma_window}-Day Average',
                         line=dict(color='#FFD700', width=3, shape='spline', smoothing=1.3),
-                        hovertemplate='<b>30-Day MA:</b> %{y:.1f} lbs<extra></extra>',
+                        hovertemplate=f'<b>{ma_window}-Day MA:</b> %{{y:.1f}} lbs<extra></extra>',
                         connectgaps=False
                     ))
                 except (ImportError, ValueError, TypeError):
@@ -764,12 +1029,8 @@ def progression_view(exercise_name: str = None):
 
             ui.plotly(fig).classes('w-full')
 
-        # Show 3 main lifts by default
-        main_exercises = ['Flat Barbell Bench Press', 'Barbell Squat', 'Deadlift']
-
-        for exercise in main_exercises:
-            create_exercise_chart(exercise)
-            ui.separator().classes('my-6')
+        # Container for main charts
+        main_charts_container = ui.column().classes('w-full')
 
         # 4th chart with dropdown for any exercise
         ui.label('Custom Exercise').classes('text-2xl font-bold mt-4 mb-2')
@@ -780,7 +1041,7 @@ def progression_view(exercise_name: str = None):
         def on_exercise_change(e):
             """Handle exercise selection change."""
             selected_exercise['value'] = e.value
-            update_custom_chart()
+            update_all_charts()
 
         with ui.row().classes('w-full mb-4'):
             ui.select(
@@ -790,22 +1051,35 @@ def progression_view(exercise_name: str = None):
                 on_change=on_exercise_change
             ).classes('w-64')
 
-        chart_container = ui.column().classes('w-full')
+        custom_chart_container = ui.column().classes('w-full')
 
-        def update_custom_chart():
-            """Update the custom chart based on selected exercise."""
-            chart_container.clear()
+        def update_all_charts():
+            """Update all charts with current moving average setting."""
+            ma_window = int(ma_input.value) if ma_input.value and ma_input.value >= 1 else 30
 
+            # Update main 3 charts
+            main_charts_container.clear()
+            with main_charts_container:
+                main_exercises = ['Flat Barbell Bench Press', 'Barbell Squat', 'Deadlift']
+                for exercise in main_exercises:
+                    create_exercise_chart(exercise, ma_window=ma_window)
+                    ui.separator().classes('my-6')
+
+            # Update custom chart
+            custom_chart_container.clear()
             if not selected_exercise['value']:
-                with chart_container:
+                with custom_chart_container:
                     ui.label('Please select an exercise').classes('text-gray-500 italic')
-                return
+            else:
+                with custom_chart_container:
+                    create_exercise_chart(selected_exercise['value'], ma_window=ma_window)
 
-            with chart_container:
-                create_exercise_chart(selected_exercise['value'])
+        # Update charts when user presses Enter or leaves the input field
+        ma_input.on('keydown.enter', lambda: update_all_charts())
+        ma_input.on('blur', lambda: update_all_charts())
 
-        # Initial load
-        update_custom_chart()
+        # Initial load with slight delay to ensure UI is ready
+        ui.timer(0.1, update_all_charts, once=True)
 
 
 @ui.page('/upcoming')
@@ -813,6 +1087,7 @@ def upcoming_workouts_view():
     """View all upcoming workouts grouped by session."""
     ui.page_title('Upcoming Workouts')
     ui.dark_mode().enable()
+    create_connection_status()
 
     with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
         create_nav_bar('upcoming', 'Upcoming Workouts')
@@ -876,9 +1151,16 @@ def body_composition_view():
     """Body composition tracking view with graphs."""
     ui.page_title('Body Composition')
     ui.dark_mode().enable()
+    create_connection_status()
 
     with ui.card().classes('w-full max-w-6xl mx-auto mt-8 p-6'):
         create_nav_bar('body-comp', 'Body Composition')
+
+        # Moving average period input
+        with ui.row().classes('w-full items-center gap-4 mb-6'):
+            ui.label('Moving Average Period:').classes('text-lg font-semibold')
+            ma_input = ui.number(label='Days', value=7, min=1, max=365, format='%d').classes('w-32')
+            ui.label('(Press Enter to update)').classes('text-sm text-gray-400')
 
         # Get stats
         stats = body_composition_data.get_stats_summary()
@@ -922,140 +1204,157 @@ def body_composition_view():
                     ui.label('Measurements').classes('text-sm text-gray-400')
                     ui.label(str(stats.get('total_measurements', 0))).classes('text-3xl font-bold text-cyan-400')
 
-        # Graphs
-        if measurements:
-            ui.separator().classes('my-6')
+        # Container for graphs
+        graphs_container = ui.column().classes('w-full')
 
-            # Helper function to calculate moving average
-            def calculate_moving_average(values, window=7):
-                """Calculate moving average with given window size."""
-                ma = []
-                for i in range(len(values)):
-                    if values[i] is None:
-                        ma.append(None)
+        # Helper function to calculate moving average
+        def calculate_moving_average(values, window=7):
+            """Calculate moving average with given window size."""
+            ma = []
+            for i in range(len(values)):
+                if values[i] is None:
+                    ma.append(None)
+                else:
+                    # Get window of valid values
+                    window_values = [v for v in values[max(0, i-window+1):i+1] if v is not None]
+                    if window_values:
+                        ma.append(sum(window_values) / len(window_values))
                     else:
-                        # Get window of valid values
-                        window_values = [v for v in values[max(0, i-window+1):i+1] if v is not None]
-                        if window_values:
-                            ma.append(sum(window_values) / len(window_values))
-                        else:
-                            ma.append(None)
-                return ma
+                        ma.append(None)
+            return ma
 
-            # Helper function to convert kg to lbs in memory
-            def kg_to_lbs(kg_value):
-                """Convert kg to lbs."""
-                if kg_value is None:
-                    return None
-                return kg_value * 2.20462
+        # Helper function to convert kg to lbs in memory
+        def kg_to_lbs(kg_value):
+            """Convert kg to lbs."""
+            if kg_value is None:
+                return None
+            return kg_value * 2.20462
 
-            dates = [m['Date'] for m in measurements]
-            # Convert weights from kg to lbs in memory for display
-            weights_kg = [float(m['Weight']) if m['Weight'] else None for m in measurements]
-            weights = [kg_to_lbs(w) for w in weights_kg]
-            body_fats = [float(m['Body Fat %']) if m.get('Body Fat %') else None for m in measurements]
-            muscle_masses = [float(m['Muscle Mass']) if m.get('Muscle Mass') else None for m in measurements]
+        def create_graphs():
+            """Create all body composition graphs with current moving average setting."""
+            ma_window = int(ma_input.value) if ma_input.value and ma_input.value >= 1 else 7
 
-            # Calculate 30-day moving averages
-            weight_ma = calculate_moving_average(weights, window=30)
-            body_fat_ma = calculate_moving_average(body_fats, window=30)
-            muscle_ma = calculate_moving_average(muscle_masses, window=30)
+            graphs_container.clear()
 
-            # Weight trend graph with 30-day moving average
-            fig_weight = go.Figure()
-            fig_weight.add_trace(go.Scatter(
-                x=dates,
-                y=weights,
-                mode='markers',
-                name='Daily Weight',
-                marker=dict(size=6, color='#60A5FA', opacity=0.4),
-                showlegend=True
-            ))
-            fig_weight.add_trace(go.Scatter(
-                x=dates,
-                y=weight_ma,
-                mode='lines',
-                name='30-Day Average',
-                line=dict(color='#60A5FA', width=3, shape='spline', smoothing=1.3),
-                connectgaps=False,
-                showlegend=True
-            ))
-            fig_weight.update_layout(
-                title='Weight Trend',
-                xaxis_title='Date',
-                yaxis_title='Weight (lbs)',
-                template='plotly_dark',
-                height=400,
-                hovermode='x unified'
-            )
-            ui.plotly(fig_weight).classes('w-full')
+            if not measurements:
+                with graphs_container:
+                    ui.label('No measurements yet. Step on your scale to start tracking!').classes('text-center text-gray-400 mt-8')
+                return
 
-            # Body Fat % graph with 30-day moving average
-            if any(body_fats):
+            with graphs_container:
                 ui.separator().classes('my-6')
 
-                fig_fat = go.Figure()
-                fig_fat.add_trace(go.Scatter(
+                dates = [m['Date'] for m in measurements]
+                # Convert weights from kg to lbs in memory for display
+                weights_kg = [float(m['Weight']) if m['Weight'] else None for m in measurements]
+                weights = [kg_to_lbs(w) for w in weights_kg]
+                body_fats = [float(m['Body Fat %']) if m.get('Body Fat %') else None for m in measurements]
+                muscle_masses = [float(m['Muscle Mass']) if m.get('Muscle Mass') else None for m in measurements]
+
+                # Calculate moving averages with dynamic window
+                weight_ma = calculate_moving_average(weights, window=ma_window)
+                body_fat_ma = calculate_moving_average(body_fats, window=ma_window)
+                muscle_ma = calculate_moving_average(muscle_masses, window=ma_window)
+
+                # Weight trend graph
+                fig_weight = go.Figure()
+                fig_weight.add_trace(go.Scatter(
                     x=dates,
-                    y=body_fats,
+                    y=weights,
                     mode='markers',
-                    name='Daily Body Fat %',
-                    marker=dict(size=6, color='#F472B6', opacity=0.4),
+                    name='Daily Weight',
+                    marker=dict(size=6, color='#60A5FA', opacity=0.4),
                     showlegend=True
                 ))
-                fig_fat.add_trace(go.Scatter(
+                fig_weight.add_trace(go.Scatter(
                     x=dates,
-                    y=body_fat_ma,
+                    y=weight_ma,
                     mode='lines',
-                    name='30-Day Average',
-                    line=dict(color='#F472B6', width=3, shape='spline', smoothing=1.3),
+                    name=f'{ma_window}-Day Average',
+                    line=dict(color='#60A5FA', width=3, shape='spline', smoothing=1.3),
                     connectgaps=False,
                     showlegend=True
                 ))
-                fig_fat.update_layout(
-                    title='Body Fat %',
+                fig_weight.update_layout(
+                    title='Weight Trend',
                     xaxis_title='Date',
-                    yaxis_title='Body Fat %',
+                    yaxis_title='Weight (lbs)',
                     template='plotly_dark',
                     height=400,
                     hovermode='x unified'
                 )
-                ui.plotly(fig_fat).classes('w-full')
+                ui.plotly(fig_weight).classes('w-full')
 
-            # Muscle Mass graph with 30-day moving average
-            if any(muscle_masses):
-                ui.separator().classes('my-6')
+                # Body Fat % graph
+                if any(body_fats):
+                    ui.separator().classes('my-6')
 
-                fig_muscle = go.Figure()
-                fig_muscle.add_trace(go.Scatter(
-                    x=dates,
-                    y=muscle_masses,
-                    mode='markers',
-                    name='Daily Muscle Mass',
-                    marker=dict(size=6, color='#34D399', opacity=0.4),
-                    showlegend=True
-                ))
-                fig_muscle.add_trace(go.Scatter(
-                    x=dates,
-                    y=muscle_ma,
-                    mode='lines',
-                    name='30-Day Average',
-                    line=dict(color='#34D399', width=3, shape='spline', smoothing=1.3),
-                    connectgaps=False,
-                    showlegend=True
-                ))
-                fig_muscle.update_layout(
-                    title='Muscle Mass',
-                    xaxis_title='Date',
-                    yaxis_title='Muscle Mass (%)',
-                    template='plotly_dark',
-                    height=400,
-                    hovermode='x unified'
-                )
-                ui.plotly(fig_muscle).classes('w-full')
+                    fig_fat = go.Figure()
+                    fig_fat.add_trace(go.Scatter(
+                        x=dates,
+                        y=body_fats,
+                        mode='markers',
+                        name='Daily Body Fat %',
+                        marker=dict(size=6, color='#F472B6', opacity=0.4),
+                        showlegend=True
+                    ))
+                    fig_fat.add_trace(go.Scatter(
+                        x=dates,
+                        y=body_fat_ma,
+                        mode='lines',
+                        name=f'{ma_window}-Day Average',
+                        line=dict(color='#F472B6', width=3, shape='spline', smoothing=1.3),
+                        connectgaps=False,
+                        showlegend=True
+                    ))
+                    fig_fat.update_layout(
+                        title='Body Fat %',
+                        xaxis_title='Date',
+                        yaxis_title='Body Fat %',
+                        template='plotly_dark',
+                        height=400,
+                        hovermode='x unified'
+                    )
+                    ui.plotly(fig_fat).classes('w-full')
 
-        else:
-            ui.label('No measurements yet. Step on your scale to start tracking!').classes('text-center text-gray-400 mt-8')
+                # Muscle Mass graph
+                if any(muscle_masses):
+                    ui.separator().classes('my-6')
+
+                    fig_muscle = go.Figure()
+                    fig_muscle.add_trace(go.Scatter(
+                        x=dates,
+                        y=muscle_masses,
+                        mode='markers',
+                        name='Daily Muscle Mass',
+                        marker=dict(size=6, color='#34D399', opacity=0.4),
+                        showlegend=True
+                    ))
+                    fig_muscle.add_trace(go.Scatter(
+                        x=dates,
+                        y=muscle_ma,
+                        mode='lines',
+                        name=f'{ma_window}-Day Average',
+                        line=dict(color='#34D399', width=3, shape='spline', smoothing=1.3),
+                        connectgaps=False,
+                        showlegend=True
+                    ))
+                    fig_muscle.update_layout(
+                        title='Muscle Mass',
+                        xaxis_title='Date',
+                        yaxis_title='Muscle Mass (%)',
+                        template='plotly_dark',
+                        height=400,
+                        hovermode='x unified'
+                    )
+                    ui.plotly(fig_muscle).classes('w-full')
+
+        # Update graphs when user presses Enter or leaves the input field
+        ma_input.on('keydown.enter', lambda: create_graphs())
+        ma_input.on('blur', lambda: create_graphs())
+
+        # Initial load with slight delay to ensure UI is ready
+        ui.timer(0.1, create_graphs, once=True)
 
         # Recent measurements table
         if measurements:
@@ -1110,7 +1409,7 @@ ui.run(
     reload=False,
     show=False,
     storage_secret='helf-secret-key-2024',
-    reconnect_timeout=30.0,  # Allow 30 seconds to reconnect after connection drop
+    reconnect_timeout=3600.0,  # Allow 1 hour to reconnect (basically never timeout at the gym)
     uvicorn_logging_level='info',
     uvicorn_reload_dirs=None,  # Disable file watching
 )

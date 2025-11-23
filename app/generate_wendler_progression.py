@@ -21,10 +21,10 @@ def calculate_weights(max_weight, week):
         List of tuples (weight, reps) for each set
     """
     percentages = {
-        1: [(0.65, 5), (0.75, 5), (0.85, '5+')],
-        2: [(0.70, 3), (0.80, 3), (0.90, '3+')],
-        3: [(0.75, 5), (0.85, 3), (0.95, '1+')],
-        4: [(0.40, 5), (0.50, 5), (0.60, 5)]  # Deload
+        1: [(0.65, 5), (0.75, 5), (0.85, "5+")],
+        2: [(0.70, 3), (0.80, 3), (0.90, "3+")],
+        3: [(0.75, 5), (0.85, 3), (0.95, "1+")],
+        4: [(0.40, 5), (0.50, 5), (0.60, 5)],  # Deload
     }
 
     weights = []
@@ -47,7 +47,7 @@ def generate_progression(
     target_squat=405,
     target_bench=315,
     target_deadlift=495,
-    output_file='upcoming_workouts.csv'
+    output_file="upcoming_workouts.csv",
 ):
     """
     Generate complete Wendler 5/3/1 progression CSV.
@@ -74,11 +74,9 @@ def generate_progression(
         squat_max = min(starting_squat + i * 10, target_squat)
         bench_max = min(starting_bench + i * 5, target_bench)
         deadlift_max = min(starting_deadlift + i * 10, target_deadlift)
-        cycles.append({
-            'squat': squat_max,
-            'bench': bench_max,
-            'deadlift': deadlift_max
-        })
+        cycles.append(
+            {"squat": squat_max, "bench": bench_max, "deadlift": deadlift_max}
+        )
 
     # Build CSV content
     rows = []
@@ -87,63 +85,154 @@ def generate_progression(
     for cycle_idx, cycle in enumerate(cycles):
         for week in range(1, 5):
             # Day 1 - Squat
-            squat_weights = calculate_weights(cycle['squat'], week)
+            squat_weights = calculate_weights(cycle["squat"], week)
             week_label = f"Week {week}" if week < 4 else "Week 4 Deload"
 
             for set_idx, (weight, reps) in enumerate(squat_weights, 1):
-                amrap_note = " AMRAP" if '+' in str(reps) else ""
-                rows.append([
-                    session_num, 'Barbell Squat', 'Legs', weight, 'lbs', reps,
-                    '', '', '', f'{week_label} - Set {set_idx}{amrap_note}'
-                ])
-            rows.append([session_num, 'Pull Up', 'Back', 0, 'lbs', '', '', '', '', 'Bodyweight'])
-            rows.append([session_num, 'Incline Dumbbell Press', 'Chest', '', '', '', '', '', '', ''])
-            rows.append([session_num, 'Decline Crunch', 'Core', '', '', '', '', '', '', ''])
+                amrap_note = " AMRAP" if "+" in str(reps) else ""
+                rows.append(
+                    [
+                        session_num,
+                        "Barbell Squat",
+                        "Legs",
+                        weight,
+                        "lbs",
+                        reps,
+                        "",
+                        "",
+                        "",
+                        f"{week_label} - Set {set_idx}{amrap_note}",
+                    ]
+                )
+            rows.append(
+                [session_num, "Pull Up", "Back", 0, "lbs", "", "", "", "", "Bodyweight"]
+            )
+            rows.append(
+                [
+                    session_num,
+                    "Incline Dumbbell Press",
+                    "Chest",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+            rows.append(
+                [session_num, "Decline Crunch", "Core", "", "", "", "", "", "", ""]
+            )
             session_num += 1
 
             # Day 2 - Bench
-            bench_weights = calculate_weights(cycle['bench'], week)
+            bench_weights = calculate_weights(cycle["bench"], week)
             for set_idx, (weight, reps) in enumerate(bench_weights, 1):
-                amrap_note = " AMRAP" if '+' in str(reps) else ""
-                rows.append([
-                    session_num, 'Flat Barbell Bench Press', 'Chest', weight, 'lbs', reps,
-                    '', '', '', f'{week_label} - Set {set_idx}{amrap_note}'
-                ])
-            rows.append([session_num, 'Front Squat', 'Legs', '', '', '', '', '', '', ''])
-            rows.append([session_num, 'Dumbbell Row', 'Back', '', '', '', '', '', '', ''])
-            rows.append([session_num, 'Landmines', 'Core', '', '', '', '', '', '', ''])
+                amrap_note = " AMRAP" if "+" in str(reps) else ""
+                rows.append(
+                    [
+                        session_num,
+                        "Flat Barbell Bench Press",
+                        "Chest",
+                        weight,
+                        "lbs",
+                        reps,
+                        "",
+                        "",
+                        "",
+                        f"{week_label} - Set {set_idx}{amrap_note}",
+                    ]
+                )
+            rows.append(
+                [session_num, "Front Squat", "Legs", "", "", "", "", "", "", ""]
+            )
+            rows.append(
+                [session_num, "Dumbbell Row", "Back", "", "", "", "", "", "", ""]
+            )
+            rows.append([session_num, "Landmines", "Core", "", "", "", "", "", "", ""])
             session_num += 1
 
             # Day 3 - Deadlift
-            deadlift_weights = calculate_weights(cycle['deadlift'], week)
+            deadlift_weights = calculate_weights(cycle["deadlift"], week)
             for set_idx, (weight, reps) in enumerate(deadlift_weights, 1):
-                amrap_note = " AMRAP" if '+' in str(reps) else ""
-                rows.append([
-                    session_num, 'Deadlift', 'Back', weight, 'lbs', reps,
-                    '', '', '', f'{week_label} - Set {set_idx}{amrap_note}'
-                ])
-            rows.append([session_num, 'Parallel Bar Triceps Dip', 'Chest', 0, 'lbs', '', '', '', '', 'Bodyweight'])
-            rows.append([session_num, 'Bulgarian Split Squat', 'Legs', '', '', '', '', '', '', ''])
-            rows.append([session_num, 'Cable side bend', 'Core', '', '', '', '', '', '', ''])
+                amrap_note = " AMRAP" if "+" in str(reps) else ""
+                rows.append(
+                    [
+                        session_num,
+                        "Deadlift",
+                        "Back",
+                        weight,
+                        "lbs",
+                        reps,
+                        "",
+                        "",
+                        "",
+                        f"{week_label} - Set {set_idx}{amrap_note}",
+                    ]
+                )
+            rows.append(
+                [
+                    session_num,
+                    "Parallel Bar Triceps Dip",
+                    "Chest",
+                    0,
+                    "lbs",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "Bodyweight",
+                ]
+            )
+            rows.append(
+                [
+                    session_num,
+                    "Bulgarian Split Squat",
+                    "Legs",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+            rows.append(
+                [session_num, "Cable side bend", "Core", "", "", "", "", "", "", ""]
+            )
             session_num += 1
 
     # Write to file
-    with open(output_file, 'w', newline='') as f:
+    with open(output_file, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            'Session', 'Exercise', 'Category', 'Weight', 'Weight Unit',
-            'Reps', 'Distance', 'Distance Unit', 'Time', 'Comment'
-        ])
+        writer.writerow(
+            [
+                "Session",
+                "Exercise",
+                "Category",
+                "Weight",
+                "Weight Unit",
+                "Reps",
+                "Distance",
+                "Distance Unit",
+                "Time",
+                "Comment",
+            ]
+        )
         writer.writerows(rows)
 
     # Print summary
     print(f"Generated {session_num - 1} sessions across {len(cycles)} cycles")
     print(f"Output written to: {output_file}")
-    print(f"\nProgression summary:")
+    print("\nProgression summary:")
     for i, cycle in enumerate(cycles, 1):
-        print(f"Cycle {i:2d}: Squat {cycle['squat']}, Bench {cycle['bench']}, Deadlift {cycle['deadlift']}")
+        print(
+            f"Cycle {i:2d}: Squat {cycle['squat']}, Bench {cycle['bench']}, Deadlift {cycle['deadlift']}"
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Generate progression with default values
     generate_progression()

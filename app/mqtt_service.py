@@ -1,7 +1,7 @@
 """MQTT service for receiving body composition measurements."""
+
 import json
 import logging
-import os
 from typing import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,8 +19,12 @@ logger = logging.getLogger(__name__)
 class MQTTService:
     """MQTT client service for body composition data."""
 
-    def __init__(self, broker_host="localhost", broker_port=1883,
-                 on_measurement_callback: Callable = None):
+    def __init__(
+        self,
+        broker_host="localhost",
+        broker_port=1883,
+        on_measurement_callback: Callable = None,
+    ):
         """
         Initialize MQTT service.
 
@@ -44,13 +48,15 @@ class MQTTService:
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         """Callback when connected to MQTT broker."""
         if reason_code == 0:
-            logger.info(f"Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            logger.info(
+                f"Connected to MQTT broker at {self.broker_host}:{self.broker_port}"
+            )
             self.is_connected = True
 
             # Subscribe to openScaleSync topics
             topics = [
                 ("openScaleSync/measurements/last", 0),  # Single measurement from scale
-                ("openScaleSync/measurements/all", 0),   # Bulk sync from app
+                ("openScaleSync/measurements/all", 0),  # Bulk sync from app
             ]
             for topic, qos in topics:
                 client.subscribe(topic, qos)
@@ -73,8 +79,8 @@ class MQTTService:
 
             # Extract measurements
             # Format: {"date":"2025-11-17T08:56-0800","fat":23.8,"id":179,"muscle":39.1,"water":50.89,"weight":87.15}
-            date_str = payload.get('date')  # ISO 8601 format
-            weight = payload.get('weight')
+            date_str = payload.get("date")  # ISO 8601 format
+            weight = payload.get("weight")
 
             if date_str and weight:
                 # Parse ISO 8601 date string to datetime and convert to Pacific time
@@ -88,22 +94,24 @@ class MQTTService:
                         dt = dt.astimezone(PACIFIC_TZ)
                 except ValueError:
                     # Fallback: try parsing without timezone and assume Pacific
-                    dt = datetime.fromisoformat(date_str.replace('T', ' ').split('-')[0])
+                    dt = datetime.fromisoformat(
+                        date_str.replace("T", " ").split("-")[0]
+                    )
                     dt = dt.replace(tzinfo=PACIFIC_TZ)
 
                 # Convert to Unix timestamp in milliseconds for consistency
                 timestamp = int(dt.timestamp() * 1000)
 
                 # Extract optional fields from payload
-                body_fat = payload.get('fat')         # Body fat percentage
-                muscle_mass = payload.get('muscle')   # Muscle mass
-                water = payload.get('water')          # Water percentage
-                bmi = payload.get('bmi')              # BMI
-                bone_mass = payload.get('bone')       # Bone mass
-                visceral_fat = payload.get('visceralFat')  # Visceral fat
-                metabolic_age = payload.get('metabolicAge')  # Metabolic age
-                protein = payload.get('protein')      # Protein percentage
-                weight_unit = 'kg'  # openScale uses kg - store as-is
+                body_fat = payload.get("fat")  # Body fat percentage
+                muscle_mass = payload.get("muscle")  # Muscle mass
+                water = payload.get("water")  # Water percentage
+                bmi = payload.get("bmi")  # BMI
+                bone_mass = payload.get("bone")  # Bone mass
+                visceral_fat = payload.get("visceralFat")  # Visceral fat
+                metabolic_age = payload.get("metabolicAge")  # Metabolic age
+                protein = payload.get("protein")  # Protein percentage
+                weight_unit = "kg"  # openScale uses kg - store as-is
 
                 # Save to CSV as received (append-only, no conversion, deduplicated)
                 saved = body_composition_data.write_measurement(
@@ -117,14 +125,18 @@ class MQTTService:
                     bone_mass=bone_mass,
                     visceral_fat=visceral_fat,
                     metabolic_age=metabolic_age,
-                    protein=protein
+                    protein=protein,
                 )
 
-                topic_type = msg.topic.split('/')[-1]  # 'last' or 'all'
+                topic_type = msg.topic.split("/")[-1]  # 'last' or 'all'
                 if saved:
-                    logger.info(f"Saved {topic_type} measurement: {weight} kg (fat: {body_fat}%, muscle: {muscle_mass}%)")
+                    logger.info(
+                        f"Saved {topic_type} measurement: {weight} kg (fat: {body_fat}%, muscle: {muscle_mass}%)"
+                    )
                 else:
-                    logger.info(f"Skipped duplicate {topic_type} measurement: {weight} kg")
+                    logger.info(
+                        f"Skipped duplicate {topic_type} measurement: {weight} kg"
+                    )
 
                 # Call callback if provided
                 if self.on_measurement_callback:
@@ -141,7 +153,9 @@ class MQTTService:
     def start(self):
         """Start the MQTT client and connect to broker."""
         try:
-            logger.info(f"Connecting to MQTT broker at {self.broker_host}:{self.broker_port}...")
+            logger.info(
+                f"Connecting to MQTT broker at {self.broker_host}:{self.broker_port}..."
+            )
             self.client.connect(self.broker_host, self.broker_port, keepalive=3600)
             self.client.loop_start()  # Start background thread
             logger.info("MQTT service started")
@@ -158,6 +172,6 @@ class MQTTService:
     def get_status(self):
         """Get the current connection status."""
         return {
-            'connected': self.is_connected,
-            'broker': f"{self.broker_host}:{self.broker_port}"
+            "connected": self.is_connected,
+            "broker": f"{self.broker_host}:{self.broker_port}",
         }

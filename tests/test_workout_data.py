@@ -1,8 +1,7 @@
 """Tests for workout_data module."""
+
 import pytest
 import csv
-from pathlib import Path
-from datetime import date
 from app import workout_data
 
 
@@ -14,10 +13,10 @@ def temp_csv_files(tmp_path, monkeypatch):
     upcoming_csv = tmp_path / "upcoming_workouts.csv"
 
     # Patch the module-level CSV file paths
-    monkeypatch.setattr(workout_data, 'CSV_FILE', workout_csv)
-    monkeypatch.setattr(workout_data, 'UPCOMING_CSV_FILE', upcoming_csv)
+    monkeypatch.setattr(workout_data, "CSV_FILE", workout_csv)
+    monkeypatch.setattr(workout_data, "UPCOMING_CSV_FILE", upcoming_csv)
 
-    return {'workouts': workout_csv, 'upcoming': upcoming_csv}
+    return {"workouts": workout_csv, "upcoming": upcoming_csv}
 
 
 @pytest.fixture
@@ -25,41 +24,41 @@ def sample_workouts():
     """Sample workout data for testing."""
     return [
         {
-            'Date': '2024-01-01',
-            'Exercise': 'Barbell Squat',
-            'Category': 'Legs',
-            'Weight': '225',
-            'Weight Unit': 'lbs',
-            'Reps': '5',
-            'Distance': '',
-            'Distance Unit': '',
-            'Time': '',
-            'Comment': 'Good form'
+            "Date": "2024-01-01",
+            "Exercise": "Barbell Squat",
+            "Category": "Legs",
+            "Weight": "225",
+            "Weight Unit": "lbs",
+            "Reps": "5",
+            "Distance": "",
+            "Distance Unit": "",
+            "Time": "",
+            "Comment": "Good form",
         },
         {
-            'Date': '2024-01-01',
-            'Exercise': 'Bench Press',
-            'Category': 'Chest',
-            'Weight': '185',
-            'Weight Unit': 'lbs',
-            'Reps': '8',
-            'Distance': '',
-            'Distance Unit': '',
-            'Time': '',
-            'Comment': ''
+            "Date": "2024-01-01",
+            "Exercise": "Bench Press",
+            "Category": "Chest",
+            "Weight": "185",
+            "Weight Unit": "lbs",
+            "Reps": "8",
+            "Distance": "",
+            "Distance Unit": "",
+            "Time": "",
+            "Comment": "",
         },
         {
-            'Date': '2024-01-03',
-            'Exercise': 'Barbell Squat',
-            'Category': 'Legs',
-            'Weight': '235',
-            'Weight Unit': 'lbs',
-            'Reps': '5',
-            'Distance': '',
-            'Distance Unit': '',
-            'Time': '',
-            'Comment': ''
-        }
+            "Date": "2024-01-03",
+            "Exercise": "Barbell Squat",
+            "Category": "Legs",
+            "Weight": "235",
+            "Weight Unit": "lbs",
+            "Reps": "5",
+            "Distance": "",
+            "Distance Unit": "",
+            "Time": "",
+            "Comment": "",
+        },
     ]
 
 
@@ -68,41 +67,41 @@ def sample_upcoming():
     """Sample upcoming workout data for testing."""
     return [
         {
-            'Session': '0',
-            'Exercise': 'Deadlift',
-            'Category': 'Back',
-            'Weight': '315',
-            'Weight Unit': 'lbs',
-            'Reps': '5',
-            'Distance': '',
-            'Distance Unit': '',
-            'Time': '',
-            'Comment': ''
+            "Session": "0",
+            "Exercise": "Deadlift",
+            "Category": "Back",
+            "Weight": "315",
+            "Weight Unit": "lbs",
+            "Reps": "5",
+            "Distance": "",
+            "Distance Unit": "",
+            "Time": "",
+            "Comment": "",
         },
         {
-            'Session': '0',
-            'Exercise': 'Pull-ups',
-            'Category': 'Back',
-            'Weight': '0',
-            'Weight Unit': 'lbs',
-            'Reps': '10',
-            'Distance': '',
-            'Distance Unit': '',
-            'Time': '',
-            'Comment': 'Bodyweight'
+            "Session": "0",
+            "Exercise": "Pull-ups",
+            "Category": "Back",
+            "Weight": "0",
+            "Weight Unit": "lbs",
+            "Reps": "10",
+            "Distance": "",
+            "Distance Unit": "",
+            "Time": "",
+            "Comment": "Bodyweight",
         },
         {
-            'Session': '1',
-            'Exercise': 'Bench Press',
-            'Category': 'Chest',
-            'Weight': '225',
-            'Weight Unit': 'lbs',
-            'Reps': '3',
-            'Distance': '',
-            'Distance Unit': '',
-            'Time': '',
-            'Comment': ''
-        }
+            "Session": "1",
+            "Exercise": "Bench Press",
+            "Category": "Chest",
+            "Weight": "225",
+            "Weight Unit": "lbs",
+            "Reps": "3",
+            "Distance": "",
+            "Distance Unit": "",
+            "Time": "",
+            "Comment": "",
+        },
     ]
 
 
@@ -119,13 +118,13 @@ class TestReadWriteWorkouts:
         workout_data.write_workout(sample_workouts[0])
 
         # Verify file was created
-        assert temp_csv_files['workouts'].exists()
+        assert temp_csv_files["workouts"].exists()
 
         # Read back and verify
         workouts = workout_data.read_workouts()
         assert len(workouts) == 1
-        assert workouts[0]['Exercise'] == 'Barbell Squat'
-        assert workouts[0]['Weight'] == '225'
+        assert workouts[0]["Exercise"] == "Barbell Squat"
+        assert workouts[0]["Weight"] == "225"
 
     def test_write_multiple_workouts(self, temp_csv_files, sample_workouts):
         """Test writing multiple workouts."""
@@ -134,8 +133,8 @@ class TestReadWriteWorkouts:
 
         workouts = workout_data.read_workouts()
         assert len(workouts) == 3
-        assert workouts[0]['Exercise'] == 'Barbell Squat'
-        assert workouts[2]['Date'] == '2024-01-03'
+        assert workouts[0]["Exercise"] == "Barbell Squat"
+        assert workouts[2]["Date"] == "2024-01-03"
 
     def test_read_workouts_by_date(self, temp_csv_files, sample_workouts):
         """Test filtering workouts by date."""
@@ -143,17 +142,17 @@ class TestReadWriteWorkouts:
             workout_data.write_workout(workout)
 
         # Get workouts for 2024-01-01
-        jan1_workouts = workout_data.read_workouts_by_date('2024-01-01')
+        jan1_workouts = workout_data.read_workouts_by_date("2024-01-01")
         assert len(jan1_workouts) == 2
-        assert all(w['Date'] == '2024-01-01' for w in jan1_workouts)
+        assert all(w["Date"] == "2024-01-01" for w in jan1_workouts)
 
         # Get workouts for 2024-01-03
-        jan3_workouts = workout_data.read_workouts_by_date('2024-01-03')
+        jan3_workouts = workout_data.read_workouts_by_date("2024-01-03")
         assert len(jan3_workouts) == 1
-        assert jan3_workouts[0]['Exercise'] == 'Barbell Squat'
+        assert jan3_workouts[0]["Exercise"] == "Barbell Squat"
 
         # Non-existent date
-        empty = workout_data.read_workouts_by_date('2024-01-05')
+        empty = workout_data.read_workouts_by_date("2024-01-05")
         assert empty == []
 
 
@@ -169,8 +168,8 @@ class TestUpdateDeleteWorkouts:
         # Update the first workout
         original = sample_workouts[0].copy()
         updated = sample_workouts[0].copy()
-        updated['Weight'] = '245'
-        updated['Comment'] = 'PR!'
+        updated["Weight"] = "245"
+        updated["Comment"] = "PR!"
 
         workout_data.update_workout(original, updated)
 
@@ -181,9 +180,9 @@ class TestUpdateDeleteWorkouts:
         # Find the updated workout
         found = False
         for w in workouts:
-            if w['Exercise'] == 'Barbell Squat' and w['Date'] == '2024-01-01':
-                assert w['Weight'] == '245'
-                assert w['Comment'] == 'PR!'
+            if w["Exercise"] == "Barbell Squat" and w["Date"] == "2024-01-01":
+                assert w["Weight"] == "245"
+                assert w["Comment"] == "PR!"
                 found = True
                 break
         assert found, "Updated workout not found"
@@ -202,9 +201,9 @@ class TestUpdateDeleteWorkouts:
         assert len(workouts) == 2
 
         # Verify the deleted workout is gone
-        exercises = [w['Exercise'] for w in workouts]
-        assert 'Bench Press' not in exercises
-        assert 'Barbell Squat' in exercises
+        exercises = [w["Exercise"] for w in workouts]
+        assert "Bench Press" not in exercises
+        assert "Barbell Squat" in exercises
 
 
 class TestWorkoutQueries:
@@ -216,7 +215,7 @@ class TestWorkoutQueries:
             workout_data.write_workout(workout)
 
         dates = workout_data.get_workout_dates()
-        assert dates == ['2024-01-01', '2024-01-03']
+        assert dates == ["2024-01-01", "2024-01-03"]
 
     def test_get_workout_count_by_date(self, temp_csv_files, sample_workouts):
         """Test counting workouts per date."""
@@ -224,8 +223,8 @@ class TestWorkoutQueries:
             workout_data.write_workout(workout)
 
         counts = workout_data.get_workout_count_by_date()
-        assert counts['2024-01-01'] == 2
-        assert counts['2024-01-03'] == 1
+        assert counts["2024-01-01"] == 2
+        assert counts["2024-01-03"] == 1
 
     def test_get_categories(self, temp_csv_files, sample_workouts):
         """Test getting all unique categories."""
@@ -233,8 +232,8 @@ class TestWorkoutQueries:
             workout_data.write_workout(workout)
 
         categories = workout_data.get_categories()
-        assert 'Legs' in categories
-        assert 'Chest' in categories
+        assert "Legs" in categories
+        assert "Chest" in categories
         assert len(categories) == 2
 
     def test_get_exercises_by_category(self, temp_csv_files, sample_workouts):
@@ -244,51 +243,51 @@ class TestWorkoutQueries:
 
         exercises = workout_data.get_exercises_by_category()
 
-        assert 'Legs' in exercises
-        assert 'Barbell Squat' in exercises['Legs']
-        assert 'Chest' in exercises
-        assert 'Bench Press' in exercises['Chest']
+        assert "Legs" in exercises
+        assert "Barbell Squat" in exercises["Legs"]
+        assert "Chest" in exercises
+        assert "Bench Press" in exercises["Chest"]
 
     def test_get_exercises_sorted_by_date(self, temp_csv_files):
         """Test that exercises are sorted by most recent date."""
         # Create workouts with different dates
         workouts = [
             {
-                'Date': '2024-01-01',
-                'Exercise': 'Exercise A',
-                'Category': 'Cat1',
-                'Weight': '100',
-                'Weight Unit': 'lbs',
-                'Reps': '10',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': ''
+                "Date": "2024-01-01",
+                "Exercise": "Exercise A",
+                "Category": "Cat1",
+                "Weight": "100",
+                "Weight Unit": "lbs",
+                "Reps": "10",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "",
             },
             {
-                'Date': '2024-01-05',
-                'Exercise': 'Exercise B',
-                'Category': 'Cat1',
-                'Weight': '100',
-                'Weight Unit': 'lbs',
-                'Reps': '10',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': ''
+                "Date": "2024-01-05",
+                "Exercise": "Exercise B",
+                "Category": "Cat1",
+                "Weight": "100",
+                "Weight Unit": "lbs",
+                "Reps": "10",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "",
             },
             {
-                'Date': '2024-01-03',
-                'Exercise': 'Exercise C',
-                'Category': 'Cat1',
-                'Weight': '100',
-                'Weight Unit': 'lbs',
-                'Reps': '10',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': ''
-            }
+                "Date": "2024-01-03",
+                "Exercise": "Exercise C",
+                "Category": "Cat1",
+                "Weight": "100",
+                "Weight Unit": "lbs",
+                "Reps": "10",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "",
+            },
         ]
 
         for workout in workouts:
@@ -297,9 +296,9 @@ class TestWorkoutQueries:
         exercises = workout_data.get_exercises_by_category()
 
         # Should be sorted by most recent date (descending)
-        assert exercises['Cat1'][0] == 'Exercise B'  # 2024-01-05
-        assert exercises['Cat1'][1] == 'Exercise C'  # 2024-01-03
-        assert exercises['Cat1'][2] == 'Exercise A'  # 2024-01-01
+        assert exercises["Cat1"][0] == "Exercise B"  # 2024-01-05
+        assert exercises["Cat1"][1] == "Exercise C"  # 2024-01-03
+        assert exercises["Cat1"][2] == "Exercise A"  # 2024-01-01
 
 
 class TestUpcomingWorkouts:
@@ -313,19 +312,19 @@ class TestUpcomingWorkouts:
     def test_read_upcoming_workouts(self, temp_csv_files, sample_upcoming):
         """Test reading upcoming workouts."""
         # Write sample data
-        with open(temp_csv_files['upcoming'], 'w', newline='') as f:
+        with open(temp_csv_files["upcoming"], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=workout_data.UPCOMING_CSV_HEADERS)
             writer.writeheader()
             writer.writerows(sample_upcoming)
 
         workouts = workout_data.read_upcoming_workouts()
         assert len(workouts) == 3
-        assert workouts[0]['Exercise'] == 'Deadlift'
+        assert workouts[0]["Exercise"] == "Deadlift"
 
     def test_get_lowest_session_index(self, temp_csv_files, sample_upcoming):
         """Test getting the lowest session index."""
         # Write sample data
-        with open(temp_csv_files['upcoming'], 'w', newline='') as f:
+        with open(temp_csv_files["upcoming"], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=workout_data.UPCOMING_CSV_HEADERS)
             writer.writeheader()
             writer.writerows(sample_upcoming)
@@ -341,29 +340,29 @@ class TestUpcomingWorkouts:
     def test_pop_upcoming_workout_session(self, temp_csv_files, sample_upcoming):
         """Test popping a session from upcoming workouts."""
         # Write sample data
-        with open(temp_csv_files['upcoming'], 'w', newline='') as f:
+        with open(temp_csv_files["upcoming"], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=workout_data.UPCOMING_CSV_HEADERS)
             writer.writeheader()
             writer.writerows(sample_upcoming)
 
         # Pop session 0
-        count = workout_data.pop_upcoming_workout_session('2024-01-10')
+        count = workout_data.pop_upcoming_workout_session("2024-01-10")
         assert count == 2  # Two exercises in session 0
 
         # Verify historical workouts were created
-        historical = workout_data.read_workouts_by_date('2024-01-10')
+        historical = workout_data.read_workouts_by_date("2024-01-10")
         assert len(historical) == 2
-        assert any(w['Exercise'] == 'Deadlift' for w in historical)
-        assert any(w['Exercise'] == 'Pull-ups' for w in historical)
+        assert any(w["Exercise"] == "Deadlift" for w in historical)
+        assert any(w["Exercise"] == "Pull-ups" for w in historical)
 
         # Verify session 0 was removed from upcoming
         remaining = workout_data.read_upcoming_workouts()
         assert len(remaining) == 1
-        assert remaining[0]['Session'] == '1'
+        assert remaining[0]["Session"] == "1"
 
     def test_pop_upcoming_workout_session_empty(self, temp_csv_files):
         """Test popping when no upcoming workouts exist."""
-        count = workout_data.pop_upcoming_workout_session('2024-01-10')
+        count = workout_data.pop_upcoming_workout_session("2024-01-10")
         assert count == 0
 
 
@@ -385,18 +384,18 @@ class TestEstimated1RM:
 
     def test_calculate_estimated_1rm_string_inputs(self):
         """Test 1RM calculation with string inputs."""
-        result = workout_data.calculate_estimated_1rm('225', '5')
+        result = workout_data.calculate_estimated_1rm("225", "5")
         assert result > 0
 
     def test_calculate_estimated_1rm_invalid_inputs(self):
         """Test 1RM calculation with invalid inputs."""
-        result = workout_data.calculate_estimated_1rm('', '')
+        result = workout_data.calculate_estimated_1rm("", "")
         assert result == 0
 
-        result = workout_data.calculate_estimated_1rm('abc', '5')
+        result = workout_data.calculate_estimated_1rm("abc", "5")
         assert result == 0
 
-        result = workout_data.calculate_estimated_1rm('225', 'abc')
+        result = workout_data.calculate_estimated_1rm("225", "abc")
         assert result == 0
 
     def test_calculate_estimated_1rm_zero_reps(self):
@@ -413,102 +412,102 @@ class TestProgressionData:
         """Test progression data with only historical workouts."""
         workouts = [
             {
-                'Date': '2024-01-01',
-                'Exercise': 'Barbell Squat',
-                'Category': 'Legs',
-                'Weight': '225',
-                'Weight Unit': 'lbs',
-                'Reps': '5',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': ''
+                "Date": "2024-01-01",
+                "Exercise": "Barbell Squat",
+                "Category": "Legs",
+                "Weight": "225",
+                "Weight Unit": "lbs",
+                "Reps": "5",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "",
             },
             {
-                'Date': '2024-01-03',
-                'Exercise': 'Barbell Squat',
-                'Category': 'Legs',
-                'Weight': '235',
-                'Weight Unit': 'lbs',
-                'Reps': '5',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': ''
-            }
+                "Date": "2024-01-03",
+                "Exercise": "Barbell Squat",
+                "Category": "Legs",
+                "Weight": "235",
+                "Weight Unit": "lbs",
+                "Reps": "5",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "",
+            },
         ]
 
         for workout in workouts:
             workout_data.write_workout(workout)
 
-        data = workout_data.get_progression_data('Barbell Squat')
+        data = workout_data.get_progression_data("Barbell Squat")
 
-        assert len(data['historical']) == 2
-        assert len(data['upcoming']) == 0
-        assert data['historical'][0]['Date'] == '2024-01-01'
-        assert data['historical'][1]['Date'] == '2024-01-03'
-        assert 'estimated_1rm' in data['historical'][0]
+        assert len(data["historical"]) == 2
+        assert len(data["upcoming"]) == 0
+        assert data["historical"][0]["Date"] == "2024-01-01"
+        assert data["historical"][1]["Date"] == "2024-01-03"
+        assert "estimated_1rm" in data["historical"][0]
 
     def test_get_progression_data_best_set_per_day(self, temp_csv_files):
         """Test that only best set per day is returned."""
         workouts = [
             {
-                'Date': '2024-01-01',
-                'Exercise': 'Bench Press',
-                'Category': 'Chest',
-                'Weight': '185',
-                'Weight Unit': 'lbs',
-                'Reps': '10',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': 'Warm up'
+                "Date": "2024-01-01",
+                "Exercise": "Bench Press",
+                "Category": "Chest",
+                "Weight": "185",
+                "Weight Unit": "lbs",
+                "Reps": "10",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "Warm up",
             },
             {
-                'Date': '2024-01-01',
-                'Exercise': 'Bench Press',
-                'Category': 'Chest',
-                'Weight': '225',
-                'Weight Unit': 'lbs',
-                'Reps': '5',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': 'Heavy set'
+                "Date": "2024-01-01",
+                "Exercise": "Bench Press",
+                "Category": "Chest",
+                "Weight": "225",
+                "Weight Unit": "lbs",
+                "Reps": "5",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "Heavy set",
             },
             {
-                'Date': '2024-01-01',
-                'Exercise': 'Bench Press',
-                'Category': 'Chest',
-                'Weight': '205',
-                'Weight Unit': 'lbs',
-                'Reps': '8',
-                'Distance': '',
-                'Distance Unit': '',
-                'Time': '',
-                'Comment': 'Burnout'
-            }
+                "Date": "2024-01-01",
+                "Exercise": "Bench Press",
+                "Category": "Chest",
+                "Weight": "205",
+                "Weight Unit": "lbs",
+                "Reps": "8",
+                "Distance": "",
+                "Distance Unit": "",
+                "Time": "",
+                "Comment": "Burnout",
+            },
         ]
 
         for workout in workouts:
             workout_data.write_workout(workout)
 
-        data = workout_data.get_progression_data('Bench Press')
+        data = workout_data.get_progression_data("Bench Press")
 
         # Should only return 1 workout (best set for the day)
-        assert len(data['historical']) == 1
+        assert len(data["historical"]) == 1
 
         # Should be the set with highest estimated 1RM
-        best = data['historical'][0]
-        assert best['Weight'] == '225'
-        assert best['Reps'] == '5'
+        best = data["historical"][0]
+        assert best["Weight"] == "225"
+        assert best["Reps"] == "5"
 
     def test_get_progression_data_no_data(self, temp_csv_files):
         """Test progression data when exercise doesn't exist."""
-        data = workout_data.get_progression_data('Nonexistent Exercise')
+        data = workout_data.get_progression_data("Nonexistent Exercise")
 
-        assert data['historical'] == []
-        assert data['upcoming'] == []
+        assert data["historical"] == []
+        assert data["upcoming"] == []
 
 
 class TestMainLifts:
@@ -526,29 +525,31 @@ class TestMainLifts:
 
         lifts = workout_data.get_main_lifts()
 
-        assert 'Barbell Squat' in lifts
-        assert 'Bench Press' in lifts
+        assert "Barbell Squat" in lifts
+        assert "Bench Press" in lifts
         assert len(lifts) == 2
 
     def test_get_main_lifts_from_upcoming(self, temp_csv_files, sample_upcoming):
         """Test getting main lifts from upcoming workouts."""
-        with open(temp_csv_files['upcoming'], 'w', newline='') as f:
+        with open(temp_csv_files["upcoming"], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=workout_data.UPCOMING_CSV_HEADERS)
             writer.writeheader()
             writer.writerows(sample_upcoming)
 
         lifts = workout_data.get_main_lifts()
 
-        assert 'Deadlift' in lifts
-        assert 'Pull-ups' in lifts
-        assert 'Bench Press' in lifts
+        assert "Deadlift" in lifts
+        assert "Pull-ups" in lifts
+        assert "Bench Press" in lifts
 
-    def test_get_main_lifts_combined(self, temp_csv_files, sample_workouts, sample_upcoming):
+    def test_get_main_lifts_combined(
+        self, temp_csv_files, sample_workouts, sample_upcoming
+    ):
         """Test getting main lifts from both historical and upcoming."""
         for workout in sample_workouts:
             workout_data.write_workout(workout)
 
-        with open(temp_csv_files['upcoming'], 'w', newline='') as f:
+        with open(temp_csv_files["upcoming"], "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=workout_data.UPCOMING_CSV_HEADERS)
             writer.writeheader()
             writer.writerows(sample_upcoming)
@@ -556,14 +557,14 @@ class TestMainLifts:
         lifts = workout_data.get_main_lifts()
 
         # Should have exercises from both sources
-        assert 'Barbell Squat' in lifts  # From historical
-        assert 'Deadlift' in lifts  # From upcoming
-        assert 'Pull-ups' in lifts  # From upcoming
-        assert 'Bench Press' in lifts  # From both
+        assert "Barbell Squat" in lifts  # From historical
+        assert "Deadlift" in lifts  # From upcoming
+        assert "Pull-ups" in lifts  # From upcoming
+        assert "Bench Press" in lifts  # From both
 
         # Check sorted
         assert lifts == sorted(lifts)
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

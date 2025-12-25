@@ -5,6 +5,9 @@ import WorkoutSession from "./pages/WorkoutSession";
 import Progression from "./pages/Progression";
 import BodyComposition from "./pages/BodyComposition";
 import Upcoming from "./pages/Upcoming";
+import { InstallPrompt } from "./components/PWA/InstallPrompt";
+import { usePWA } from "./hooks/usePWA";
+import { WifiOff } from "lucide-react";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -17,10 +20,20 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+    const { isOnline } = usePWA();
+
     return (
         <QueryClientProvider client={queryClient}>
             <BrowserRouter>
                 <div className="min-h-screen bg-background text-foreground dark">
+                    {!isOnline && (
+                        <div className="bg-yellow-600 text-white px-4 py-2 text-center text-sm flex items-center justify-center gap-2">
+                            <WifiOff className="h-4 w-4" />
+                            <span>
+                                You are offline. Some features may be limited.
+                            </span>
+                        </div>
+                    )}
                     <Routes>
                         <Route path="/" element={<Calendar />} />
                         <Route path="/day/:date" element={<WorkoutSession />} />
@@ -35,6 +48,7 @@ function App() {
                         />
                         <Route path="/upcoming" element={<Upcoming />} />
                     </Routes>
+                    <InstallPrompt />
                 </div>
             </BrowserRouter>
         </QueryClientProvider>

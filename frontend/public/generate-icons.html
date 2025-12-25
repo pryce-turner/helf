@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate PWA Icons</title>
+</head>
+<body>
+    <canvas id="canvas192" width="192" height="192" style="display:none;"></canvas>
+    <canvas id="canvas512" width="512" height="512" style="display:none;"></canvas>
+    <script>
+        // Generate 192x192 icon
+        const canvas192 = document.getElementById('canvas192');
+        const ctx192 = canvas192.getContext('2d');
+        
+        // Background
+        ctx192.fillStyle = '#3b82f6';
+        ctx192.fillRect(0, 0, 192, 192);
+        
+        // "H" letter
+        ctx192.fillStyle = '#ffffff';
+        ctx192.font = 'bold 120px sans-serif';
+        ctx192.textAlign = 'center';
+        ctx192.textBaseline = 'middle';
+        ctx192.fillText('H', 96, 96);
+        
+        // Download
+        canvas192.toBlob(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pwa-192x192.png';
+            a.click();
+        });
+        
+        // Generate 512x512 icon
+        const canvas512 = document.getElementById('canvas512');
+        const ctx512 = canvas512.getContext('2d');
+        
+        // Background
+        ctx512.fillStyle = '#3b82f6';
+        ctx512.fillRect(0, 0, 512, 512);
+        
+        // "H" letter
+        ctx512.fillStyle = '#ffffff';
+        ctx512.font = 'bold 320px sans-serif';
+        ctx512.textAlign = 'center';
+        ctx512.textBaseline = 'middle';
+        ctx512.fillText('H', 256, 256);
+        
+        // Download
+        setTimeout(() => {
+            canvas512.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'pwa-512x512.png';
+                a.click();
+            });
+        }, 500);
+    </script>
+</body>
+</html>

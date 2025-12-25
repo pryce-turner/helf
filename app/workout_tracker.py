@@ -14,141 +14,6 @@ from app.mqtt_service import MQTTService
 PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 
-def create_connection_status():
-    """Create a connection status indicator that monitors WebSocket connection."""
-    with ui.row().classes(
-        "fixed top-2 right-2 z-50 items-center gap-2"
-    ) as status_container:
-        ui.badge("Connected", color="positive").classes("px-3 py-1")
-
-        # Heartbeat mechanism - ping server every 20 seconds to keep connection alive
-        last_ping = {"time": datetime.now(PACIFIC_TZ)}
-
-        def heartbeat_ping():
-            """Send a heartbeat ping to keep the connection alive."""
-            try:
-                last_ping["time"] = datetime.now(PACIFIC_TZ)
-                # This simple UI update acts as a keepalive
-                pass
-            except Exception:
-                pass
-
-        # Create a timer that runs every 20 seconds
-        ui.timer(20.0, heartbeat_ping)
-
-        # JavaScript to monitor connection state
-        ui.add_head_html("""
-            <script>
-            (function() {
-                let isConnected = true;
-                let reconnectAttempts = 0;
-                const maxReconnectAttempts = 10;
-                let lastHeartbeat = Date.now();
-
-                // Find the status badge element
-                function updateConnectionStatus(connected, reconnecting = false) {
-                    const badge = document.querySelector('.fixed.top-2.right-2 .q-badge');
-                    if (!badge) return;
-
-                    if (reconnecting) {
-                        badge.textContent = 'Reconnecting...';
-                        badge.className = 'q-badge flex inline items-center no-wrap q-badge--single-line bg-warning text-white px-3 py-1';
-                    } else if (connected) {
-                        badge.textContent = 'Connected';
-                        badge.className = 'q-badge flex inline items-center no-wrap q-badge--single-line bg-positive text-white px-3 py-1';
-                        reconnectAttempts = 0;
-                    } else {
-                        badge.textContent = 'Disconnected';
-                        badge.className = 'q-badge flex inline items-center no-wrap q-badge--single-line bg-negative text-white px-3 py-1';
-                    }
-                }
-
-                // Client-side heartbeat - send ping every 15 seconds
-                function sendHeartbeat() {
-                    if (isConnected && window.socket && window.socket.readyState === WebSocket.OPEN) {
-                        try {
-                            // Send a ping frame (some WebSocket servers support this)
-                            if (window.socket.ping) {
-                                window.socket.ping();
-                            }
-                            lastHeartbeat = Date.now();
-                        } catch (e) {
-                            console.log('Heartbeat ping failed:', e);
-                        }
-                    }
-                }
-
-                // Monitor WebSocket connection via NiceGUI's internal connection
-                function monitorConnection() {
-                    // Check if window.socket exists (NiceGUI's WebSocket)
-                    if (window.socket) {
-                        const originalOnClose = window.socket.onclose;
-                        const originalOnOpen = window.socket.onopen || function() {};
-                        const originalOnError = window.socket.onerror || function() {};
-
-                        window.socket.onopen = function(event) {
-                            isConnected = true;
-                            updateConnectionStatus(true);
-                            lastHeartbeat = Date.now();
-                            originalOnOpen.call(this, event);
-                        };
-
-                        window.socket.onclose = function(event) {
-                            isConnected = false;
-                            updateConnectionStatus(false, reconnectAttempts < maxReconnectAttempts);
-                            reconnectAttempts++;
-                            if (originalOnClose) originalOnClose.call(this, event);
-                        };
-
-                        window.socket.onerror = function(event) {
-                            isConnected = false;
-                            updateConnectionStatus(false);
-                            originalOnError.call(this, event);
-                        };
-                    }
-
-                    // Also monitor online/offline events
-                    window.addEventListener('online', function() {
-                        updateConnectionStatus(true, !isConnected);
-                    });
-
-                    window.addEventListener('offline', function() {
-                        updateConnectionStatus(false);
-                    });
-
-                    // Check connection state periodically
-                    setInterval(function() {
-                        const nowOnline = navigator.onLine;
-                        if (!nowOnline && isConnected) {
-                            isConnected = false;
-                            updateConnectionStatus(false);
-                        }
-
-                        // Check if heartbeat is stale (no activity for 45 seconds)
-                        const timeSinceHeartbeat = Date.now() - lastHeartbeat;
-                        if (isConnected && timeSinceHeartbeat > 45000) {
-                            console.log('Connection may be stale, checking...');
-                            sendHeartbeat();
-                        }
-                    }, 5000);
-
-                    // Send heartbeat every 15 seconds
-                    setInterval(sendHeartbeat, 15000);
-                }
-
-                // Initialize monitoring after page loads
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', monitorConnection);
-                } else {
-                    setTimeout(monitorConnection, 100);
-                }
-            })();
-            </script>
-        """)
-
-    return status_container
-
-
 def create_nav_bar(current_page: str, page_title: str):
     """Create a consistent navigation bar for all pages.
 
@@ -182,7 +47,6 @@ def calendar_view():
     """Calendar view - main page showing all workout dates."""
     ui.page_title("Workout Calendar")
     ui.dark_mode().enable()
-    create_connection_status()
 
     with ui.card().classes("w-full max-w-6xl mx-auto mt-8 p-6"):
         create_nav_bar("calendar", "Workout Calendar")
@@ -287,82 +151,6 @@ def workout_session_view(selected_date: str):
     """Workout session view for a specific day."""
     ui.page_title(f"Workouts - {selected_date}")
     ui.dark_mode().enable()
-    create_connection_status()
-
-    # Initialize offline queue in browser storage
-    ui.add_head_html("""
-        <script>
-        // Offline workout queue management
-        (function() {
-            const OFFLINE_QUEUE_KEY = 'helf_offline_workout_queue';
-            let processingQueue = false;
-
-            window.helfOfflineQueue = {
-                add: function(workout) {
-                    const queue = this.getQueue();
-                    workout._queued_at = new Date().toISOString();
-                    queue.push(workout);
-                    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-                    console.log('Added workout to offline queue:', workout);
-                },
-
-                getQueue: function() {
-                    const stored = localStorage.getItem(OFFLINE_QUEUE_KEY);
-                    return stored ? JSON.parse(stored) : [];
-                },
-
-                clear: function() {
-                    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify([]));
-                },
-
-                size: function() {
-                    return this.getQueue().length;
-                },
-
-                processQueue: async function() {
-                    if (processingQueue) return;
-                    if (!navigator.onLine) return;
-
-                    const queue = this.getQueue();
-                    if (queue.length === 0) return;
-
-                    processingQueue = true;
-                    console.log('Processing offline queue with', queue.length, 'items');
-
-                    // Clear queue immediately to prevent duplicates
-                    this.clear();
-
-                    // Reload page to sync offline data
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 500);
-
-                    processingQueue = false;
-                }
-            };
-
-            // Check queue when coming back online
-            window.addEventListener('online', function() {
-                console.log('Back online, checking offline queue...');
-                setTimeout(() => {
-                    if (window.helfOfflineQueue.size() > 0) {
-                        const msg = `You're back online! Syncing ${window.helfOfflineQueue.size()} workout(s)...`;
-                        console.log(msg);
-                        window.helfOfflineQueue.processQueue();
-                    }
-                }, 1000);
-            });
-
-            // Show queue size on page load
-            window.addEventListener('load', function() {
-                const queueSize = window.helfOfflineQueue.size();
-                if (queueSize > 0) {
-                    console.log('Offline queue has', queueSize, 'pending workouts');
-                }
-            });
-        })();
-        </script>
-    """)
 
     with ui.card().classes("w-full max-w-4xl mx-auto mt-8 p-6"):
         # Header with navigation
@@ -371,53 +159,6 @@ def workout_session_view(selected_date: str):
                 "flat"
             )
             ui.label(f"Workouts for {selected_date}").classes("text-2xl font-bold")
-
-        # Offline queue indicator (shown when items are queued)
-        with ui.row().classes("w-full mb-4 items-center gap-2") as queue_indicator:
-            ui.icon("cloud_off", size="sm").classes("text-orange-400")
-            ui.label("").classes("text-orange-400 text-sm")
-            ui.button(
-                "Retry Sync",
-                on_click=lambda: ui.run_javascript(
-                    "window.helfOfflineQueue.processQueue()"
-                ),
-            ).props("flat dense color=orange")
-
-        # JavaScript to update queue indicator
-        ui.add_head_html("""
-            <script>
-            (function() {
-                function updateQueueIndicator() {
-                    const queueSize = window.helfOfflineQueue ? window.helfOfflineQueue.size() : 0;
-                    const indicator = document.querySelector('.w-full.mb-4.items-center.gap-2');
-                    const label = indicator ? indicator.querySelector('.text-orange-400.text-sm') : null;
-
-                    if (indicator && label) {
-                        if (queueSize > 0) {
-                            indicator.style.display = 'flex';
-                            label.textContent = queueSize + ' workout(s) waiting to sync';
-                        } else {
-                            indicator.style.display = 'none';
-                        }
-                    }
-                }
-
-                // Update indicator every 2 seconds
-                setInterval(updateQueueIndicator, 2000);
-
-                // Initial update
-                setTimeout(updateQueueIndicator, 500);
-
-                // Update when coming back online
-                window.addEventListener('online', function() {
-                    setTimeout(updateQueueIndicator, 500);
-                });
-            })();
-            </script>
-        """)
-
-        # Hide queue indicator by default
-        queue_indicator.style("display: none")
 
         # Load existing workouts for this day
         existing_workouts = workout_data.read_workouts_by_date(selected_date)
@@ -1024,7 +765,6 @@ def progression_view(exercise_name: str = None):
     """Progression tracking view showing main lifts."""
     ui.page_title("Main Lifts")
     ui.dark_mode().enable()
-    create_connection_status()
 
     with ui.card().classes("w-full max-w-7xl mx-auto mt-8 p-6"):
         create_nav_bar("main-lifts", "Main Lifts")
@@ -1250,7 +990,6 @@ def upcoming_workouts_view():
     """View all upcoming workouts grouped by session."""
     ui.page_title("Upcoming Workouts")
     ui.dark_mode().enable()
-    create_connection_status()
 
     with ui.card().classes("w-full max-w-6xl mx-auto mt-8 p-6"):
         create_nav_bar("upcoming", "Upcoming Workouts")
@@ -1360,7 +1099,6 @@ def body_composition_view():
     """Body composition tracking view with graphs."""
     ui.page_title("Body Composition")
     ui.dark_mode().enable()
-    create_connection_status()
 
     with ui.card().classes("w-full max-w-6xl mx-auto mt-8 p-6"):
         create_nav_bar("body-comp", "Body Composition")

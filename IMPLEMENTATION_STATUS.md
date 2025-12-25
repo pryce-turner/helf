@@ -1,8 +1,8 @@
 # Helf Refactoring Implementation Status
 
 **Date**: December 25, 2025  
-**Phase**: Backend Complete, Frontend Initialized  
-**Overall Progress**: ~40% Complete
+**Phase**: Backend Complete, Frontend Core Complete  
+**Overall Progress**: ~75% Complete
 
 ## ✅ Completed Tasks
 
@@ -133,6 +133,8 @@ helf/
 
 ### Phase 2: Frontend Initialization (100% Complete)
 
+### Phase 3: Frontend Core Components (100% Complete)
+
 #### 1. Vite + React + TypeScript Setup ✓
 - Project scaffolded with `create-vite`
 - TypeScript configured
@@ -145,53 +147,52 @@ helf/
 - **Charts**: recharts
 - **Utils**: date-fns
 - **Icons**: lucide-react
-- **Styling**: tailwindcss, postcss, autoprefixer
+- **Styling**: tailwindcss@4, @tailwindcss/postcss, autoprefixer
+- **UI Components**: shadcn/ui components
 
 #### 3. Tailwind CSS Configuration ✓
-- `tailwind.config.js` created
-- `postcss.config.js` created
+- `tailwind.config.js` created with custom theme
+- `postcss.config.js` configured for Tailwind v4
 - Dark mode CSS variables configured
 - Base styles with shadcn/ui color scheme
+- TypeScript path aliases configured (@/ prefix)
+
+#### 4. React Query Hooks ✓
+- `useWorkouts.ts` - CRUD operations, calendar data, reordering
+- `useExercises.ts` - Exercise and category management
+- `useProgression.ts` - Progression tracking with 1RM calculations
+- `useUpcoming.ts` - Upcoming workout management
+- `useBodyComposition.ts` - Body composition stats and trends
+
+#### 5. shadcn/ui Components Installed ✓
+- Button, Card, Input, Label, Select
+- Calendar (date picker)
+- Badge
+- All components properly configured with theme
+
+#### 6. Page Components Implemented ✓
+- **Calendar.tsx** - Monthly calendar with workout indicators
+- **WorkoutSession.tsx** - Workout logging with exercise selection, CRUD
+- **Progression.tsx** - Charts with 1RM tracking and moving averages
+- **BodyComposition.tsx** - Stats cards and trend visualization
+- **Upcoming.tsx** - Session management with transfer functionality
+
+#### 7. Build System ✓
+- Frontend builds successfully
+- TypeScript compilation passes
+- Bundle size: ~870 KB (with code splitting recommendations)
 
 ## 🚧 Next Steps (Remaining Work)
 
-### Phase 3: Frontend Core Components (~3-4 days)
+### Phase 4: PWA Implementation (~1-2 days)
 
-#### Priority 1: Setup & Layout
-- [ ] Configure `tsconfig.json` for path aliases
-- [ ] Set up React Router with routes
-- [ ] Create layout components (Header, Navigation)
-- [ ] Install shadcn/ui components (button, card, input, etc.)
-- [ ] Set up React Query provider
-
-#### Priority 2: API Client
-- [ ] Create API client with TypeScript types
-- [ ] Implement React Query hooks for each endpoint
-- [ ] Add request/response interceptors
-- [ ] Error handling utilities
-
-#### Priority 3: Core Pages
-- [ ] Calendar page (workout counts grid)
-- [ ] Workout session page (CRUD form)
-- [ ] Progression page (charts with recharts)
-- [ ] Upcoming workouts page (session view)
-- [ ] Body composition page (stats + charts)
-
-#### Priority 4: Components
-- [ ] CalendarGrid component
-- [ ] WorkoutForm component (exercise select, recent sets)
-- [ ] ProgressionChart component (scatter + line + MA)
-- [ ] BodyCompChart component (multiple metrics)
-- [ ] ExerciseSelect component (category-based)
-
-### Phase 4: PWA Implementation (~2 days)
-
-- [ ] Create `manifest.json`
-- [ ] Generate app icons (192x192, 512x512)
-- [ ] Set up Vite PWA plugin
-- [ ] Configure service worker (Workbox)
-- [ ] Implement offline caching strategy
-- [ ] Add install prompt
+- [ ] Create `manifest.json` with app metadata
+- [ ] Generate app icons (192x192, 512x512, etc.)
+- [ ] Install and configure Vite PWA plugin
+- [ ] Configure service worker with Workbox
+- [ ] Implement offline caching strategy (cache-first for assets, network-first for API)
+- [ ] Add install prompt UI
+- [ ] Test offline functionality
 
 ### Phase 5: Docker & Deployment (~1-2 days)
 
@@ -259,14 +260,14 @@ npm run dev
 ✅ Moving average calculations  
 ✅ Future workout projections  
 
-### Frontend Features To Implement
-⏳ Calendar UI with workout indicators  
-⏳ Workout logging form  
-⏳ Exercise selection with recent sets  
-⏳ Progression charts (scatter + MA)  
-⏳ Body composition dashboard  
-⏳ Upcoming workouts management  
-⏳ PWA offline support  
+### Frontend Features Implemented
+✅ Calendar UI with workout indicators  
+✅ Workout logging form with CRUD operations
+✅ Exercise selection by category
+✅ Progression charts with 1RM and moving averages
+✅ Body composition dashboard with stats and trends
+✅ Upcoming workouts management with session transfer
+⏳ PWA offline support (next phase)  
 
 ### Known Issues
 - MQTT broker connection fails in dev (expected - no broker running locally)
@@ -283,12 +284,12 @@ npm run dev
 ## 🎯 Estimated Completion Timeline
 
 - **Backend**: ✅ Complete (100%)
-- **Frontend Core**: ~4 days remaining
-- **PWA**: ~2 days remaining
-- **Docker**: ~1 day remaining
-- **Testing & Polish**: ~2 days remaining
+- **Frontend Core**: ✅ Complete (100%)
+- **PWA**: ~1-2 days remaining
+- **Docker**: ~1-2 days remaining
+- **Testing & Polish**: ~1 day remaining
 
-**Total Remaining**: ~9-10 days of focused development
+**Total Remaining**: ~3-5 days of focused development
 
 ## 📚 Key Files Reference
 
@@ -310,4 +311,4 @@ npm run dev
 ---
 
 **Last Updated**: December 25, 2025  
-**Next Priority**: Frontend API client and React Query setup
+**Next Priority**: PWA implementation (service workers, manifest, offline support)

@@ -2,7 +2,10 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from app.config import settings
 from app.database import close_db
@@ -87,11 +90,52 @@ def mqtt_reconnect():
     return {"message": "MQTT service not initialized"}
 
 
-@app.get("/")
-def root():
-    """Root endpoint."""
-    return {
-        "message": "Helf API",
-        "version": settings.app_version,
-        "docs": "/docs",
-    }
+# Serve static files (React app) if they exist
+# In development, look for frontend build in ../frontend/dist
+# In production (Docker), look in /app/static
+static_dir = Path("/app/static")
+if not static_dir.exists():
+    static_dir = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+if static_dir.exists() and static_dir.is_dir():
+    # Mount static files for assets
+    app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
+
+    # Serve static files (manifest, service worker, icons)
+    @app.get("/manifest.webmanifest")
+    async def manifest():
+        return FileResponse(static_dir / "manifest.webmanifest", media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    async def service_worker():
+        return FileResponse(static_dir / "sw.js", media_type="application/javascript")
+
+    @app.get("/workbox-{filename:path}")
+    async def workbox(filename: str):
+        return FileResponse(static_dir / f"workbox-{filename}", media_type="application/javascript")
+
+    @app.get("/{filename}.png")
+    async def icons(filename: str):
+        file_path = static_dir / f"{filename}.png"
+        if file_path.exists():
+            return FileResponse(file_path, media_type="image/png")
+
+    # Root route serves index.html
+    @app.get("/")
+    async def root():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    # Catch-all for SPA routing - must be last!
+    @app.get("/{full_path:path}")
+    async def spa_catchall(full_path: str):
+        """Serve index.html for all unmatched routes (SPA routing)."""
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+else:
+    @app.get("/")
+    def root():
+        """Root endpoint when frontend is not available."""
+        return {
+            "message": "Helf API",
+            "version": settings.app_version,
+            "docs": "/docs",
+        }

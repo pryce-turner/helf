@@ -1,27 +1,60 @@
 # Helf - Health & Fitness Tracker
 
-A simple, lightweight health and fitness tracking application built with NiceGUI and CSV-based storage. Track your workouts, monitor body composition, and plan upcoming sessions.
+A modern, Progressive Web App for tracking workouts, monitoring body composition, and planning training sessions. Built with FastAPI, React, and TinyDB.
 
 ## Features
 
-### Workout Tracking
-- 📅 **Calendar View** - Visual overview of all workout dates
-- 📝 **Workout Logging** - Easy-to-use interface for logging exercises
-- 📊 **Progression Tracking** - Interactive graphs showing estimated 1RM over time
-- 🔮 **Upcoming Workouts** - Plan and schedule future training sessions
-- 🎯 **Category-based Exercise Organization** - Filter exercises by category
+### 💪 Workout Tracking
+- **Calendar View** - Visual overview of all workout dates with activity indicators
+- **Workout Logging** - Clean, intuitive interface for logging exercises
+- **Exercise Management** - Category-based organization with recent history
+- **CRUD Operations** - Create, edit, reorder, and delete workout entries
+- **Smart Forms** - Form persistence and auto-fill from recent sets
 
-### Body Composition Tracking
-- ⚖️ **MQTT Integration** - Automatic data ingestion from smart scales via MQTT (supports openScale-sync)
-- 📈 **Weight Trends** - Track weight changes over time with interactive graphs
-- 💪 **Body Composition** - Monitor body fat %, muscle mass, BMI, and more
-- 📊 **Statistics Dashboard** - Summary cards showing current metrics and changes
+### 📊 Progression Tracking
+- **1RM Estimation** - Automatic calculation using validated formulas
+- **Interactive Charts** - Track progress over time with Recharts
+- **Moving Averages** - Configurable smoothing for trend analysis
+- **Future Projections** - Visualize upcoming planned workouts
+- **Main Lifts** - Quick access to bench, squat, deadlift progression
 
-### General
-- 💾 **CSV Storage** - Simple, portable data format (no database required)
-- 📱 **Mobile Responsive** - Works on desktop and mobile devices
-- 🌙 **Dark Theme** - Easy on the eyes
-- 🐳 **Docker Ready** - Easy deployment with Docker Compose
+### 📅 Workout Planning
+- **Session Management** - Organize upcoming workouts by session
+- **Bulk Import** - Import multiple workouts from CSV
+- **Easy Transfer** - Move planned workouts to historical with one click
+- **Wendler 5/3/1 Support** - Generate periodized training plans
+
+### ⚖️ Body Composition
+- **MQTT Integration** - Automatic data from smart scales (openScale-sync compatible)
+- **Comprehensive Metrics** - Weight, body fat %, muscle mass, BMI, and more
+- **Trend Analysis** - Visualize changes with configurable periods
+- **Statistics Dashboard** - Summary cards with current metrics
+- **Weight Conversion** - Automatic kg ↔ lbs conversion
+
+### 🚀 Modern PWA
+- **Offline Support** - Works without internet connection
+- **Installable** - Add to home screen on mobile/desktop
+- **Service Worker** - Smart caching for fast performance
+- **Responsive Design** - Optimized for all screen sizes
+- **Dark Mode** - Beautiful dark theme with Tailwind CSS
+
+## Tech Stack
+
+### Backend
+- **FastAPI** - High-performance Python web framework
+- **TinyDB** - Lightweight JSON-based database
+- **Pydantic** - Data validation with type hints
+- **Paho-MQTT** - Smart scale integration
+- **Uvicorn** - ASGI server with multi-worker support
+
+### Frontend
+- **React 18+** - Modern UI library
+- **TypeScript** - Type-safe development
+- **Vite** - Lightning-fast build tool
+- **shadcn/ui** - Beautiful, accessible components
+- **Tailwind CSS** - Utility-first styling
+- **TanStack Query** - Powerful data synchronization
+- **Recharts** - Composable charting library
 
 ## Quick Start
 
@@ -29,131 +62,144 @@ A simple, lightweight health and fitness tracking application built with NiceGUI
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
+git clone <repository-url>
 cd helf
 ```
 
 2. Start the application:
 ```bash
-docker compose up -d
+docker-compose up -d
 ```
 
-3. Access the app at `http://localhost:8080`
+3. Access the app at `http://localhost:30171`
 
-Your workout data will be stored in the `./data` directory.
+Your workout data will be stored in `/mnt/fast/apps/helf/data` (configurable in docker-compose.yml).
 
-### Using Docker
-
-Build and run manually:
+### Manual Docker Build
 
 ```bash
 # Build the image
-docker build -t helf .
+docker build -t helf:latest .
 
 # Run the container
 docker run -d \
-  -p 8080:8080 \
-  -v $(pwd)/data:/app/data \
-  -e DATA_DIR=/app/data \
   --name helf-app \
-  helf
+  -p 30171:8080 \
+  -v /your/data/path:/app/data \
+  -e DATA_DIR=/app/data \
+  --add-host host.docker.internal:host-gateway \
+  helf:latest
 ```
 
-### Local Development with UV
+### Local Development
 
-1. Install UV (if not already installed):
+**Backend**:
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-2. Create virtual environment and install dependencies:
-```bash
-uv venv
-uv pip install .
-```
-
-3. Run the application:
-```bash
-python run.py
-```
-
-4. Access the app at `http://localhost:8080`
-
-### Local Development with pip
-
-```bash
-# Create virtual environment
+cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install .
-
-# Run the application
-python run.py
+pip install -e .
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-## Data Schema
-
-### Workout Log (workouts.csv)
-- Date
-- Exercise
-- Category
-- Weight
-- Weight Unit
-- Reps
-- Distance
-- Distance Unit
-- Time
-- Comment
-
-### Upcoming Workouts (upcoming_workouts.csv)
-- Session (numeric index)
-- Exercise
-- Category
-- Weight
-- Weight Unit
-- Reps
-- Distance
-- Distance Unit
-- Time
-- Comment
-
-## Deployment
-
-### Environment Variables
-
-- `DATA_DIR` - Directory for CSV files (default: current directory)
-- `STORAGE_SECRET` - Secret key for NiceGUI user storage (set in workout_tracker.py)
-- `MQTT_BROKER_HOST` - MQTT broker hostname (default: localhost, use `host.docker.internal` in Docker to connect to host)
-- `MQTT_BROKER_PORT` - MQTT broker port (default: 1883)
-
-### Data Persistence
-
-When using Docker, workout data is persisted in a mounted volume. The default docker-compose.yml mounts `./data` to `/app/data` in the container.
-
-To backup your data, simply copy the CSV files from the data directory:
+**Frontend**:
 ```bash
-cp data/*.csv /your/backup/location/
+cd frontend
+npm install
+npm run dev  # Runs on http://localhost:5173
 ```
 
-### MQTT Integration for Body Composition
+## API Documentation
 
-Helf automatically connects to an MQTT broker to receive body composition measurements from smart scales (via openScale-sync or similar apps).
+Once running, interactive API documentation is available at:
+- **Swagger UI**: `http://localhost:30171/docs`
+- **ReDoc**: `http://localhost:30171/redoc`
 
-**Docker Setup:**
-The docker-compose.yml is pre-configured to connect to a Mosquitto broker running on your host machine:
-- Broker host: `host.docker.internal` (maps to host machine)
-- Broker port: `1883`
+## Architecture
 
-**Local Development:**
-When running locally (not in Docker), Helf connects to `localhost:1883` by default.
+```
+┌─────────────────────────────────────┐
+│   Browser (Progressive Web App)     │
+│   - React + TypeScript              │
+│   - Service Worker (offline)        │
+│   - Install Prompt                  │
+└──────────────┬──────────────────────┘
+               │ HTTP/REST API
+               ▼
+┌─────────────────────────────────────┐
+│   FastAPI Server                     │
+│   ┌─────────────────────────────┐   │
+│   │  API Routes                 │   │
+│   │  - Workouts                 │   │
+│   │  - Exercises                │   │
+│   │  - Progression              │   │
+│   │  - Body Composition         │   │
+│   │  - Upcoming Workouts        │   │
+│   └─────────────────────────────┘   │
+│   ┌─────────────────────────────┐   │
+│   │  Business Logic             │   │
+│   │  - 1RM Calculation          │   │
+│   │  - Moving Averages          │   │
+│   │  - Projections              │   │
+│   └─────────────────────────────┘   │
+│   ┌─────────────────────────────┐   │
+│   │  Data Access Layer          │   │
+│   │  - TinyDB Repositories      │   │
+│   └─────────────────────────────┘   │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+        ┌──────────────┐      ┌──────────┐
+        │  TinyDB      │      │   MQTT   │
+        │  (JSON)      │      │  Broker  │
+        └──────────────┘      └──────────┘
+```
 
-**Supported MQTT Topics:**
-- `openScaleSync/measurements/last` - Latest measurement (when stepping on scale)
-- `openScaleSync/measurements/all` - All measurements (when syncing from app)
+## Database Schema
 
-**Message Format:**
+### TinyDB Collections
+
+**workouts**
+- Historical workout data with exercise details
+- Ordered by date and exercise order
+- Includes weight, reps, distance, time, comments
+
+**upcoming_workouts**
+- Planned workout sessions
+- Organized by session number
+- Ready for transfer to historical data
+
+**body_composition**
+- Body metrics from smart scales
+- Timestamped measurements
+- Comprehensive body composition data
+
+**exercises**
+- Unique exercise catalog
+- Category associations
+- Usage statistics
+
+**categories**
+- Exercise categories (Legs, Push, Pull, etc.)
+
+## MQTT Integration
+
+Helf integrates with smart scales via MQTT for automatic body composition tracking.
+
+### Configuration
+
+In `docker-compose.yml`:
+```yaml
+environment:
+  - MQTT_BROKER_HOST=host.docker.internal
+  - MQTT_BROKER_PORT=1883
+```
+
+### Supported Topics
+- `openScaleSync/measurements/last` - Latest measurement
+- `openScaleSync/measurements/all` - Bulk sync
+
+### Message Format
 ```json
 {
   "date": "2025-11-17T08:56-0800",
@@ -161,59 +207,157 @@ When running locally (not in Docker), Helf connects to `localhost:1883` by defau
   "fat": 23.8,
   "muscle": 39.1,
   "water": 50.89,
+  "bmi": 24.5,
+  "bone": 3.2,
+  "visceral_fat": 8,
   "id": 179
 }
 ```
 
-The app automatically parses ISO 8601 timestamps and saves all measurements to `data/body_composition.csv`.
+## Progressive Web App
 
-### Production Deployment
+### Features
+- **Offline Mode**: Works without internet
+- **Install Prompt**: Add to home screen
+- **Auto-Update**: New versions install automatically
+- **Service Worker**: Cache-first for assets, network-first for API
+- **App Icons**: Custom app icons for all platforms
 
-For production deployments:
+### Installation
+1. Open the app in Chrome, Edge, or Safari
+2. Click the install prompt (or browser's install button)
+3. App will be added to your home screen/app drawer
 
-1. Set a strong storage secret in `workout_tracker.py`
-2. Use a reverse proxy (nginx, Traefik) with SSL/TLS
-3. Consider setting up regular backups of the `data` directory
-4. Optionally, set `reload=False` in `ui.run()` for better performance
+## Deployment
 
-## Testing
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
-Run the test suite:
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATA_DIR` | `/app/data` | Directory for TinyDB database |
+| `MQTT_BROKER_HOST` | `host.docker.internal` | MQTT broker hostname |
+| `MQTT_BROKER_PORT` | `1883` | MQTT broker port |
+| `CORS_ORIGINS` | `*` | Allowed CORS origins |
+| `PRODUCTION` | `true` | Production mode flag |
+
+### Data Migration
+
+If migrating from the old NiceGUI + CSV version:
 
 ```bash
-# With UV
-uv pip install -e ".[dev]"
-pytest
-
-# With pip
-pip install pytest
-pytest
+cd backend
+python migrations/csv_to_tinydb.py
 ```
+
+This will convert your CSV files to TinyDB format while preserving backups.
 
 ## Project Structure
 
 ```
 helf/
-├── app/                      # Application package
-│   ├── __init__.py          # Package initialization
-│   ├── workout_tracker.py   # Main UI application
-│   ├── workout_data.py      # Workout data layer (CSV operations)
-│   ├── body_composition_data.py  # Body composition data layer
-│   └── mqtt_service.py      # MQTT client service
-├── tests/                   # Test suite
-│   └── test_workout_data.py
-├── data/                    # Data storage (created on first run)
-│   ├── workouts.csv
-│   ├── upcoming_workouts.csv
-│   └── body_composition.csv
-├── run.py                   # Application entrypoint
-├── pyproject.toml           # Project configuration
-├── Dockerfile               # Production container definition
-├── docker-compose.yml       # Docker Compose configuration
-├── .dockerignore           # Docker build exclusions
-└── README.md
+├── backend/                 # FastAPI backend
+│   ├── app/
+│   │   ├── api/            # API route handlers
+│   │   ├── models/         # Pydantic models
+│   │   ├── repositories/   # Data access layer
+│   │   ├── services/       # Business logic
+│   │   ├── utils/          # Helper functions
+│   │   ├── config.py       # Settings
+│   │   ├── database.py     # TinyDB setup
+│   │   └── main.py         # FastAPI app
+│   ├── migrations/         # Data migration scripts
+│   └── pyproject.toml      # Python dependencies
+├── frontend/                # React frontend
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   ├── hooks/          # Custom hooks
+│   │   ├── lib/            # API client, utilities
+│   │   ├── pages/          # Route components
+│   │   ├── types/          # TypeScript types
+│   │   └── main.tsx        # Entry point
+│   ├── public/             # Static assets
+│   ├── package.json        # Node dependencies
+│   └── vite.config.ts      # Vite + PWA config
+├── data/                    # Data storage
+│   ├── helf.json           # TinyDB database
+│   └── *.csv               # CSV backups
+├── Dockerfile               # Multi-stage build
+├── docker-compose.yml       # Docker Compose config
+└── DEPLOYMENT.md            # Deployment guide
 ```
+
+## Development
+
+### Backend Development
+```bash
+cd backend
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend Development
+```bash
+cd frontend
+npm run dev
+```
+
+### Building for Production
+```bash
+# Frontend
+cd frontend
+npm run build
+
+# Docker
+docker build -t helf:latest .
+```
+
+## Testing
+
+```bash
+# Backend tests
+cd backend
+pytest
+
+# Frontend tests (when implemented)
+cd frontend
+npm test
+```
+
+## Roadmap
+
+- [x] Backend API (FastAPI + TinyDB)
+- [x] Frontend (React + TypeScript)
+- [x] PWA Support (Service Worker + Manifest)
+- [x] Docker Deployment
+- [ ] E2E Tests (Playwright)
+- [ ] Mobile Apps (React Native)
+- [ ] Multi-user Support (Authentication)
+- [ ] Advanced Analytics
+
+## Migration from v1.x
+
+The old NiceGUI version is preserved in git history. To migrate:
+
+1. Keep your CSV files in the `data/` directory
+2. Run the migration script (see Data Migration above)
+3. Deploy the new Docker image
+4. Verify data integrity
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ## License
 
 This project is open source and available under the MIT License.
+
+---
+
+**Version**: 2.0.0  
+**Architecture**: FastAPI + React + TinyDB  
+**Built with**: TypeScript, Python, shadcn/ui, Tailwind CSS

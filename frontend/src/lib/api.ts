@@ -1,144 +1,166 @@
-import axios from 'axios';
-import type { Workout, WorkoutCreate, CalendarResponse } from '../types/workout';
-import type { Exercise, ExerciseCreate, Category, CategoryCreate } from '../types/exercise';
-import type { BodyComposition, BodyCompositionStats, BodyCompositionTrend } from '../types/bodyComposition';
-import type { ProgressionResponse } from '../types/progression';
-import type { UpcomingWorkout, UpcomingWorkoutCreate } from '../types/upcoming';
+import axios from "axios";
+import type {
+    Workout,
+    WorkoutCreate,
+    CalendarResponse,
+} from "../types/workout";
+import type {
+    Exercise,
+    ExerciseCreate,
+    Category,
+    CategoryCreate,
+} from "../types/exercise";
+import type {
+    BodyComposition,
+    BodyCompositionStats,
+    BodyCompositionTrend,
+} from "../types/bodyComposition";
+import type { ProgressionResponse } from "../types/progression";
+import type { UpcomingWorkout, UpcomingWorkoutCreate } from "../types/upcoming";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// In production, use relative URL (same origin as frontend)
+// In development, use localhost:8000
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL ||
+    (import.meta.env.PROD ? "" : "http://localhost:8000");
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+    baseURL: API_BASE_URL,
+    headers: {
+        "Content-Type": "application/json",
+    },
 });
 
 // Workouts
 export const workoutsApi = {
-  getAll: (params?: { date?: string; skip?: number; limit?: number }) =>
-    api.get<Workout[]>('/api/workouts', { params }),
+    getAll: (params?: { date?: string; skip?: number; limit?: number }) =>
+        api.get<Workout[]>("/api/workouts", { params }),
 
-  getById: (id: number) =>
-    api.get<Workout>(`/api/workouts/${id}`),
+    getById: (id: number) => api.get<Workout>(`/api/workouts/${id}`),
 
-  getCalendar: (year: number, month: number) =>
-    api.get<CalendarResponse>('/api/workouts/calendar', { params: { year, month } }),
+    getCalendar: (year: number, month: number) =>
+        api.get<CalendarResponse>("/api/workouts/calendar", {
+            params: { year, month },
+        }),
 
-  create: (workout: WorkoutCreate) =>
-    api.post<Workout>('/api/workouts', workout),
+    create: (workout: WorkoutCreate) =>
+        api.post<Workout>("/api/workouts", workout),
 
-  update: (id: number, workout: WorkoutCreate) =>
-    api.put<Workout>(`/api/workouts/${id}`, workout),
+    update: (id: number, workout: WorkoutCreate) =>
+        api.put<Workout>(`/api/workouts/${id}`, workout),
 
-  delete: (id: number) =>
-    api.delete(`/api/workouts/${id}`),
+    delete: (id: number) => api.delete(`/api/workouts/${id}`),
 
-  reorder: (id: number, direction: 'up' | 'down') =>
-    api.patch(`/api/workouts/${id}/reorder`, { direction }),
+    reorder: (id: number, direction: "up" | "down") =>
+        api.patch(`/api/workouts/${id}/reorder`, { direction }),
 };
 
 // Exercises
 export const exercisesApi = {
-  getAll: () =>
-    api.get<Exercise[]>('/api/exercises'),
+    getAll: () => api.get<Exercise[]>("/api/exercises"),
 
-  getRecent: (limit: number = 10) =>
-    api.get<Exercise[]>('/api/exercises/recent', { params: { limit } }),
+    getRecent: (limit: number = 10) =>
+        api.get<Exercise[]>("/api/exercises/recent", { params: { limit } }),
 
-  getByName: (name: string) =>
-    api.get<Exercise>(`/api/exercises/${encodeURIComponent(name)}`),
+    getByName: (name: string) =>
+        api.get<Exercise>(`/api/exercises/${encodeURIComponent(name)}`),
 
-  create: (exercise: ExerciseCreate) =>
-    api.post<Exercise>('/api/exercises', exercise),
+    create: (exercise: ExerciseCreate) =>
+        api.post<Exercise>("/api/exercises", exercise),
 };
 
 // Categories
 export const categoriesApi = {
-  getAll: () =>
-    api.get<Category[]>('/api/exercises/categories/'),
+    getAll: () => api.get<Category[]>("/api/exercises/categories/"),
 
-  getByName: (name: string) =>
-    api.get<Category>(`/api/exercises/categories/${encodeURIComponent(name)}`),
+    getByName: (name: string) =>
+        api.get<Category>(
+            `/api/exercises/categories/${encodeURIComponent(name)}`,
+        ),
 
-  create: (category: CategoryCreate) =>
-    api.post<Category>('/api/exercises/categories/', category),
+    create: (category: CategoryCreate) =>
+        api.post<Category>("/api/exercises/categories/", category),
 
-  getExercises: (name: string) =>
-    api.get<{ category: string; exercises: string[] }>(
-      `/api/exercises/categories/${encodeURIComponent(name)}/exercises`
-    ),
+    getExercises: (name: string) =>
+        api.get<{ category: string; exercises: string[] }>(
+            `/api/exercises/categories/${encodeURIComponent(name)}/exercises`,
+        ),
 };
 
 // Progression
 export const progressionApi = {
-  getByExercise: (exercise: string, includeUpcoming: boolean = true) =>
-    api.get<ProgressionResponse>(`/api/progression/${encodeURIComponent(exercise)}`, {
-      params: { include_upcoming: includeUpcoming },
-    }),
+    getByExercise: (exercise: string, includeUpcoming: boolean = true) =>
+        api.get<ProgressionResponse>(
+            `/api/progression/${encodeURIComponent(exercise)}`,
+            {
+                params: { include_upcoming: includeUpcoming },
+            },
+        ),
 
-  getMainLifts: () =>
-    api.get<Record<string, ProgressionResponse>>('/api/progression/'),
+    getMainLifts: () =>
+        api.get<Record<string, ProgressionResponse>>("/api/progression/"),
 
-  getExerciseList: () =>
-    api.get<string[]>('/api/progression/exercises/list'),
+    getExerciseList: () => api.get<string[]>("/api/progression/exercises/list"),
 };
 
 // Upcoming Workouts
 export const upcomingApi = {
-  getAll: () =>
-    api.get<UpcomingWorkout[]>('/api/upcoming'),
+    getAll: () => api.get<UpcomingWorkout[]>("/api/upcoming"),
 
-  getSession: (session: number) =>
-    api.get<UpcomingWorkout[]>(`/api/upcoming/session/${session}`),
+    getSession: (session: number) =>
+        api.get<UpcomingWorkout[]>(`/api/upcoming/session/${session}`),
 
-  create: (workout: UpcomingWorkoutCreate) =>
-    api.post<UpcomingWorkout>('/api/upcoming', workout),
+    create: (workout: UpcomingWorkoutCreate) =>
+        api.post<UpcomingWorkout>("/api/upcoming", workout),
 
-  createBulk: (workouts: UpcomingWorkoutCreate[]) =>
-    api.post<UpcomingWorkout[]>('/api/upcoming/bulk', { workouts }),
+    createBulk: (workouts: UpcomingWorkoutCreate[]) =>
+        api.post<UpcomingWorkout[]>("/api/upcoming/bulk", { workouts }),
 
-  deleteSession: (session: number) =>
-    api.delete(`/api/upcoming/session/${session}`),
+    deleteSession: (session: number) =>
+        api.delete(`/api/upcoming/session/${session}`),
 
-  transferSession: (session: number, date: string) =>
-    api.post<{ session: number; date: string; count: number; message: string }>(
-      `/api/upcoming/session/${session}/transfer`,
-      { date }
-    ),
+    transferSession: (session: number, date: string) =>
+        api.post<{
+            session: number;
+            date: string;
+            count: number;
+            message: string;
+        }>(`/api/upcoming/session/${session}/transfer`, { date }),
 };
 
 // Body Composition
 export const bodyCompositionApi = {
-  getAll: (params?: { start_date?: string; end_date?: string; skip?: number; limit?: number }) =>
-    api.get<BodyComposition[]>('/api/body-composition', { params }),
+    getAll: (params?: {
+        start_date?: string;
+        end_date?: string;
+        skip?: number;
+        limit?: number;
+    }) => api.get<BodyComposition[]>("/api/body-composition", { params }),
 
-  getLatest: () =>
-    api.get<BodyComposition>('/api/body-composition/latest'),
+    getLatest: () => api.get<BodyComposition>("/api/body-composition/latest"),
 
-  getStats: () =>
-    api.get<BodyCompositionStats>('/api/body-composition/stats'),
+    getStats: () =>
+        api.get<BodyCompositionStats>("/api/body-composition/stats"),
 
-  getTrends: (days: number = 30) =>
-    api.get<BodyCompositionTrend>('/api/body-composition/trends', { params: { days } }),
+    getTrends: (days: number = 30) =>
+        api.get<BodyCompositionTrend>("/api/body-composition/trends", {
+            params: { days },
+        }),
 
-  create: (measurement: Partial<BodyComposition>) =>
-    api.post<BodyComposition>('/api/body-composition', measurement),
+    create: (measurement: Partial<BodyComposition>) =>
+        api.post<BodyComposition>("/api/body-composition", measurement),
 
-  delete: (id: number) =>
-    api.delete(`/api/body-composition/${id}`),
+    delete: (id: number) => api.delete(`/api/body-composition/${id}`),
 };
 
 // System
 export const systemApi = {
-  health: () =>
-    api.get<{ status: string; version: string }>('/api/health'),
+    health: () => api.get<{ status: string; version: string }>("/api/health"),
 
-  mqttStatus: () =>
-    api.get<{ connected: boolean; broker: string }>('/api/mqtt/status'),
+    mqttStatus: () =>
+        api.get<{ connected: boolean; broker: string }>("/api/mqtt/status"),
 
-  mqttReconnect: () =>
-    api.post<{ message: string }>('/api/mqtt/reconnect'),
+    mqttReconnect: () => api.post<{ message: string }>("/api/mqtt/reconnect"),
 };
 
 export default api;

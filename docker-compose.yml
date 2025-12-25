@@ -1,16 +1,38 @@
 services:
-  helf:
-    build: .
-    container_name: helf-app
-    ports:
-      - "30171:8080"
-    volumes:
-      # Persist workout data
-      - /mnt/fast/apps/helf/data:/app/data
-    environment:
-      - DATA_DIR=/app/data
-      - MQTT_BROKER_HOST=host.docker.internal
-      - MQTT_BROKER_PORT=1883
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: unless-stopped
+    helf:
+        build: .
+        container_name: helf-app
+        ports:
+            - "30171:8080"
+        volumes:
+            # Persist workout data and database
+            - /mnt/fast/apps/helf/data:/app/data
+        environment:
+            # Data directory
+            - DATA_DIR=/app/data
+
+            # MQTT configuration for smart scale integration
+            - MQTT_BROKER_HOST=host.docker.internal
+            - MQTT_BROKER_PORT=1883
+
+            # API configuration
+            - CORS_ORIGINS=*
+
+            # Production settings
+            - PRODUCTION=true
+        extra_hosts:
+            # Allow container to access host services (MQTT broker)
+            - "host.docker.internal:host-gateway"
+        restart: unless-stopped
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health').read()",
+                ]
+            interval: 60s
+            timeout: 10s
+            start_period: 40s
+            retries: 3

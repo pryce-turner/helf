@@ -18,13 +18,14 @@ class UpcomingWorkoutRepository:
     def get_all(self) -> list[dict]:
         """Get all upcoming workouts, sorted by session."""
         workouts = self.table.all()
+        workouts = [{**doc, 'doc_id': doc.doc_id} for doc in workouts]
         workouts.sort(key=lambda x: x.get('session', 0))
         return workouts
 
     def get_by_session(self, session: int) -> list[dict]:
         """Get all workouts for a specific session."""
         workouts = self.table.search(self.query.session == session)
-        return workouts
+        return [{**doc, 'doc_id': doc.doc_id} for doc in workouts]
 
     def get_lowest_session(self) -> Optional[int]:
         """Get the lowest session number."""
@@ -32,6 +33,7 @@ class UpcomingWorkoutRepository:
         if not workouts:
             return None
 
+        # No need to add doc_id since we're only extracting session numbers
         sessions = [w.get('session', 0) for w in workouts if w.get('session')]
         return min(sessions) if sessions else None
 
@@ -65,5 +67,6 @@ class UpcomingWorkoutRepository:
     def get_by_exercise(self, exercise: str) -> list[dict]:
         """Get all upcoming workouts for a specific exercise."""
         workouts = self.table.search(self.query.exercise == exercise)
+        workouts = [{**doc, 'doc_id': doc.doc_id} for doc in workouts]
         workouts.sort(key=lambda x: x.get('session', 0))
         return workouts

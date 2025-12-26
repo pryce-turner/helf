@@ -37,3 +37,6 @@ data/*.csv
 
 # NiceGUI storage
 .nicegui/
+
+# Data
+data/*

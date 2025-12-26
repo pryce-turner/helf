@@ -125,10 +125,29 @@ if static_dir.exists() and static_dir.is_dir():
     async def root():
         return FileResponse(static_dir / "index.html", media_type="text/html")
 
-    # Catch-all for SPA routing - must be last!
-    @app.get("/{full_path:path}")
-    async def spa_catchall(full_path: str):
-        """Serve index.html for all unmatched routes (SPA routing)."""
+    # SPA routes - specific paths for React Router
+    @app.get("/calendar")
+    async def spa_calendar():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/day/{date}")
+    async def spa_day(date: str):
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/progression")
+    async def spa_progression():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/progression/{exercise}")
+    async def spa_progression_exercise(exercise: str):
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/upcoming")
+    async def spa_upcoming():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/body-composition")
+    async def spa_body_composition():
         return FileResponse(static_dir / "index.html", media_type="text/html")
 else:
     @app.get("/")

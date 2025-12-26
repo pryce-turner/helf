@@ -18,16 +18,19 @@ class ExerciseRepository:
 
     def get_all(self) -> list[dict]:
         """Get all exercises."""
-        return self.table.all()
+        return [{**doc, 'doc_id': doc.doc_id} for doc in self.table.all()]
 
     def get_by_name(self, name: str) -> Optional[dict]:
         """Get an exercise by name."""
         results = self.table.search(self.query.name == name)
-        return results[0] if results else None
+        if results:
+            return {**results[0], 'doc_id': results[0].doc_id}
+        return None
 
     def get_by_category(self, category: str) -> list[dict]:
         """Get all exercises in a category."""
         exercises = self.table.search(self.query.category == category)
+        exercises = [{**doc, 'doc_id': doc.doc_id} for doc in exercises]
         # Sort by last_used descending (most recent first)
         exercises.sort(key=lambda x: x.get('last_used', ''), reverse=True)
         return exercises
@@ -65,6 +68,7 @@ class ExerciseRepository:
     def get_recent(self, limit: int = 10) -> list[dict]:
         """Get recently used exercises."""
         exercises = self.table.all()
+        exercises = [{**doc, 'doc_id': doc.doc_id} for doc in exercises]
         # Filter out exercises without last_used
         exercises = [e for e in exercises if e.get('last_used')]
         # Sort by last_used descending
@@ -82,6 +86,7 @@ class CategoryRepository:
     def get_all(self) -> list[dict]:
         """Get all categories."""
         categories = self.table.all()
+        categories = [{**doc, 'doc_id': doc.doc_id} for doc in categories]
         # Sort alphabetically
         categories.sort(key=lambda x: x.get('name', ''))
         return categories
@@ -89,7 +94,9 @@ class CategoryRepository:
     def get_by_name(self, name: str) -> Optional[dict]:
         """Get a category by name."""
         results = self.table.search(self.query.name == name)
-        return results[0] if results else None
+        if results:
+            return {**results[0], 'doc_id': results[0].doc_id}
+        return None
 
     def create(self, category: CategoryCreate) -> dict:
         """Create a new category."""

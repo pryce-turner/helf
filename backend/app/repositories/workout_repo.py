@@ -18,7 +18,12 @@ class WorkoutRepository:
 
     def get_all(self, skip: int = 0, limit: int = 100) -> list[dict]:
         """Get all workouts with pagination."""
-        all_workouts = self.table.all()
+        # Get all documents with their doc_ids
+        all_workouts = []
+        for doc in self.table.all():
+            doc_with_id = {**doc, 'doc_id': doc.doc_id}
+            all_workouts.append(doc_with_id)
+
         # Sort by date descending, then by order
         all_workouts.sort(key=lambda x: (x.get('date', ''), x.get('order', 0)), reverse=True)
         return all_workouts[skip:skip+limit]
@@ -29,7 +34,9 @@ class WorkoutRepository:
 
     def get_by_date(self, date: str) -> list[dict]:
         """Get all workouts for a specific date, sorted by order."""
-        workouts = self.table.search(self.query.date == date)
+        results = self.table.search(self.query.date == date)
+        # Add doc_id to each workout
+        workouts = [{**doc, 'doc_id': doc.doc_id} for doc in results]
         workouts.sort(key=lambda x: x.get('order', 0))
         return workouts
 

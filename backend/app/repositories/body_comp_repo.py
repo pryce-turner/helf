@@ -19,6 +19,7 @@ class BodyCompositionRepository:
     def get_all(self, skip: int = 0, limit: int = 100) -> list[dict]:
         """Get all measurements with pagination."""
         measurements = self.table.all()
+        measurements = [{**doc, 'doc_id': doc.doc_id} for doc in measurements]
         # Sort by timestamp descending (most recent first)
         measurements.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
         return measurements[skip:skip+limit]
@@ -33,6 +34,7 @@ class BodyCompositionRepository:
         if not measurements:
             return None
 
+        measurements = [{**doc, 'doc_id': doc.doc_id} for doc in measurements]
         measurements.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
         return measurements[0]
 
@@ -41,6 +43,7 @@ class BodyCompositionRepository:
         measurements = self.table.search(
             (self.query.date >= start_date) & (self.query.date <= end_date)
         )
+        measurements = [{**doc, 'doc_id': doc.doc_id} for doc in measurements]
         measurements.sort(key=lambda x: x.get('timestamp', ''))
         return measurements
 
@@ -51,6 +54,7 @@ class BodyCompositionRepository:
         ).isoformat()
 
         measurements = self.table.search(self.query.date >= cutoff_date)
+        measurements = [{**doc, 'doc_id': doc.doc_id} for doc in measurements]
         measurements.sort(key=lambda x: x.get('timestamp', ''))
         return measurements
 
@@ -91,6 +95,7 @@ class BodyCompositionRepository:
                 'latest_date': None,
             }
 
+        measurements = [{**doc, 'doc_id': doc.doc_id} for doc in measurements]
         # Sort by timestamp
         measurements.sort(key=lambda x: x.get('timestamp', ''))
 

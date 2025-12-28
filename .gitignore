@@ -39,4 +39,4 @@ data/*.csv
 .nicegui/
 
 # Data
-data/*
+**/helf.json

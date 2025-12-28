@@ -1,5 +1,5 @@
 export interface Workout {
-  id: number;
+  doc_id: number;
   date: string;
   exercise: string;
   category: string;

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Dumbbell } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useCalendar } from "@/hooks/useWorkouts";
+import { Button } from "@/components/ui/button";
 
 const Calendar = () => {
     const navigate = useNavigate();
@@ -53,7 +54,17 @@ const Calendar = () => {
 
     const days = [];
     for (let i = 0; i < firstDay; i++) {
-        days.push(<div key={`empty-${i}`} className="h-20 sm:h-24" />);
+        days.push(
+            <div
+                key={`empty-${i}`}
+                style={{
+                    aspectRatio: '1/1',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--bg-tertiary)',
+                    opacity: 0.3,
+                }}
+            />,
+        );
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -68,16 +79,59 @@ const Calendar = () => {
             <div
                 key={day}
                 onClick={() => handleDayClick(day)}
-                className={`h-20 sm:h-24 border border-border rounded-lg p-2 cursor-pointer transition-colors ${
-                    count > 0
-                        ? "bg-green-900/20 hover:bg-green-900/30"
-                        : "hover:bg-accent"
-                } ${isToday ? "ring-2 ring-primary" : ""}`}
+                className="animate-in stagger-children"
+                style={{
+                    aspectRatio: '1/1',
+                    borderRadius: 'var(--radius-md)',
+                    background: count > 0 ? 'var(--accent-subtle)' : 'var(--bg-tertiary)',
+                    border: `${isToday ? '2px' : '1px'} solid ${isToday ? 'var(--accent)' : count > 0 ? 'var(--accent-muted)' : 'var(--border-subtle)'}`,
+                    padding: 'var(--space-3)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transition: 'all var(--duration-normal) var(--ease-default)',
+                    boxShadow: isToday ? 'var(--shadow-glow)' : 'none',
+                }}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                    e.currentTarget.style.background = count > 0 ? 'var(--accent-glow)' : 'var(--bg-hover)';
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = isToday ? 'var(--shadow-glow)' : 'none';
+                    e.currentTarget.style.background = count > 0 ? 'var(--accent-subtle)' : 'var(--bg-tertiary)';
+                }}
             >
-                <div className="font-semibold text-sm sm:text-base">{day}</div>
+                <div
+                    style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        fontSize: '14px',
+                        color: isToday ? 'var(--accent)' : count > 0 ? 'var(--accent)' : 'var(--text-secondary)',
+                    }}
+                >
+                    {day}
+                </div>
                 {count > 0 && (
-                    <div className="text-xs text-green-400 mt-1">
-                        {count} workout{count > 1 ? "s" : ""}
+                    <div className="mt-auto flex items-center gap-1">
+                        <Dumbbell style={{ width: '12px', height: '12px', color: 'var(--accent)' }} />
+                        <span style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: 'var(--accent)',
+                            fontFamily: 'var(--font-mono)',
+                        }}>
+                            {count}
+                        </span>
+                    </div>
+                )}
+                {count === 0 && (
+                    <div className="mt-auto opacity-0 transition-opacity" style={{ transitionDuration: 'var(--duration-normal)' }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                    >
+                        <Plus style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
                     </div>
                 )}
             </div>,
@@ -85,52 +139,197 @@ const Calendar = () => {
     }
 
     return (
-        <div className="min-h-screen">
+        <>
             <Navigation />
-
-            <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
-                <div className="bg-card rounded-lg shadow-lg p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <button
+            <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+                <div className="max-w-7xl mx-auto" style={{ padding: 'var(--space-6)' }}>
+                {/* Calendar Card */}
+                <div
+                    className="card animate-in"
+                    style={{
+                        marginBottom: 'var(--space-6)',
+                        animationDelay: '0ms',
+                    }}
+                >
+                    {/* Month Navigation */}
+                    <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-6)' }}>
+                        <Button
                             onClick={previousMonth}
-                            className="p-2 rounded-md hover:bg-accent transition-colors"
+                            variant="outline"
+                            size="icon"
+                            style={{
+                                width: '44px',
+                                height: '44px',
+                                borderRadius: 'var(--radius-sm)',
+                                background: 'var(--bg-tertiary)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                                cursor: 'pointer',
+                                transition: 'all var(--duration-normal)',
+                            }}
+                            onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                            }}
+                            onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                e.currentTarget.style.background = 'var(--bg-tertiary)';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }}
                         >
-                            <ChevronLeft className="h-6 w-6" />
-                        </button>
+                            <ChevronLeft style={{ width: '20px', height: '20px' }} />
+                        </Button>
 
-                        <h2 className="text-2xl font-bold">{monthName}</h2>
+                        <div className="text-center">
+                            <h2
+                                style={{
+                                    fontFamily: 'var(--font-display)',
+                                    fontSize: '24px',
+                                    fontWeight: 600,
+                                    color: 'var(--text-primary)',
+                                    letterSpacing: '-0.01em',
+                                }}
+                            >
+                                {monthName.toUpperCase()}
+                            </h2>
+                            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
+                                Your workout calendar
+                            </p>
+                        </div>
 
-                        <button
+                        <Button
                             onClick={nextMonth}
-                            className="p-2 rounded-md hover:bg-accent transition-colors"
+                            variant="outline"
+                            size="icon"
+                            style={{
+                                width: '44px',
+                                height: '44px',
+                                borderRadius: 'var(--radius-sm)',
+                                background: 'var(--bg-tertiary)',
+                                border: '1px solid var(--border)',
+                                color: 'var(--text-primary)',
+                                cursor: 'pointer',
+                                transition: 'all var(--duration-normal)',
+                            }}
+                            onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                            }}
+                            onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
+                                e.currentTarget.style.background = 'var(--bg-tertiary)';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }}
                         >
-                            <ChevronRight className="h-6 w-6" />
-                        </button>
+                            <ChevronRight style={{ width: '20px', height: '20px' }} />
+                        </Button>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-2 mb-2">
+                    {/* Day Headers */}
+                    <div className="grid grid-cols-7" style={{ gap: 'var(--space-1)', marginBottom: 'var(--space-4)' }}>
                         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                            (day) => (
+                            (day, index) => (
                                 <div
                                     key={day}
-                                    className="text-center font-bold text-sm text-muted-foreground"
+                                    style={{
+                                        textAlign: 'center',
+                                        fontSize: '12px',
+                                        fontWeight: 600,
+                                        color: index === 0 || index === 6 ? 'var(--text-secondary)' : 'var(--text-muted)',
+                                        padding: 'var(--space-2)',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.05em',
+                                    }}
                                 >
-                                    {day}
+                                    <span className="hidden sm:inline">
+                                        {day}
+                                    </span>
+                                    <span className="sm:hidden">
+                                        {day.charAt(0)}
+                                    </span>
                                 </div>
                             ),
                         )}
                     </div>
 
+                    {/* Calendar Grid */}
                     {isLoading ? (
-                        <div className="text-center py-12 text-muted-foreground">
-                            Loading calendar...
+                        <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>
+                            <div
+                                className="inline-block animate-spin rounded-full border-4 border-t-transparent"
+                                style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderColor: 'var(--accent)',
+                                    borderTopColor: 'transparent',
+                                }}
+                            />
+                            <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>
+                                Loading calendar...
+                            </p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-7 gap-2">{days}</div>
+                        <div className="grid grid-cols-7 stagger-children" style={{ gap: 'var(--space-1)' }}>
+                            {days}
+                        </div>
                     )}
                 </div>
+
+                {/* Quick Stats */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 stagger-children" style={{ gap: 'var(--space-4)' }}>
+                    <div
+                        className="stat-card animate-in"
+                        style={{ animationDelay: '100ms' }}
+                    >
+                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>
+                            THIS MONTH
+                        </div>
+                        <div className="stat-card__value">
+                            {Object.values(workoutCounts).reduce(
+                                (a, b) => a + b,
+                                0,
+                            )}
+                        </div>
+                        <div className="stat-card__label">
+                            Total Workouts
+                        </div>
+                    </div>
+
+                    <div
+                        className="stat-card animate-in"
+                        style={{ animationDelay: '150ms' }}
+                    >
+                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>
+                            ACTIVE DAYS
+                        </div>
+                        <div className="stat-card__value">
+                            {
+                                Object.values(workoutCounts).filter(
+                                    (c) => c > 0,
+                                ).length
+                            }
+                        </div>
+                        <div className="stat-card__label">
+                            Days with workouts
+                        </div>
+                    </div>
+
+                    <div
+                        className="stat-card animate-in"
+                        style={{ animationDelay: '200ms' }}
+                    >
+                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: 'var(--space-2)' }}>
+                            STREAK
+                        </div>
+                        <div className="stat-card__value" style={{ fontSize: '28px' }}>
+                            🔥
+                        </div>
+                        <div className="stat-card__label">
+                            Keep it up!
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+            </div>
+        </>
     );
 };
 

@@ -1,5 +1,5 @@
 export interface UpcomingWorkout {
-  id: number;
+  doc_id: number;
   session: number;
   exercise: string;
   category: string;

@@ -238,16 +238,24 @@ def main():
     print("=" * 60)
 
     # Get paths
-    data_dir = Path(__file__).parent.parent.parent / "data"
-    db_path = data_dir / "helf.json"
+    # CSVs are in project_root/data/
+    csv_dir = Path(__file__).parent.parent.parent / "data"
+    # Database goes in backend/data/ (where the backend expects it)
+    db_dir = Path(__file__).parent.parent / "data"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db_path = db_dir / "helf.json"
 
     # Check if database already exists
     if db_path.exists():
-        response = input(f"\n⚠️  Database {db_path} already exists. Overwrite? (y/N): ")
-        if response.lower() != 'y':
-            print("Migration cancelled.")
-            return
-        db_path.unlink()
+        if '--force' in sys.argv:
+            print(f"\n⚠️  Database {db_path} exists. Overwriting (--force)...")
+            db_path.unlink()
+        else:
+            response = input(f"\n⚠️  Database {db_path} already exists. Overwrite? (y/N): ")
+            if response.lower() != 'y':
+                print("Migration cancelled.")
+                return
+            db_path.unlink()
 
     # Initialize database
     print(f"\nInitializing database at {db_path}...")
@@ -261,9 +269,9 @@ def main():
     # Run migrations
     print()
     totals = {
-        'workouts': migrate_workouts(data_dir / "workouts.csv", db),
-        'upcoming': migrate_upcoming_workouts(data_dir / "upcoming_workouts.csv", db),
-        'body_comp': migrate_body_composition(data_dir / "body_composition.csv", db),
+        'workouts': migrate_workouts(csv_dir / "workouts.csv", db),
+        'upcoming': migrate_upcoming_workouts(csv_dir / "upcoming_workouts.csv", db),
+        'body_comp': migrate_body_composition(csv_dir / "body_composition.csv", db),
     }
 
     # Extract exercises and categories

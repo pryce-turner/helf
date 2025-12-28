@@ -1,5 +1,5 @@
 export interface BodyComposition {
-  id: number;
+  doc_id: number;
   timestamp: string;
   date: string;
   weight: number;

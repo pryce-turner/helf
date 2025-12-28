@@ -106,5 +106,12 @@ export default defineConfig({
     server: {
         port: 8080,
         host: true,
+        allowedHosts: ["dev.pryce.fyi"],
+        proxy: {
+            "/api": {
+                target: "http://localhost:8000",
+                changeOrigin: true,
+            },
+        },
     },
 });

@@ -1,5 +1,5 @@
 export interface Exercise {
-  id: number;
+  doc_id: number;
   name: string;
   category: string;
   last_used: string | null;
@@ -13,7 +13,7 @@ export interface ExerciseCreate {
 }
 
 export interface Category {
-  id: number;
+  doc_id: number;
   name: string;
   created_at: string;
 }

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Paths
-    data_dir: Path = Path(os.getenv("DATA_DIR", "./data"))
+    data_dir: Path = Path(os.getenv("DATA_DIR", "../data"))
 
     # Database
     db_path: Path | None = None

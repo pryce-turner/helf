@@ -18,11 +18,9 @@ import type {
 import type { ProgressionResponse } from "../types/progression";
 import type { UpcomingWorkout, UpcomingWorkoutCreate } from "../types/upcoming";
 
-// In production, use relative URL (same origin as frontend)
-// In development, use localhost:8000
-const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL ||
-    (import.meta.env.PROD ? "" : "http://localhost:8000");
+// Use relative URL - Vite proxy handles routing to backend in dev
+// In production, requests go to same origin
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const api = axios.create({
     baseURL: API_BASE_URL,
@@ -34,7 +32,7 @@ const api = axios.create({
 // Workouts
 export const workoutsApi = {
     getAll: (params?: { date?: string; skip?: number; limit?: number }) =>
-        api.get<Workout[]>("/api/workouts", { params }),
+        api.get<Workout[]>("/api/workouts/", { params }),
 
     getById: (id: number) => api.get<Workout>(`/api/workouts/${id}`),
 
@@ -44,7 +42,7 @@ export const workoutsApi = {
         }),
 
     create: (workout: WorkoutCreate) =>
-        api.post<Workout>("/api/workouts", workout),
+        api.post<Workout>("/api/workouts/", workout),
 
     update: (id: number, workout: WorkoutCreate) =>
         api.put<Workout>(`/api/workouts/${id}`, workout),
@@ -57,7 +55,7 @@ export const workoutsApi = {
 
 // Exercises
 export const exercisesApi = {
-    getAll: () => api.get<Exercise[]>("/api/exercises"),
+    getAll: () => api.get<Exercise[]>("/api/exercises/"),
 
     getRecent: (limit: number = 10) =>
         api.get<Exercise[]>("/api/exercises/recent", { params: { limit } }),
@@ -66,7 +64,7 @@ export const exercisesApi = {
         api.get<Exercise>(`/api/exercises/${encodeURIComponent(name)}`),
 
     create: (exercise: ExerciseCreate) =>
-        api.post<Exercise>("/api/exercises", exercise),
+        api.post<Exercise>("/api/exercises/", exercise),
 };
 
 // Categories
@@ -105,13 +103,13 @@ export const progressionApi = {
 
 // Upcoming Workouts
 export const upcomingApi = {
-    getAll: () => api.get<UpcomingWorkout[]>("/api/upcoming"),
+    getAll: () => api.get<UpcomingWorkout[]>("/api/upcoming/"),
 
     getSession: (session: number) =>
         api.get<UpcomingWorkout[]>(`/api/upcoming/session/${session}`),
 
     create: (workout: UpcomingWorkoutCreate) =>
-        api.post<UpcomingWorkout>("/api/upcoming", workout),
+        api.post<UpcomingWorkout>("/api/upcoming/", workout),
 
     createBulk: (workouts: UpcomingWorkoutCreate[]) =>
         api.post<UpcomingWorkout[]>("/api/upcoming/bulk", { workouts }),
@@ -135,7 +133,7 @@ export const bodyCompositionApi = {
         end_date?: string;
         skip?: number;
         limit?: number;
-    }) => api.get<BodyComposition[]>("/api/body-composition", { params }),
+    }) => api.get<BodyComposition[]>("/api/body-composition/", { params }),
 
     getLatest: () => api.get<BodyComposition>("/api/body-composition/latest"),
 
@@ -148,7 +146,7 @@ export const bodyCompositionApi = {
         }),
 
     create: (measurement: Partial<BodyComposition>) =>
-        api.post<BodyComposition>("/api/body-composition", measurement),
+        api.post<BodyComposition>("/api/body-composition/", measurement),
 
     delete: (id: number) => api.delete(`/api/body-composition/${id}`),
 };

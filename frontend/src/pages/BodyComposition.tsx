@@ -89,45 +89,24 @@ const BodyComposition = () => {
     return (
         <>
             <Navigation />
-            <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-                <div className="max-w-7xl mx-auto" style={{ padding: 'var(--space-6)' }}>
+            <div className="page">
+                <div className="page__content">
                     {/* Header */}
-                    <div className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
-                        <h1
-                            style={{
-                                fontFamily: 'var(--font-display)',
-                                fontSize: '24px',
-                                fontWeight: 600,
-                                color: 'var(--text-primary)',
-                                letterSpacing: '-0.01em',
-                                marginBottom: 'var(--space-2)',
-                            }}
-                        >
-                            BODY COMPOSITION
-                        </h1>
-                        <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                            Track your weight, body fat, and muscle mass over time
-                        </p>
+                    <div className="page__header animate-in">
+                        <h1 className="page__title">BODY COMPOSITION</h1>
+                        <p className="page__subtitle">Track your weight, body fat, and muscle mass over time</p>
                     </div>
 
                     {statsLoading ? (
                         <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>
-                            <div
-                                className="inline-block animate-spin rounded-full border-4 border-t-transparent"
-                                style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderColor: 'var(--accent)',
-                                    borderTopColor: 'transparent',
-                                }}
-                            />
+                            <div className="loading-spinner inline-block" />
                             <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>
                                 Loading stats...
                             </p>
                         </div>
                     ) : stats ? (
                         <>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 stagger-children" style={{ gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 section">
                                 <StatCard
                                     title="Current Weight"
                                     value={
@@ -188,27 +167,19 @@ const BodyComposition = () => {
                                 </div>
                             </div>
 
-                            <Card className="animate-in" style={{ animationDelay: '100ms' }}>
-                                <CardHeader className="flex flex-row items-center justify-between" style={{ paddingBottom: 'var(--space-4)' }}>
-                                    <CardTitle style={{ fontFamily: 'var(--font-display)', fontSize: '18px' }}>
+                            <Card className="animate-in">
+                                <CardHeader className="flex flex-row items-center justify-between">
+                                    <CardTitle className="font-display text-xl tracking-tight">
                                         TRENDS
                                     </CardTitle>
-                                    <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
-                                        <label style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-[13px] text-[var(--text-muted)]">
                                             Period:
                                         </label>
                                         <select
                                             value={trendDays}
-                                            onChange={(e) =>
-                                                setTrendDays(
-                                                    parseInt(e.target.value),
-                                                )
-                                            }
-                                            className="input"
-                                            style={{
-                                                padding: '6px 12px',
-                                                fontSize: '13px',
-                                            }}
+                                            onChange={(e) => setTrendDays(parseInt(e.target.value))}
+                                            className="input text-[13px] py-1.5 px-3"
                                         >
                                             <option value={7}>7 days</option>
                                             <option value={30}>30 days</option>
@@ -220,19 +191,9 @@ const BodyComposition = () => {
                                 </CardHeader>
                                 <CardContent>
                                     {trendsLoading ? (
-                                        <div className="text-center" style={{ padding: 'var(--space-12) 0' }}>
-                                            <div
-                                                className="inline-block animate-spin rounded-full border-4 border-t-transparent"
-                                                style={{
-                                                    width: '40px',
-                                                    height: '40px',
-                                                    borderColor: 'var(--accent)',
-                                                    borderTopColor: 'transparent',
-                                                }}
-                                            />
-                                            <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>
-                                                Loading trends...
-                                            </p>
+                                        <div className="text-center py-12">
+                                            <div className="loading-spinner inline-block" style={{ width: '40px', height: '40px' }} />
+                                            <p className="mt-4 text-[var(--text-muted)]">Loading trends...</p>
                                         </div>
                                     ) : chartData.length > 0 ? (
                                         <ResponsiveContainer
@@ -353,7 +314,7 @@ const BodyComposition = () => {
                                             </LineChart>
                                         </ResponsiveContainer>
                                     ) : (
-                                        <div className="text-center" style={{ padding: 'var(--space-12) 0', color: 'var(--text-secondary)' }}>
+                                        <div className="text-center py-12 text-[var(--text-secondary)]">
                                             No trend data available for this period
                                         </div>
                                     )}
@@ -361,14 +322,13 @@ const BodyComposition = () => {
                             </Card>
                         </>
                     ) : (
-                        <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>
-                            <CardContent style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
-                                <p style={{ color: 'var(--text-secondary)' }}>
+                        <Card className="border-2 border-dashed border-[var(--border)] bg-transparent">
+                            <CardContent className="p-12 text-center">
+                                <p className="text-[var(--text-secondary)]">
                                     No body composition data available.
                                 </p>
-                                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-                                    Connect your smart scale via MQTT to
-                                    automatically track measurements.
+                                <p className="text-[13px] text-[var(--text-muted)] mt-2">
+                                    Connect your smart scale via MQTT to automatically track measurements.
                                 </p>
                             </CardContent>
                         </Card>

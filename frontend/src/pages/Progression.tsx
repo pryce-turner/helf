@@ -114,35 +114,16 @@ const Progression = () => {
     return (
         <>
             <Navigation />
-            <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-                <div className="max-w-7xl mx-auto" style={{ padding: 'var(--space-6)' }}>
+            <div className="page">
+                <div className="page__content">
                     {/* Header */}
-                    <div className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
-                        <h1
-                            style={{
-                                fontFamily: 'var(--font-display)',
-                                fontSize: '24px',
-                                fontWeight: 600,
-                                color: 'var(--text-primary)',
-                                letterSpacing: '-0.01em',
-                                marginBottom: 'var(--space-2)',
-                            }}
-                        >
-                            PROGRESSION TRACKING
-                        </h1>
-                        <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                            Track your strength gains over time
-                        </p>
+                    <div className="page__header animate-in">
+                        <h1 className="page__title">PROGRESSION TRACKING</h1>
+                        <p className="page__subtitle">Track your strength gains over time</p>
                     </div>
 
                     {/* Controls */}
-                    <div
-                        className="card animate-in"
-                        style={{
-                            marginBottom: 'var(--space-6)',
-                            animationDelay: '50ms',
-                        }}
-                    >
+                    <div className="card animate-in section">
                         <div className="flex flex-col sm:flex-row gap-4">
                             <div className="flex-1">
                                 <Select
@@ -195,35 +176,16 @@ const Progression = () => {
 
                     {isLoading ? (
                         <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>
-                            <div
-                                className="inline-block animate-spin rounded-full border-4 border-t-transparent"
-                                style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderColor: 'var(--accent)',
-                                    borderTopColor: 'transparent',
-                                }}
-                            />
+                            <div className="loading-spinner inline-block" />
                             <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>
                                 Loading progression data...
                             </p>
                         </div>
                     ) : progressionData && combinedData.length > 0 ? (
                         <>
-                            <Card
-                                className="animate-in"
-                                style={{
-                                    marginBottom: 'var(--space-6)',
-                                    animationDelay: '100ms',
-                                }}
-                            >
+                            <Card className="animate-in section">
                                 <CardHeader>
-                                    <CardTitle
-                                        style={{
-                                            fontFamily: 'var(--font-display)',
-                                            fontSize: '18px',
-                                        }}
-                                    >
+                                    <CardTitle className="font-display text-xl tracking-tight">
                                         ESTIMATED 1RM OVER TIME
                                     </CardTitle>
                                 </CardHeader>
@@ -329,62 +291,44 @@ const Progression = () => {
                                 </CardContent>
                             </Card>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2 stagger-children" style={{ gap: 'var(--space-6)' }}>
-                                <Card className="animate-in" style={{ animationDelay: '150ms' }}>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <Card className="animate-in">
                                     <CardHeader>
-                                        <CardTitle style={{ fontFamily: 'var(--font-display)', fontSize: '18px' }}>
+                                        <CardTitle className="font-display text-xl tracking-tight">
                                             HISTORICAL DATA
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', maxHeight: '400px', overflowY: 'auto' }}>
+                                        <div className="flex flex-col gap-3" style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: 'var(--space-2)' }}>
                                             {progressionData.historical
-                                                .sort(
-                                                    (a, b) =>
-                                                        new Date(b.date).getTime() -
-                                                        new Date(a.date).getTime(),
-                                                )
+                                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                                 .map((point, index) => (
                                                     <div
                                                         key={index}
+                                                        className="data-item"
                                                         style={{
-                                                            padding: 'var(--space-3)',
-                                                            background: 'var(--bg-tertiary)',
-                                                            borderRadius: 'var(--radius-md)',
-                                                            display: 'flex',
-                                                            justifyContent: 'space-between',
-                                                            alignItems: 'start',
+                                                            background: 'rgba(34, 197, 94, 0.08)',
+                                                            border: '1px solid rgba(34, 197, 94, 0.15)',
                                                         }}
                                                     >
                                                         <div>
-                                                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                                                {format(
-                                                                    new Date(
-                                                                        point.date,
-                                                                    ),
-                                                                    "MMM d, yyyy",
-                                                                )}
+                                                            <div className="font-semibold text-[var(--text-primary)] text-[15px]">
+                                                                {format(new Date(point.date), "MMM d, yyyy")}
                                                             </div>
-                                                            <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                                                                {point.weight}{" "}
-                                                                {point.weight_unit}{" "}
-                                                                × {point.reps} reps
+                                                            <div className="text-[13px] text-[var(--text-muted)] font-mono mt-1.5">
+                                                                {point.weight} {point.weight_unit} × {point.reps} reps
                                                             </div>
                                                             {point.comment && (
-                                                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 'var(--space-1)' }}>
+                                                                <div className="text-xs text-[var(--text-muted)] italic mt-2">
                                                                     {point.comment}
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div style={{ textAlign: 'right' }}>
-                                                            <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
-                                                                {point.estimated_1rm.toFixed(
-                                                                    1,
-                                                                )}
+                                                        <div className="text-right">
+                                                            <div className="text-xl font-bold text-[var(--accent)] font-mono">
+                                                                {point.estimated_1rm.toFixed(1)}
                                                             </div>
-                                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                                                1RM
-                                                            </div>
+                                                            <div className="text-[11px] text-[var(--text-muted)] mt-1">1RM</div>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -392,87 +336,58 @@ const Progression = () => {
                                     </CardContent>
                                 </Card>
 
-                                {includeUpcoming &&
-                                    progressionData.upcoming.length > 0 && (
-                                        <Card className="animate-in" style={{ animationDelay: '200ms' }}>
-                                            <CardHeader>
-                                                <CardTitle style={{ fontFamily: 'var(--font-display)', fontSize: '18px' }}>
-                                                    UPCOMING WORKOUTS
-                                                </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', maxHeight: '400px', overflowY: 'auto' }}>
-                                                    {progressionData.upcoming.map(
-                                                        (point, index) => (
-                                                            <div
-                                                                key={index}
-                                                                style={{
-                                                                    padding: 'var(--space-3)',
-                                                                    background: 'rgba(234, 179, 8, 0.1)',
-                                                                    borderRadius: 'var(--radius-md)',
-                                                                    display: 'flex',
-                                                                    justifyContent: 'space-between',
-                                                                    alignItems: 'start',
-                                                                    border: '1px solid rgba(234, 179, 8, 0.2)',
-                                                                }}
-                                                            >
-                                                                <div>
-                                                                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                                                        Session{" "}
-                                                                        {
-                                                                            point.session
-                                                                        }
-                                                                    </div>
-                                                                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                                                        {format(
-                                                                            new Date(
-                                                                                point.projected_date,
-                                                                            ),
-                                                                            "MMM d, yyyy",
-                                                                        )}
-                                                                    </div>
-                                                                    <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                                                                        {
-                                                                            point.weight
-                                                                        }{" "}
-                                                                        {
-                                                                            point.weight_unit
-                                                                        }{" "}
-                                                                        ×{" "}
-                                                                        {point.reps}{" "}
-                                                                        reps
-                                                                    </div>
-                                                                    {point.comment && (
-                                                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 'var(--space-1)' }}>
-                                                                            {
-                                                                                point.comment
-                                                                            }
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                                <div style={{ textAlign: 'right' }}>
-                                                                    <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--warning)', fontFamily: 'var(--font-mono)' }}>
-                                                                        {point.estimated_1rm.toFixed(
-                                                                            1,
-                                                                        )}
-                                                                    </div>
-                                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                                                        1RM
-                                                                    </div>
-                                                                </div>
+                                {includeUpcoming && progressionData.upcoming.length > 0 && (
+                                    <Card className="animate-in">
+                                        <CardHeader>
+                                            <CardTitle className="font-display text-xl tracking-tight">
+                                                UPCOMING WORKOUTS
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="flex flex-col gap-3" style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: 'var(--space-2)' }}>
+                                                {progressionData.upcoming.map((point, index) => (
+                                                    <div
+                                                        key={index}
+                                                        className="data-item"
+                                                        style={{
+                                                            background: 'rgba(234, 179, 8, 0.1)',
+                                                            border: '1px solid rgba(234, 179, 8, 0.2)',
+                                                        }}
+                                                    >
+                                                        <div>
+                                                            <div className="font-semibold text-[var(--text-primary)] text-[15px]">
+                                                                Session {point.session}
                                                             </div>
-                                                        ),
-                                                    )}
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    )}
+                                                            <div className="text-[13px] text-[var(--text-secondary)] mt-1">
+                                                                {format(new Date(point.projected_date), "MMM d, yyyy")}
+                                                            </div>
+                                                            <div className="text-[13px] text-[var(--text-muted)] font-mono mt-1.5">
+                                                                {point.weight} {point.weight_unit} × {point.reps} reps
+                                                            </div>
+                                                            {point.comment && (
+                                                                <div className="text-xs text-[var(--text-muted)] italic mt-2">
+                                                                    {point.comment}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-xl font-bold text-[var(--warning)] font-mono">
+                                                                {point.estimated_1rm.toFixed(1)}
+                                                            </div>
+                                                            <div className="text-[11px] text-[var(--text-muted)] mt-1">1RM</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
                             </div>
                         </>
                     ) : (
-                        <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>
-                            <CardContent style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
-                                <p style={{ color: 'var(--text-secondary)' }}>
+                        <Card className="border-2 border-dashed border-[var(--border)] bg-transparent">
+                            <CardContent className="p-12 text-center">
+                                <p className="text-[var(--text-secondary)]">
                                     No progression data available for this exercise.
                                 </p>
                             </CardContent>

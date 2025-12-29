@@ -132,7 +132,7 @@ const WorkoutSession = () => {
         <>
             <Navigation />
             <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-                <div className="max-w-5xl mx-auto" style={{ padding: 'var(--space-6)' }}>
+                <div className="max-w-5xl mx-auto p-6">
                 {/* Header */}
                 <div
                     className="flex flex-col sm:flex-row sm:items-center justify-between animate-in"

@@ -63,86 +63,44 @@ const Upcoming = () => {
   return (
     <>
       <Navigation />
-      <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-        <div className="max-w-7xl mx-auto" style={{ padding: 'var(--space-6)' }}>
+      <div className="page">
+        <div className="page__content">
           {/* Header */}
-          <div className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
-            <h1
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '24px',
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                letterSpacing: '-0.01em',
-                marginBottom: 'var(--space-2)',
-              }}
-            >
-              UPCOMING WORKOUTS
-            </h1>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-              Plan and manage your future training sessions
-            </p>
+          <div className="page__header animate-in">
+            <h1 className="page__title">UPCOMING WORKOUTS</h1>
+            <p className="page__subtitle">Plan and manage your future training sessions</p>
           </div>
 
           {isLoading ? (
             <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>
-              <div
-                className="inline-block animate-spin rounded-full border-4 border-t-transparent"
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  borderColor: 'var(--accent)',
-                  borderTopColor: 'transparent',
-                }}
-              />
-              <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>
-                Loading upcoming workouts...
-              </p>
+              <div className="loading-spinner inline-block" />
+              <p className="mt-4 text-[var(--text-muted)]">Loading upcoming workouts...</p>
             </div>
           ) : sessionGroups.length > 0 ? (
-            <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-              {sessionGroups.map(({ session, workouts }, index) => (
-                <Card key={session} className="animate-in" style={{ animationDelay: `${index * 50}ms` }}>
+            <div className="flex flex-col gap-6">
+              {sessionGroups.map(({ session, workouts }) => (
+                <Card key={session} className="animate-in">
                   <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle style={{ fontFamily: 'var(--font-display)', fontSize: '18px' }}>
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <CardTitle className="font-display text-xl tracking-tight">
                         SESSION {session}
                       </CardTitle>
-                      <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                      <div className="flex items-center gap-3">
                         <button
-                          className="btn-secondary"
-                          style={{ fontSize: '13px', padding: '8px 14px' }}
+                          className="btn-secondary text-[13px] py-2.5 px-4 flex items-center gap-2"
                           onClick={() => {
                             setSelectedSession(session);
                             setShowCalendar(!showCalendar || selectedSession !== session);
                           }}
                         >
-                          <CalendarIcon style={{ width: '16px', height: '16px', marginRight: 'var(--space-2)' }} />
+                          <CalendarIcon className="w-4 h-4" />
                           Transfer
                         </button>
                         <button
-                          style={{
-                            fontSize: '13px',
-                            padding: '8px 14px',
-                            background: 'var(--bg-tertiary)',
-                            color: 'var(--error)',
-                            border: '1px solid var(--error)',
-                            borderRadius: 'var(--radius-sm)',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all var(--duration-normal)',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'var(--error)';
-                            e.currentTarget.style.color = '#fff';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'var(--bg-tertiary)';
-                            e.currentTarget.style.color = 'var(--error)';
-                          }}
+                          className="btn-danger flex items-center gap-2"
                           onClick={() => handleDeleteSession(session)}
                         >
-                          <Trash2 style={{ width: '16px', height: '16px', display: 'inline', marginRight: 'var(--space-2)' }} />
+                          <Trash2 className="w-4 h-4" />
                           Delete
                         </button>
                       </div>
@@ -150,80 +108,68 @@ const Upcoming = () => {
                   </CardHeader>
                   <CardContent>
                     {showCalendar && selectedSession === session && (
-                      <div style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-lg)' }}>
-                        <div className="flex flex-col items-center" style={{ gap: 'var(--space-4)' }}>
+                      <div className="mb-6 p-4 bg-[var(--bg-tertiary)] rounded-[var(--radius-lg)]">
+                        <div className="flex flex-col items-center gap-4">
                           <Calendar
                             mode="single"
                             selected={transferDate}
                             onSelect={setTransferDate}
-                            style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}
+                            className="rounded-[var(--radius-md)] border border-[var(--border)]"
                           />
                           <button
-                            className="btn-primary"
+                            className="btn-primary flex items-center gap-2"
                             onClick={() => handleTransferSession(session)}
                             disabled={!transferDate}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 'var(--space-2)',
-                              opacity: !transferDate ? 0.5 : 1,
-                            }}
+                            style={{ opacity: !transferDate ? 0.5 : 1 }}
                           >
-                            <ArrowRight style={{ width: '18px', height: '18px' }} />
+                            <ArrowRight className="w-[18px] h-[18px]" />
                             Transfer to {transferDate && format(transferDate, 'MMM d, yyyy')}
                           </button>
                         </div>
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <div className="flex flex-col gap-3">
                       {workouts.map((workout, workoutIndex) => (
-                        <div
-                          key={workout.doc_id}
-                          style={{
-                            padding: 'var(--space-4)',
-                            background: 'var(--bg-tertiary)',
-                            borderRadius: 'var(--radius-md)',
-                          }}
-                        >
-                          <div className="flex items-start justify-between">
+                        <div key={workout.doc_id} className="data-item">
+                          <div className="flex items-start justify-between w-full">
                             <div className="flex-1">
-                              <div className="flex items-center" style={{ gap: 'var(--space-3)' }}>
-                                <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 600 }}>
+                              <div className="flex items-center gap-4">
+                                <span className="text-[var(--text-muted)] font-mono text-sm font-semibold min-w-[28px]">
                                   #{workoutIndex + 1}
                                 </span>
                                 <div>
-                                  <h3 style={{ fontWeight: 600, fontSize: '16px', color: 'var(--text-primary)' }}>
+                                  <h3 className="font-semibold text-base text-[var(--text-primary)]">
                                     {workout.exercise}
                                   </h3>
-                                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                  <p className="text-[13px] text-[var(--text-muted)] mt-1">
                                     {workout.category}
                                   </p>
                                 </div>
                               </div>
-                              <div className="flex flex-wrap" style={{ marginTop: 'var(--space-2)', gap: 'var(--space-4)', fontSize: '13px' }}>
+                              <div className="flex flex-wrap mt-3 gap-5 text-[13px]">
                                 {workout.weight && (
-                                  <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
                                     {workout.weight} {workout.weight_unit}
                                   </span>
                                 )}
                                 {workout.reps && (
-                                  <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
                                     {workout.reps} reps
                                   </span>
                                 )}
                                 {workout.distance && (
-                                  <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
                                     {workout.distance} {workout.distance_unit}
                                   </span>
                                 )}
                                 {workout.time && (
-                                  <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
                                     {workout.time}
                                   </span>
                                 )}
                                 {workout.comment && (
-                                  <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                  <span className="text-[var(--text-muted)] italic">
                                     {workout.comment}
                                   </span>
                                 )}
@@ -234,7 +180,7 @@ const Upcoming = () => {
                       ))}
                     </div>
 
-                    <div style={{ marginTop: 'var(--space-4)', fontSize: '13px', color: 'var(--text-muted)' }}>
+                    <div className="mt-5 text-[13px] text-[var(--text-muted)]">
                       {workouts.length} exercise{workouts.length > 1 ? 's' : ''} in this session
                     </div>
                   </CardContent>
@@ -242,36 +188,18 @@ const Upcoming = () => {
               ))}
             </div>
           ) : (
-            <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>
-              <CardContent style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
-                <div
-                  style={{
-                    background: 'var(--bg-tertiary)',
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: 'var(--radius-full)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto var(--space-4)',
-                  }}
-                >
-                  <Dumbbell style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
+            <Card className="border-2 border-dashed border-[var(--border)] bg-transparent">
+              <CardContent className="p-12 text-center">
+                <div className="w-20 h-20 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mx-auto mb-4">
+                  <Dumbbell className="w-10 h-10 text-[var(--text-muted)]" />
                 </div>
-                <h3
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '18px',
-                    fontWeight: 600,
-                    marginBottom: 'var(--space-2)',
-                  }}
-                >
+                <h3 className="font-display text-lg font-semibold mb-2">
                   NO UPCOMING WORKOUTS
                 </h3>
-                <p style={{ color: 'var(--text-secondary)' }}>
+                <p className="text-[var(--text-secondary)]">
                   No upcoming workouts planned.
                 </p>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
+                <p className="text-[13px] text-[var(--text-muted)] mt-2">
                   Use the Wendler 5/3/1 generator or import workouts via CSV to plan your training.
                 </p>
               </CardContent>

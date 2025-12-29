@@ -5,14 +5,18 @@ import { cn } from "@/lib/utils"
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <div
     ref={ref}
     className={cn(
       "border bg-card text-card-foreground shadow-sm",
       className
     )}
-    style={{ borderRadius: 'var(--radius-lg)', borderColor: 'var(--border-subtle)' }}
+    style={{
+      borderRadius: 'var(--radius-lg)',
+      borderColor: 'var(--border-subtle)',
+      ...style
+    }}
     {...props}
   />
 ))
@@ -21,11 +25,14 @@ Card.displayName = "Card"
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <div
     ref={ref}
     className={cn("flex flex-col space-y-1.5", className)}
-    style={{ padding: 'var(--space-6) var(--space-6) var(--space-5)' }}
+    style={{
+      padding: 'var(--space-6) var(--space-6) var(--space-5)',
+      ...style
+    }}
     {...props}
   />
 ))
@@ -58,11 +65,14 @@ CardDescription.displayName = "CardDescription"
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <div
     ref={ref}
     className={cn("", className)}
-    style={{ padding: '0 var(--space-6) var(--space-6)' }}
+    style={{
+      padding: '0 var(--space-6) var(--space-6)',
+      ...style
+    }}
     {...props}
   />
 ))

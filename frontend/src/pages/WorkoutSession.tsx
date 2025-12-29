@@ -131,8 +131,8 @@ const WorkoutSession = () => {
     return (
         <>
             <Navigation />
-            <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-                <div className="max-w-5xl mx-auto p-6">
+            <div className="page">
+                <div className="page__content" style={{ maxWidth: '680px' }}>
                 {/* Header */}
                 <div
                     className="flex flex-col sm:flex-row sm:items-center justify-between animate-in"
@@ -299,8 +299,8 @@ const WorkoutSession = () => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3" style={{ gap: 'var(--space-6)' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                <div className="grid grid-cols-2" style={{ gap: 'var(--space-4)' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', minWidth: 0 }}>
                                         <Label
                                             htmlFor="weight"
                                             style={{
@@ -324,6 +324,7 @@ const WorkoutSession = () => {
                                                 step="0.1"
                                                 placeholder="0"
                                                 className="input"
+                                                style={{ minWidth: 0, flex: 1 }}
                                                 value={formData.weight || ""}
                                                 onChange={(
                                                     e: React.ChangeEvent<HTMLInputElement>,
@@ -350,7 +351,7 @@ const WorkoutSession = () => {
                                                     })
                                                 }
                                             >
-                                                <SelectTrigger className="input" style={{ width: '90px' }}>
+                                                <SelectTrigger className="input" style={{ width: '70px', flexShrink: 0 }}>
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -365,7 +366,7 @@ const WorkoutSession = () => {
                                         </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', minWidth: 0 }}>
                                         <Label
                                             htmlFor="reps"
                                             style={{
@@ -383,6 +384,7 @@ const WorkoutSession = () => {
                                             type="text"
                                             placeholder="e.g., 5 or 5+"
                                             className="input"
+                                            style={{ minWidth: 0 }}
                                             value={formData.reps || ""}
                                             onChange={(
                                                 e: React.ChangeEvent<HTMLInputElement>,
@@ -395,41 +397,41 @@ const WorkoutSession = () => {
                                             }
                                         />
                                     </div>
+                                </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                                        <Label
-                                            htmlFor="comment"
-                                            style={{
-                                                fontSize: '12px',
-                                                fontWeight: 600,
-                                                color: 'var(--text-muted)',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 'var(--space-2)',
-                                            }}
-                                        >
-                                            <MessageSquare style={{ width: '14px', height: '14px' }} />
-                                            Comment
-                                        </Label>
-                                        <Input
-                                            id="comment"
-                                            type="text"
-                                            placeholder="Optional note"
-                                            className="input"
-                                            value={formData.comment || ""}
-                                            onChange={(
-                                                e: React.ChangeEvent<HTMLInputElement>,
-                                            ) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    comment:
-                                                        e.target.value || null,
-                                                })
-                                            }
-                                        />
-                                    </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                    <Label
+                                        htmlFor="comment"
+                                        style={{
+                                            fontSize: '12px',
+                                            fontWeight: 600,
+                                            color: 'var(--text-muted)',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 'var(--space-2)',
+                                        }}
+                                    >
+                                        <MessageSquare style={{ width: '14px', height: '14px' }} />
+                                        Comment
+                                    </Label>
+                                    <Input
+                                        id="comment"
+                                        type="text"
+                                        placeholder="Optional note"
+                                        className="input"
+                                        value={formData.comment || ""}
+                                        onChange={(
+                                            e: React.ChangeEvent<HTMLInputElement>,
+                                        ) =>
+                                            setFormData({
+                                                ...formData,
+                                                comment:
+                                                    e.target.value || null,
+                                            })
+                                        }
+                                    />
                                 </div>
 
                                 <div className="flex justify-end" style={{ gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
@@ -647,29 +649,22 @@ const WorkoutSession = () => {
                                                     >
                                                         <ChevronDown style={{ width: '16px', height: '16px' }} />
                                                     </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
+                                                    <button
+                                                        className="btn-danger"
                                                         style={{
                                                             width: '40px',
                                                             height: '40px',
-                                                            borderColor: 'var(--error)',
-                                                            color: 'var(--error)',
-                                                        }}
-                                                        onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-                                                            e.currentTarget.style.background = 'var(--error)';
-                                                            e.currentTarget.style.color = 'var(--text-inverse)';
-                                                        }}
-                                                        onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-                                                            e.currentTarget.style.background = 'var(--bg-tertiary)';
-                                                            e.currentTarget.style.color = 'var(--error)';
+                                                            padding: 0,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
                                                         }}
                                                         onClick={() =>
                                                             handleDelete(workout.doc_id)
                                                         }
                                                     >
                                                         <Trash2 style={{ width: '16px', height: '16px' }} />
-                                                    </Button>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </CardContent>

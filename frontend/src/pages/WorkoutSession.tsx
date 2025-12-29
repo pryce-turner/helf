@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import {
     ArrowLeft,
     Plus,
+    Minus,
     Trash2,
     ChevronUp,
     ChevronDown,
@@ -11,11 +12,11 @@ import {
     Weight,
     Hash,
     MessageSquare,
+    Pencil,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
     Select,
@@ -27,9 +28,11 @@ import {
 import {
     useWorkouts,
     useCreateWorkout,
+    useUpdateWorkout,
     useDeleteWorkout,
     useReorderWorkout,
 } from "@/hooks/useWorkouts";
+import type { Workout } from "@/types/workout";
 import { useCategories, useExercises } from "@/hooks/useExercises";
 import type { WorkoutCreate } from "@/types/workout";
 
@@ -42,10 +45,12 @@ const WorkoutSession = () => {
     const { data: exercises } = useExercises();
 
     const createWorkout = useCreateWorkout();
+    const updateWorkout = useUpdateWorkout();
     const deleteWorkout = useDeleteWorkout();
     const reorderWorkout = useReorderWorkout();
 
     const [showForm, setShowForm] = useState(false);
+    const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
     const [selectedCategory, setSelectedCategory] = useState("");
     const [selectedExercise, setSelectedExercise] = useState("");
     const [formData, setFormData] = useState<WorkoutCreate>({
@@ -76,16 +81,26 @@ const WorkoutSession = () => {
         });
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleEditWorkout = (workout: Workout) => {
+        setEditingWorkout(workout);
+        setSelectedCategory(workout.category);
+        setSelectedExercise(workout.exercise);
+        setFormData({
+            date: workout.date,
+            exercise: workout.exercise,
+            category: workout.category,
+            weight: workout.weight,
+            weight_unit: workout.weight_unit || "lbs",
+            reps: workout.reps,
+            distance: workout.distance,
+            distance_unit: workout.distance_unit,
+            time: workout.time,
+            comment: workout.comment,
+        });
+        setShowForm(true);
+    };
 
-        if (!formData.exercise || !formData.category) {
-            return;
-        }
-
-        await createWorkout.mutateAsync(formData);
-
-        // Reset form
+    const resetForm = () => {
         setFormData({
             date: date || format(new Date(), "yyyy-MM-dd"),
             exercise: "",
@@ -100,7 +115,27 @@ const WorkoutSession = () => {
         });
         setSelectedCategory("");
         setSelectedExercise("");
+        setEditingWorkout(null);
         setShowForm(false);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!formData.exercise || !formData.category) {
+            return;
+        }
+
+        if (editingWorkout) {
+            await updateWorkout.mutateAsync({
+                id: editingWorkout.doc_id,
+                workout: formData,
+            });
+        } else {
+            await createWorkout.mutateAsync(formData);
+        }
+
+        resetForm();
     };
 
     const handleDelete = async (id: number) => {
@@ -183,7 +218,13 @@ const WorkoutSession = () => {
                     </div>
 
                     <button
-                        onClick={() => setShowForm(!showForm)}
+                        onClick={() => {
+                            if (showForm) {
+                                resetForm();
+                            } else {
+                                setShowForm(true);
+                            }
+                        }}
                         className="btn-primary"
                         style={{
                             display: 'flex',
@@ -216,8 +257,12 @@ const WorkoutSession = () => {
                                 className="flex items-center"
                                 style={{ gap: 'var(--space-2)', fontFamily: 'var(--font-display)', fontSize: '18px' }}
                             >
-                                <Dumbbell style={{ width: '20px', height: '20px', color: 'var(--accent)' }} />
-                                ADD EXERCISE
+                                {editingWorkout ? (
+                                    <Pencil style={{ width: '20px', height: '20px', color: 'var(--accent)' }} />
+                                ) : (
+                                    <Dumbbell style={{ width: '20px', height: '20px', color: 'var(--accent)' }} />
+                                )}
+                                {editingWorkout ? 'EDIT EXERCISE' : 'ADD EXERCISE'}
                             </CardTitle>
                         </CardHeader>
                         <CardContent style={{ padding: 'var(--space-6)' }}>
@@ -244,7 +289,7 @@ const WorkoutSession = () => {
                                             value={selectedCategory}
                                             onValueChange={handleCategoryChange}
                                         >
-                                            <SelectTrigger className="input">
+                                            <SelectTrigger>
                                                 <SelectValue placeholder="Select category" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -282,7 +327,7 @@ const WorkoutSession = () => {
                                             onValueChange={handleExerciseChange}
                                             disabled={!selectedCategory}
                                         >
-                                            <SelectTrigger className="input">
+                                            <SelectTrigger>
                                                 <SelectValue placeholder="Select exercise" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -299,107 +344,164 @@ const WorkoutSession = () => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2" style={{ gap: 'var(--space-4)' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', minWidth: 0 }}>
-                                        <Label
-                                            htmlFor="weight"
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                    <Label
+                                        htmlFor="weight"
+                                        style={{
+                                            fontSize: '12px',
+                                            fontWeight: 600,
+                                            color: 'var(--text-muted)',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 'var(--space-2)',
+                                        }}
+                                    >
+                                        <Weight style={{ width: '14px', height: '14px' }} />
+                                        Weight
+                                    </Label>
+                                    <div className="flex" style={{ alignItems: 'stretch' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({
+                                                ...formData,
+                                                weight: Math.max(0, (formData.weight || 0) - 5),
+                                            })}
                                             style={{
-                                                fontSize: '12px',
-                                                fontWeight: 600,
-                                                color: 'var(--text-muted)',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
+                                                width: '44px',
+                                                height: '44px',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: 'var(--space-2)',
+                                                justifyContent: 'center',
+                                                background: 'var(--bg-tertiary)',
+                                                border: '1px solid var(--border)',
+                                                borderRight: 'none',
+                                                borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)',
+                                                color: 'var(--text-secondary)',
+                                                cursor: 'pointer',
+                                                transition: 'all var(--duration-fast)',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                                e.currentTarget.style.color = 'var(--text-primary)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = 'var(--bg-tertiary)';
+                                                e.currentTarget.style.color = 'var(--text-secondary)';
                                             }}
                                         >
-                                            <Weight style={{ width: '14px', height: '14px' }} />
-                                            Weight
-                                        </Label>
-                                        <div className="flex" style={{ gap: 'var(--space-2)' }}>
-                                            <Input
-                                                id="weight"
-                                                type="number"
-                                                step="0.1"
-                                                placeholder="0"
-                                                className="input"
-                                                style={{ minWidth: 0, flex: 1 }}
-                                                value={formData.weight || ""}
-                                                onChange={(
-                                                    e: React.ChangeEvent<HTMLInputElement>,
-                                                ) =>
-                                                    setFormData({
-                                                        ...formData,
-                                                        weight: e.target.value
-                                                            ? parseFloat(
-                                                                  e.target
-                                                                      .value,
-                                                              )
-                                                            : null,
-                                                    })
-                                                }
-                                            />
-                                            <Select
-                                                value={formData.weight_unit}
-                                                onValueChange={(
-                                                    value: string,
-                                                ) =>
-                                                    setFormData({
-                                                        ...formData,
-                                                        weight_unit: value,
-                                                    })
-                                                }
-                                            >
-                                                <SelectTrigger className="input" style={{ width: '70px', flexShrink: 0 }}>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="lbs">
-                                                        lbs
-                                                    </SelectItem>
-                                                    <SelectItem value="kg">
-                                                        kg
-                                                    </SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', minWidth: 0 }}>
-                                        <Label
-                                            htmlFor="reps"
+                                            <Minus style={{ width: '18px', height: '18px' }} />
+                                        </button>
+                                        <input
+                                            id="weight"
+                                            type="number"
+                                            step="0.1"
+                                            placeholder="0"
                                             style={{
-                                                fontSize: '12px',
-                                                fontWeight: 600,
-                                                color: 'var(--text-muted)',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.05em',
+                                                minWidth: 0,
+                                                flex: 1,
+                                                height: '44px',
+                                                boxSizing: 'border-box',
+                                                borderRadius: 0,
+                                                textAlign: 'center',
+                                                border: 'none',
+                                                borderTop: '1px solid var(--border)',
+                                                borderBottom: '1px solid var(--border)',
+                                                background: 'var(--bg-secondary)',
+                                                color: 'var(--text-primary)',
+                                                fontFamily: 'var(--font-mono)',
+                                                fontSize: '16px',
+                                                outline: 'none',
                                             }}
-                                        >
-                                            Reps
-                                        </Label>
-                                        <Input
-                                            id="reps"
-                                            type="text"
-                                            placeholder="e.g., 5 or 5+"
-                                            className="input"
-                                            style={{ minWidth: 0 }}
-                                            value={formData.reps || ""}
-                                            onChange={(
-                                                e: React.ChangeEvent<HTMLInputElement>,
-                                            ) =>
+                                            value={formData.weight || ""}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                                 setFormData({
                                                     ...formData,
-                                                    reps:
-                                                        e.target.value || null,
+                                                    weight: e.target.value ? parseFloat(e.target.value) : null,
                                                 })
                                             }
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({
+                                                ...formData,
+                                                weight: (formData.weight || 0) + 5,
+                                            })}
+                                            style={{
+                                                width: '44px',
+                                                height: '44px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                background: 'var(--bg-tertiary)',
+                                                border: '1px solid var(--border)',
+                                                borderLeft: 'none',
+                                                borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+                                                color: 'var(--text-secondary)',
+                                                cursor: 'pointer',
+                                                transition: 'all var(--duration-fast)',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                                e.currentTarget.style.color = 'var(--text-primary)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = 'var(--bg-tertiary)';
+                                                e.currentTarget.style.color = 'var(--text-secondary)';
+                                            }}
+                                        >
+                                            <Plus style={{ width: '18px', height: '18px' }} />
+                                        </button>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500, marginLeft: 'var(--space-2)', display: 'flex', alignItems: 'center' }}>lbs</span>
                                     </div>
                                 </div>
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                    <Label
+                                        htmlFor="reps"
+                                        style={{
+                                            fontSize: '12px',
+                                            fontWeight: 600,
+                                            color: 'var(--text-muted)',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 'var(--space-2)',
+                                        }}
+                                    >
+                                        <Hash style={{ width: '14px', height: '14px' }} />
+                                        Reps
+                                    </Label>
+                                    <input
+                                        id="reps"
+                                        type="text"
+                                        placeholder="e.g., 5 or 5+"
+                                        style={{
+                                            width: '100%',
+                                            height: '44px',
+                                            boxSizing: 'border-box',
+                                            padding: '0 12px',
+                                            borderRadius: 'var(--radius-sm)',
+                                            border: '1px solid var(--border)',
+                                            background: 'var(--bg-secondary)',
+                                            color: 'var(--text-primary)',
+                                            fontFamily: 'var(--font-mono)',
+                                            fontSize: '16px',
+                                            outline: 'none',
+                                        }}
+                                        value={formData.reps || ""}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                            setFormData({
+                                                ...formData,
+                                                reps: e.target.value || null,
+                                            })
+                                        }
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', overflow: 'hidden' }}>
                                     <Label
                                         htmlFor="comment"
                                         style={{
@@ -416,19 +518,28 @@ const WorkoutSession = () => {
                                         <MessageSquare style={{ width: '14px', height: '14px' }} />
                                         Comment
                                     </Label>
-                                    <Input
+                                    <input
                                         id="comment"
                                         type="text"
                                         placeholder="Optional note"
-                                        className="input"
+                                        style={{
+                                            width: '100%',
+                                            height: '44px',
+                                            boxSizing: 'border-box',
+                                            padding: '0 12px',
+                                            borderRadius: 'var(--radius-sm)',
+                                            border: '1px solid var(--border)',
+                                            background: 'var(--bg-secondary)',
+                                            color: 'var(--text-primary)',
+                                            fontFamily: 'var(--font-body)',
+                                            fontSize: '16px',
+                                            outline: 'none',
+                                        }}
                                         value={formData.comment || ""}
-                                        onChange={(
-                                            e: React.ChangeEvent<HTMLInputElement>,
-                                        ) =>
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                             setFormData({
                                                 ...formData,
-                                                comment:
-                                                    e.target.value || null,
+                                                comment: e.target.value || null,
                                             })
                                         }
                                     />
@@ -438,7 +549,7 @@ const WorkoutSession = () => {
                                     <button
                                         type="button"
                                         className="btn-secondary"
-                                        onClick={() => setShowForm(false)}
+                                        onClick={resetForm}
                                     >
                                         Cancel
                                     </button>
@@ -456,8 +567,12 @@ const WorkoutSession = () => {
                                             opacity: (!formData.exercise || !formData.category) ? 0.5 : 1,
                                         }}
                                     >
-                                        <Plus style={{ width: '20px', height: '20px' }} />
-                                        Add Workout
+                                        {editingWorkout ? (
+                                            <Pencil style={{ width: '20px', height: '20px' }} />
+                                        ) : (
+                                            <Plus style={{ width: '20px', height: '20px' }} />
+                                        )}
+                                        {editingWorkout ? 'Save Changes' : 'Add Workout'}
                                     </button>
                                 </div>
                             </form>
@@ -495,7 +610,11 @@ const WorkoutSession = () => {
                                     >
                                         <CardContent style={{ padding: 'var(--space-5)' }}>
                                             <div className="flex items-start justify-between" style={{ gap: 'var(--space-4)' }}>
-                                                <div className="flex-1">
+                                                <div
+                                                    className="flex-1"
+                                                    onClick={() => handleEditWorkout(workout)}
+                                                    style={{ cursor: 'pointer' }}
+                                                >
                                                     <div className="flex items-start" style={{ gap: 'var(--space-4)' }}>
                                                         <div
                                                             style={{
@@ -615,55 +734,95 @@ const WorkoutSession = () => {
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-col" style={{ gap: 'var(--space-2)' }}>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="btn-secondary"
-                                                        style={{ width: '40px', height: '40px' }}
-                                                        onClick={() =>
-                                                            handleReorder(
-                                                                workout.doc_id,
-                                                                "up",
-                                                            )
-                                                        }
-                                                        disabled={index === 0}
-                                                    >
-                                                        <ChevronUp style={{ width: '16px', height: '16px' }} />
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="btn-secondary"
-                                                        style={{ width: '40px', height: '40px' }}
-                                                        onClick={() =>
-                                                            handleReorder(
-                                                                workout.doc_id,
-                                                                "down",
-                                                            )
-                                                        }
-                                                        disabled={
-                                                            index ===
-                                                            workouts.length - 1
-                                                        }
-                                                    >
-                                                        <ChevronDown style={{ width: '16px', height: '16px' }} />
-                                                    </Button>
+                                                <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
                                                     <button
-                                                        className="btn-danger"
+                                                        onClick={() => handleReorder(workout.doc_id, "up")}
+                                                        disabled={index === 0}
                                                         style={{
-                                                            width: '40px',
-                                                            height: '40px',
+                                                            width: '36px',
+                                                            height: '36px',
                                                             padding: 0,
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'center',
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            borderRadius: 'var(--radius-sm)',
+                                                            color: index === 0 ? 'var(--text-muted)' : 'var(--text-secondary)',
+                                                            cursor: index === 0 ? 'not-allowed' : 'pointer',
+                                                            transition: 'all var(--duration-fast)',
+                                                            opacity: index === 0 ? 0.4 : 1,
                                                         }}
-                                                        onClick={() =>
-                                                            handleDelete(workout.doc_id)
-                                                        }
+                                                        onMouseEnter={(e) => {
+                                                            if (index !== 0) {
+                                                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                                                e.currentTarget.style.color = 'var(--text-primary)';
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.background = 'transparent';
+                                                            e.currentTarget.style.color = index === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
+                                                        }}
                                                     >
-                                                        <Trash2 style={{ width: '16px', height: '16px' }} />
+                                                        <ChevronUp style={{ width: '20px', height: '20px' }} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleReorder(workout.doc_id, "down")}
+                                                        disabled={index === workouts.length - 1}
+                                                        style={{
+                                                            width: '36px',
+                                                            height: '36px',
+                                                            padding: 0,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            borderRadius: 'var(--radius-sm)',
+                                                            color: index === workouts.length - 1 ? 'var(--text-muted)' : 'var(--text-secondary)',
+                                                            cursor: index === workouts.length - 1 ? 'not-allowed' : 'pointer',
+                                                            transition: 'all var(--duration-fast)',
+                                                            opacity: index === workouts.length - 1 ? 0.4 : 1,
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            if (index !== workouts.length - 1) {
+                                                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                                                e.currentTarget.style.color = 'var(--text-primary)';
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.background = 'transparent';
+                                                            e.currentTarget.style.color = index === workouts.length - 1 ? 'var(--text-muted)' : 'var(--text-secondary)';
+                                                        }}
+                                                    >
+                                                        <ChevronDown style={{ width: '20px', height: '20px' }} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(workout.doc_id)}
+                                                        style={{
+                                                            width: '36px',
+                                                            height: '36px',
+                                                            padding: 0,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            background: 'transparent',
+                                                            border: 'none',
+                                                            borderRadius: 'var(--radius-sm)',
+                                                            color: 'var(--text-muted)',
+                                                            cursor: 'pointer',
+                                                            transition: 'all var(--duration-fast)',
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.background = 'var(--error-subtle)';
+                                                            e.currentTarget.style.color = 'var(--error)';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.background = 'transparent';
+                                                            e.currentTarget.style.color = 'var(--text-muted)';
+                                                        }}
+                                                    >
+                                                        <Trash2 style={{ width: '18px', height: '18px' }} />
                                                     </button>
                                                 </div>
                                             </div>

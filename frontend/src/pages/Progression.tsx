@@ -130,7 +130,7 @@ const Progression = () => {
                                     value={selectedExercise}
                                     onValueChange={setSelectedExercise}
                                 >
-                                    <SelectTrigger className="input">
+                                    <SelectTrigger>
                                         <SelectValue placeholder="Select exercise" />
                                     </SelectTrigger>
                                     <SelectContent>

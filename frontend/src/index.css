@@ -165,6 +165,18 @@
         font-family: var(--font-mono);
     }
 
+    /* Hide native number input spinners */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        appearance: none;
+        margin: 0;
+    }
+
+    input[type="number"] {
+        -moz-appearance: textfield;
+    }
+
     /* Custom scrollbar styling */
     ::-webkit-scrollbar {
         width: 8px;
@@ -250,6 +262,12 @@
         border-color: var(--border);
     }
 
+    /* Select item selected state */
+    [data-radix-collection-item][data-state="checked"] {
+        color: var(--accent) !important;
+        font-weight: 500;
+    }
+
     /* Input styles */
     .input {
         background: var(--bg-tertiary);
@@ -260,6 +278,9 @@
         font-size: 15px;
         transition: all var(--duration-normal) var(--ease-default);
         font-family: var(--font-body);
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
     }
 
     .input::placeholder {

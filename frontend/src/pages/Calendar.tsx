@@ -72,7 +72,7 @@ const Calendar = () => {
                             </button>
 
                             <div className="text-center">
-                                <h2 className="page__title" style={{ marginBottom: 0 }}>
+                                <h2 className="page__title page__title--compact">
                                     {monthName.toUpperCase()}
                                 </h2>
                                 <p className="page__subtitle">Your workout calendar</p>

@@ -4,6 +4,7 @@ import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell } from 'lucide-r
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
 import {
   useUpcomingWorkouts,
   useDeleteUpcomingSession,
@@ -86,8 +87,9 @@ const Upcoming = () => {
                         SESSION {session}
                       </CardTitle>
                       <div className="flex items-center gap-3">
-                        <button
-                          className="btn-secondary text-[13px] py-2.5 px-4 flex items-center gap-2"
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           onClick={() => {
                             setSelectedSession(session);
                             setShowCalendar(!showCalendar || selectedSession !== session);
@@ -95,14 +97,15 @@ const Upcoming = () => {
                         >
                           <CalendarIcon className="w-4 h-4" />
                           Transfer
-                        </button>
-                        <button
-                          className="btn-danger flex items-center gap-2"
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
                           onClick={() => handleDeleteSession(session)}
                         >
                           <Trash2 className="w-4 h-4" />
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>
@@ -116,15 +119,13 @@ const Upcoming = () => {
                             onSelect={setTransferDate}
                             className="rounded-[var(--radius-md)] border border-[var(--border)]"
                           />
-                          <button
-                            className="btn-primary flex items-center gap-2"
+                          <Button
                             onClick={() => handleTransferSession(session)}
                             disabled={!transferDate}
-                            style={{ opacity: !transferDate ? 0.5 : 1 }}
                           >
                             <ArrowRight className="w-[18px] h-[18px]" />
                             Transfer to {transferDate && format(transferDate, 'MMM d, yyyy')}
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     )}

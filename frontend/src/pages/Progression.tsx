@@ -150,23 +150,15 @@ const Progression = () => {
                                 <input
                                     type="checkbox"
                                     id="includeUpcoming"
+                                    className="checkbox"
                                     checked={includeUpcoming}
                                     onChange={(e) =>
                                         setIncludeUpcoming(e.target.checked)
                                     }
-                                    style={{
-                                        width: '16px',
-                                        height: '16px',
-                                        accentColor: 'var(--accent)',
-                                    }}
                                 />
                                 <label
                                     htmlFor="includeUpcoming"
-                                    style={{
-                                        fontSize: '13px',
-                                        color: 'var(--text-secondary)',
-                                        cursor: 'pointer',
-                                    }}
+                                    className="checkbox-label"
                                 >
                                     Include upcoming workouts
                                 </label>
@@ -250,7 +242,7 @@ const Progression = () => {
                                                     x={today}
                                                     stroke="var(--accent)"
                                                     strokeDasharray="3 3"
-                                                    label="Today"
+                                                    label={{ value: "Today", fill: 'var(--text-muted)', fontSize: 12 }}
                                                 />
                                             )}
                                             <Line

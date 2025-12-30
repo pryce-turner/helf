@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -19,38 +19,14 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-[46px] w-full items-center justify-between gap-2 whitespace-nowrap px-4 text-[15px] outline-none disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      "select-trigger flex h-[44px] w-full items-center justify-between gap-2 whitespace-nowrap px-4 text-[15px] outline-none disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
-    style={{
-      background: 'var(--bg-tertiary)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-sm)',
-      color: 'var(--text-primary)',
-      fontFamily: 'var(--font-body)',
-      transition: 'all var(--duration-normal) var(--ease-default)',
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.background = 'var(--bg-hover)';
-      e.currentTarget.style.borderColor = 'var(--border)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.background = 'var(--bg-tertiary)';
-      e.currentTarget.style.borderColor = 'var(--border)';
-    }}
-    onFocus={(e) => {
-      e.currentTarget.style.borderColor = 'var(--accent)';
-      e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-glow)';
-    }}
-    onBlur={(e) => {
-      e.currentTarget.style.borderColor = 'var(--border)';
-      e.currentTarget.style.boxShadow = 'none';
-    }}
     {...props}
   >
     {children}
     <SelectPrimitive.Icon asChild>
-      <ChevronDown style={{ width: '16px', height: '16px', color: 'var(--text-muted)', flexShrink: 0 }} />
+      <ChevronDown className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ))
@@ -156,29 +132,14 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center py-3 px-4 text-[15px] outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "select-item relative flex w-full cursor-pointer select-none items-center py-3 pl-9 pr-4 text-[15px] data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
-    style={{
-      color: 'var(--text-primary)',
-      fontFamily: 'var(--font-body)',
-      borderRadius: 'var(--radius-sm)',
-      transition: 'all var(--duration-fast) var(--ease-default)',
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.background = 'var(--bg-hover)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.background = 'transparent';
-    }}
-    onFocus={(e) => {
-      e.currentTarget.style.background = 'var(--bg-hover)';
-    }}
-    onBlur={(e) => {
-      e.currentTarget.style.background = 'transparent';
-    }}
     {...props}
   >
+    <SelectPrimitive.ItemIndicator className="absolute left-2 flex items-center justify-center">
+      <Check className="w-4 h-4 text-[var(--accent)]" />
+    </SelectPrimitive.ItemIndicator>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ))

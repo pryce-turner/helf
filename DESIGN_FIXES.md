@@ -4,30 +4,27 @@ This document contains a numbered list of frontend fixes to address inconsistenc
 
 ---
 
-## 1. Remove Unused App.css Vite Boilerplate
+## ~~1. Remove Unused App.css Vite Boilerplate~~ ✅ FIXED
 
 **File:** `frontend/src/App.css`
 
 **Issue:** Contains default Vite/React template CSS (logo spinning animation, purple drop-shadows, etc.) that is not used anywhere in the application.
 
-**Fix:** Delete the entire contents of `App.css` or remove the file and its import from `main.tsx`.
+**Resolution:** Cleared App.css contents, kept file with comment explaining global styles are in index.css.
 
 ---
 
-## 2. Add Missing `--error-subtle` CSS Variable
+## ~~2. Add Missing `--error-subtle` CSS Variable~~ ✅ FIXED
 
 **File:** `frontend/src/index.css`
 
 **Issue:** The variable `--error-subtle` is referenced in `WorkoutSession.tsx:817` for the delete button hover state but is not defined in the CSS variables.
 
-**Fix:** Add to the `:root` block in `index.css`:
-```css
---error-subtle: rgba(239, 68, 68, 0.1);
-```
+**Resolution:** Added `--error-subtle`, `--success-subtle`, `--warning-subtle`, and `--info-subtle` variables for consistency.
 
 ---
 
-## 3. Inconsistent Button Implementation
+## ~~3. Inconsistent Button Implementation~~ ✅ FIXED
 
 **Files:** Multiple pages (WorkoutSession.tsx, Calendar.tsx, Upcoming.tsx, etc.)
 
@@ -37,15 +34,11 @@ This document contains a numbered list of frontend fixes to address inconsistenc
 
 This creates visual inconsistency and maintenance burden.
 
-**Fix:** Choose one approach and apply consistently:
-- **Option A:** Migrate all buttons to use the shadcn `<Button>` component and update its variants to match the custom CSS styling
-- **Option B:** Remove the shadcn Button component and use only CSS class-based buttons
-
-**Recommendation:** Option A - Update the Button component's variants in `button.tsx` to use the design system's CSS variables, then replace all `.btn-*` usages with `<Button variant="...">`.
+**Resolution:** Updated the Button component (`button.tsx`) to use the CSS classes from the design system (`.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-ghost`, `.btn-link`). Migrated all raw `<button>` elements with CSS classes to use the `<Button>` component. Added new `.btn-ghost` and `.btn-link` CSS classes for additional variants.
 
 ---
 
-## 4. Unused UI Components: Input and Badge
+## ~~4. Unused UI Components: Input and Badge~~ ✅ FIXED
 
 **Files:**
 - `frontend/src/components/ui/input.tsx`
@@ -53,43 +46,37 @@ This creates visual inconsistency and maintenance burden.
 
 **Issue:** These components are exported but never used. Forms use raw `<input>` elements with inline styles instead.
 
-**Fix:** Either:
-- **Option A:** Delete these unused component files
-- **Option B:** Refactor form inputs to use the `<Input>` component and style it consistently with the design system
-
-**Recommendation:** Option B - Update the `Input` component to match the `.input` CSS class styling, then use it in all forms.
+**Resolution:** Deleted the unused `badge.tsx` component. Updated the `Input` component to use the `.input` CSS class from the design system. Refactored form inputs in `WorkoutSession.tsx` to use the `<Input>` component.
 
 ---
 
-## 5. Excessive Inline Styles in WorkoutSession.tsx
+## ~~5. Excessive Inline Styles in WorkoutSession.tsx~~ ✅ FIXED
 
 **File:** `frontend/src/pages/WorkoutSession.tsx`
 
 **Issue:** Heavy use of inline `style={{}}` props throughout the component (700+ lines with inline styles). This makes the code hard to maintain and inconsistent with other pages.
 
-**Fix:** Extract repeated inline styles into CSS classes in `index.css` or use Tailwind utility classes consistently. Key patterns to extract:
-- Form field containers
-- Label styling
-- Custom button styling (weight increment buttons)
-- Workout card content layout
+**Resolution:** Extracted repeated inline styles into CSS classes in `index.css`:
+- `.form-field` - Form field containers
+- `.form-label` - Label styling
+- `.stepper`, `.stepper__btn`, `.stepper__unit` - Weight increment/decrement buttons
+- `.input--stepper`, `.input--mono` - Input variants
+- `.workout-chip`, `.workout-chip__value`, `.workout-chip__comment` - Workout data display chips
+- `.workout-order` - Order number badge
+- `.category-badge` - Category pills
+- `.action-btn`, `.action-btn--danger` - Reorder/delete buttons
+- `.empty-state`, `.empty-state__icon`, `.empty-state__title`, `.empty-state__text` - Empty state styling
+- `.checkbox`, `.checkbox-label` - Checkbox styling (also used in Progression.tsx)
 
 ---
 
-## 6. Inconsistent Hover State Implementation
+## ~~6. Inconsistent Hover State Implementation~~ ✅ FIXED
 
 **Files:** `WorkoutSession.tsx`, `select.tsx`
 
 **Issue:** Some hover effects use CSS (`:hover` pseudo-class) while others use JavaScript event handlers (`onMouseEnter`/`onMouseLeave`). The JS approach resets styles incorrectly in some cases.
 
-**Example problem in WorkoutSession.tsx:763-765:**
-```tsx
-onMouseLeave={(e) => {
-    e.currentTarget.style.color = index === 0 ? 'var(--text-muted)' : 'var(--text-secondary)';
-}}
-```
-This doesn't account for the element being focused.
-
-**Fix:** Convert all JavaScript-based hover effects to CSS-only solutions using Tailwind `hover:` utilities or CSS classes with `:hover` pseudo-selectors.
+**Resolution:** Replaced JavaScript event handlers in `select.tsx` with CSS classes (`.select-trigger`, `.select-item`) that handle hover and focus states via `:hover` and `:focus` pseudo-selectors. Removed all `onMouseEnter`/`onMouseLeave`/`onFocus`/`onBlur` handlers from the Select component.
 
 ---
 
@@ -106,25 +93,17 @@ This doesn't account for the element being focused.
 
 ---
 
-## 8. Offline Banner Uses Non-Design-System Colors
+## ~~8. Offline Banner Uses Non-Design-System Colors~~ ✅ FIXED
 
 **File:** `frontend/src/App.tsx:30`
 
 **Issue:** The offline warning banner uses Tailwind's `bg-yellow-600` instead of the design system's `--warning` color.
 
-**Fix:** Replace:
-```tsx
-<div className="bg-yellow-600 text-white px-4 py-2 ...">
-```
-With:
-```tsx
-<div style={{ background: 'var(--warning)', color: 'var(--text-inverse)' }} className="px-4 py-2 ...">
-```
-Or add a CSS class for the offline banner that uses the design system variables.
+**Resolution:** Updated to use `var(--warning)` and `var(--text-inverse)`.
 
 ---
 
-## 9. Inconsistent Loading Spinner Implementation
+## ~~9. Inconsistent Loading Spinner Implementation~~ ✅ FIXED
 
 **Files:** `WorkoutSession.tsx:586-594`, `Calendar.tsx:111-112`
 
@@ -132,17 +111,17 @@ Or add a CSS class for the offline banner that uses the design system variables.
 1. CSS class-based: `<div className="loading-spinner" />`
 2. Inline styled: `<div className="inline-block animate-spin rounded-full border-4 border-t-transparent" style={{...}} />`
 
-**Fix:** Use the `.loading-spinner` CSS class consistently across all pages. Remove inline spinner implementations.
+**Resolution:** Updated WorkoutSession.tsx to use the `.loading-spinner` CSS class consistently.
 
 ---
 
-## 10. Select Trigger Height Mismatch
+## ~~10. Select Trigger Height Mismatch~~ ✅ FIXED
 
 **File:** `frontend/src/components/ui/select.tsx:22`
 
 **Issue:** SelectTrigger uses `h-[46px]` while other inputs appear to use 44px height, creating subtle visual misalignment.
 
-**Fix:** Change `h-[46px]` to `h-[44px]` to match other form inputs.
+**Resolution:** Changed `h-[46px]` to `h-[44px]` to match other form inputs.
 
 ---
 
@@ -169,25 +148,13 @@ Or add a CSS class for the offline banner that uses the design system variables.
 
 ---
 
-## 13. Form Label Styles Repeated Inline
+## ~~13. Form Label Styles Repeated Inline~~ ✅ FIXED
 
 **File:** `frontend/src/pages/WorkoutSession.tsx`
 
-**Issue:** The same label styling object is repeated for every form field:
-```tsx
-style={{
-    fontSize: '12px',
-    fontWeight: 600,
-    color: 'var(--text-muted)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--space-2)',
-}}
-```
+**Issue:** The same label styling object is repeated for every form field.
 
-**Fix:** Create a CSS class `.form-label` in `index.css` with these styles and apply it to all labels, or update the `Label` component to include this styling by default.
+**Resolution:** Created `.form-label` CSS class in `index.css` and updated all labels in WorkoutSession.tsx to use it.
 
 ---
 
@@ -204,20 +171,13 @@ style={{
 
 ---
 
-## 15. Inconsistent Page Header Pattern
+## ~~15. Inconsistent Page Header Pattern~~ ✅ FIXED
 
 **Files:** All page components
 
 **Issue:** Some pages use the CSS classes `.page__header`, `.page__title`, `.page__subtitle` while others apply similar styling inline.
 
-**Example (Calendar.tsx):**
-```tsx
-<h2 className="page__title" style={{ marginBottom: 0 }}>
-    {monthName.toUpperCase()}
-</h2>
-```
-
-**Fix:** Standardize all page headers to use the CSS classes without inline style overrides. If variations are needed, add modifier classes.
+**Resolution:** Added `.page__title--compact` modifier class for titles that don't need bottom margin. Updated Calendar.tsx and WorkoutSession.tsx to use the CSS classes instead of inline styles. All page headers now consistently use the design system classes.
 
 ---
 
@@ -246,149 +206,115 @@ style={{
 
 ---
 
-## 18. Card Component Mixes Styling Approaches
+## ~~18. Card Component Mixes Styling Approaches~~ ✅ FIXED
 
 **File:** `frontend/src/components/ui/card.tsx`
 
 **Issue:** The Card component uses Tailwind classes (`border`, `bg-card`, `shadow-sm`) but also injects CSS variable values via inline style props. This hybrid approach is confusing.
 
-**Fix:** Choose one approach:
-- **Option A:** Use only Tailwind classes and configure `tailwind.config.js` to include all needed design tokens
-- **Option B:** Use only CSS classes from `index.css` (like the `.card` class that already exists)
-
-**Recommendation:** Option B - Use the existing `.card` CSS class and remove the Card component, or update Card to use the CSS class internally.
+**Resolution:** Updated the Card component to use the `.card` CSS class from the design system. Added `.card--structured` modifier for cards with header/content/footer structure, and created `.card__header`, `.card__content`, `.card__footer` CSS classes for the sub-components.
 
 ---
 
-## 19. Duplicate Card Styling Systems
+## ~~19. Duplicate Card Styling Systems~~ ✅ FIXED
 
 **Files:** `frontend/src/index.css`, `frontend/src/components/ui/card.tsx`
 
 **Issue:** There's a `.card` CSS class in `index.css` AND a `<Card>` React component that don't share styles. Pages inconsistently use one or the other.
 
-**Fix:** Consolidate to a single approach. Update the Card component to apply the `.card` CSS class, or vice versa.
+**Resolution:** Consolidated to use the CSS class approach. The Card component now applies the `.card` CSS class internally. Both the component and the class now share the same styling from `index.css`.
 
 ---
 
-## 20. InstallPrompt Position Conflicts with Mobile Nav
+## ~~20. InstallPrompt Position Conflicts with Mobile Nav~~ ✅ FIXED
 
 **File:** `frontend/src/components/PWA/InstallPrompt.tsx:68`
 
 **Issue:** The install prompt is positioned `bottom-4` which may overlap with the mobile navigation bar.
 
-**Fix:** On mobile, position the prompt above the navigation:
-```tsx
-className="fixed bottom-24 md:bottom-4 left-4 right-4 ..."
-```
-Or calculate position dynamically based on nav height.
+**Resolution:** Changed to `bottom-24` on mobile, `md:bottom-4` on desktop.
 
 ---
 
-## 21. Tailwind `accent` Variable Conflict
+## ~~21. Tailwind `accent` Variable Conflict~~ ✅ FIXED
 
 **File:** `frontend/src/index.css:104`, `frontend/tailwind.config.js:29`
 
 **Issue:** The CSS variable `--accent-tw` is defined but `tailwind.config.js` references `--accent` for the accent color, which conflicts with the non-HSL `--accent` variable defined earlier for the design system.
 
-**Fix:** Rename the Tailwind-specific accent variable consistently. In `index.css`, the HSL value should be `--accent-tw` and `tailwind.config.js` should reference it:
-```js
-accent: {
-    DEFAULT: "hsl(var(--accent-tw))",
-    ...
-}
-```
+**Resolution:** Updated `tailwind.config.js` to reference `--accent-tw` for the Tailwind accent color.
 
 ---
 
-## 22. Progression Chart ReferenceLine Label Unstyled
+## ~~22. Progression Chart ReferenceLine Label Unstyled~~ ✅ FIXED
 
 **File:** `frontend/src/pages/Progression.tsx:253-254`
 
 **Issue:** The "Today" reference line label uses default Recharts styling which doesn't match the app's design system.
 
-**Fix:** Add label styling:
-```tsx
-<ReferenceLine
-    x={today}
-    stroke="var(--accent)"
-    strokeDasharray="3 3"
-    label={{ value: "Today", fill: 'var(--text-muted)', fontSize: 12 }}
-/>
-```
+**Resolution:** Updated label to use `{ value: "Today", fill: 'var(--text-muted)', fontSize: 12 }`.
 
 ---
 
-## 23. Select Component Missing Checkmark for Selected Item
+## ~~23. Select Component Missing Checkmark for Selected Item~~ ✅ FIXED
 
 **File:** `frontend/src/components/ui/select.tsx:181-183`
 
 **Issue:** The SelectItem doesn't render a checkmark indicator for the selected item (the `SelectPrimitive.ItemIndicator` is not used). The selected state only changes text color via CSS.
 
-**Fix:** Add the ItemIndicator component to show a checkmark:
-```tsx
-<SelectPrimitive.Item ...>
-    <SelectPrimitive.ItemIndicator className="absolute left-2">
-        <Check className="w-4 h-4" />
-    </SelectPrimitive.ItemIndicator>
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-</SelectPrimitive.Item>
-```
-And adjust padding to accommodate the indicator.
+**Resolution:** Added `SelectPrimitive.ItemIndicator` with a Check icon, updated padding to `pl-9` to accommodate the indicator.
 
 ---
 
-## 24. Weight Unit Hardcoded to "lbs"
+## ~~24. Weight Unit Hardcoded to "lbs"~~ ✅ FIXED
 
 **File:** `frontend/src/pages/WorkoutSession.tsx:456`
 
 **Issue:** The weight input always shows "lbs" regardless of the `formData.weight_unit` value.
 
-**Fix:** Display the actual unit from form data:
-```tsx
-<span ...>{formData.weight_unit || 'lbs'}</span>
-```
+**Resolution:** Updated to display `{formData.weight_unit || 'lbs'}`.
 
 ---
 
-## 25. Missing Focus States on Custom Buttons
+## ~~25. Missing Focus States on Custom Buttons~~ ✅ FIXED
 
 **Files:** Various inline button implementations
 
 **Issue:** Custom-styled buttons (using inline styles or `.btn-*` classes) don't have visible focus states for keyboard navigation accessibility.
 
-**Fix:** Add focus-visible styles to `.btn-primary`, `.btn-secondary`, `.btn-danger` classes:
-```css
-.btn-primary:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px var(--accent-glow);
-}
-```
+**Resolution:** Added `:focus-visible` styles to `.btn-primary`, `.btn-secondary`, and `.btn-danger` classes in index.css.
 
 ---
 
-## Summary by Priority
+## Summary
 
-### High Priority (Affects UX/Functionality)
-- #2 Missing `--error-subtle` variable
-- #7 Streak calculation placeholder
-- #11 Hardcoded default exercise
-- #20 Install prompt overlaps mobile nav
-
-### Medium Priority (Visual Consistency)
-- #3 Inconsistent button implementation
-- #6 Inconsistent hover states
+### Completed ✅ (18 items)
+- #1 Remove unused App.css
+- #2 Missing `--error-subtle` variable (plus other subtle variants)
+- #3 Inconsistent button implementation (consolidated to Button component with CSS classes)
+- #4 Unused components (deleted Badge, updated Input to use design system)
+- #5 Excessive inline styles (extracted to reusable CSS classes)
+- #6 Inconsistent hover states (converted JS handlers to CSS)
 - #8 Offline banner colors
 - #9 Inconsistent loading spinners
-- #15 Inconsistent page headers
-- #18/19 Duplicate card styling
-
-### Low Priority (Code Quality/Cleanup)
-- #1 Remove unused App.css
-- #4 Unused components
-- #5 Excessive inline styles
-- #13 Repeated label styles
-- #21 CSS variable naming
-
-### Accessibility
-- #12 Native confirm dialogs
+- #10 Select trigger height
+- #13 Repeated label styles (added `.form-label` class)
+- #15 Inconsistent page headers (added modifier classes)
+- #18 Card component mixed styling (uses CSS classes now)
+- #19 Duplicate card styling (consolidated)
+- #20 InstallPrompt positioning
+- #21 Tailwind accent variable conflict
+- #22 Chart reference line styling
+- #23 Select checkmark indicator
+- #24 Weight unit hardcoded
 - #25 Missing focus states
+
+### Remaining (7 items)
+
+#### Requires Design Decisions
+- #7 Streak calculation (needs backend support or calculation logic)
+- #11 Hardcoded default exercise
+- #12 Native confirm dialogs (needs dialog component)
+- #14 Category colors (needs color palette decision)
+- #16 Body composition trend color logic
+- #17 Mobile nav safe area spacing

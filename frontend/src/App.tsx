@@ -27,7 +27,13 @@ function App() {
             <BrowserRouter>
                 <div className="min-h-screen bg-background text-foreground dark">
                     {!isOnline && (
-                        <div className="bg-yellow-600 text-white px-4 py-2 text-center text-sm flex items-center justify-center gap-2">
+                        <div
+                            className="px-4 py-2 text-center text-sm flex items-center justify-center gap-2"
+                            style={{
+                                background: 'var(--warning)',
+                                color: 'var(--text-inverse)'
+                            }}
+                        >
                             <WifiOff className="h-4 w-4" />
                             <span>
                                 You are offline. Some features may be limited.

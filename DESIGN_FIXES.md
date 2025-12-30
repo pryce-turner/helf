@@ -80,16 +80,18 @@ This creates visual inconsistency and maintenance burden.
 
 ---
 
-## 7. Calendar Streak Stat is Placeholder
+## ~~7. Calendar Streak Stat is Placeholder~~ ✅ FIXED
 
-**File:** `frontend/src/pages/Calendar.tsx:183-187`
+**File:** `frontend/src/pages/Calendar.tsx`
 
 **Issue:** The "STREAK" stat card displays a hardcoded fire emoji instead of calculating the actual workout streak.
 
-**Fix:** Implement actual streak calculation logic:
-1. Calculate consecutive days with workouts from the calendar data
-2. Display the numeric streak value
-3. Keep the fire emoji as an indicator alongside the number
+**Resolution:** Implemented streak calculation with every-other-day training support:
+- Counts consecutive workout days (each workout day = 1 streak point)
+- Allows 1 rest day between workouts (2+ consecutive rest days breaks streak)
+- Fetches previous month's data to enable cross-month streak calculation
+- Shows streak number with flame icon when active, "Start today!" when at 0
+- Shows dash (—) when viewing historical months
 
 ---
 
@@ -125,26 +127,28 @@ This creates visual inconsistency and maintenance burden.
 
 ---
 
-## 11. Hardcoded Default Exercise in Progression Page
+## ~~11. Hardcoded Default Exercise in Progression Page~~ ✅ FIXED
 
-**File:** `frontend/src/pages/Progression.tsx:32-33`
+**File:** `frontend/src/pages/Progression.tsx`
 
 **Issue:** Default exercise is hardcoded to "Barbell Squat" which may not exist in the user's data.
 
-**Fix:** Either:
-- Default to the first exercise in the `exercises` list when loaded
-- Default to empty and show a prompt to select an exercise
-- Store the last selected exercise in localStorage
+**Resolution:** Auto-select the first exercise from the user's data when the list loads. Uses useEffect to set the selection once exercises are fetched, respecting any URL parameter if provided.
 
 ---
 
-## 12. Native `confirm()` Dialogs
+## ~~12. Native `confirm()` Dialogs~~ ✅ FIXED
 
-**Files:** `WorkoutSession.tsx:142`, `Upcoming.tsx:43,56`
+**Files:** `WorkoutSession.tsx`, `Upcoming.tsx`
 
 **Issue:** Browser's native `confirm()` dialog is used for delete confirmations, which looks inconsistent with the app's design.
 
-**Fix:** Implement a styled confirmation modal component that matches the app's design system, or use a headless UI dialog component.
+**Resolution:** Replaced native `confirm()` with inline confirmation pattern:
+- Click delete → shows confirm (checkmark) and cancel (X) buttons inline
+- Auto-cancels after 3 seconds if no action taken
+- Uses existing `.action-btn` styling for WorkoutSession
+- Uses `<Button>` component for Upcoming page
+- Removed confirm dialog from transfer action (user already made explicit choices)
 
 ---
 
@@ -158,16 +162,17 @@ This creates visual inconsistency and maintenance burden.
 
 ---
 
-## 14. Workout Category Colors Limited
+## ~~14. Workout Category Colors Limited~~ ✅ FIXED
 
-**File:** `frontend/src/pages/WorkoutSession.tsx:156-163`
+**File:** `frontend/src/pages/WorkoutSession.tsx`
 
 **Issue:** Only 5 categories have defined colors (Push, Pull, Legs, Core, Cardio). Any other category gets a generic muted color.
 
-**Fix:** Either:
-- Add more category colors to cover common categories (Arms, Shoulders, Back, Chest, etc.)
-- Implement a color generation function that deterministically assigns colors to unknown categories
-- Store category colors in the backend as part of category data
+**Resolution:** Implemented hash-based color assignment:
+- Predefined colors kept for common categories (Push, Pull, Legs, Core, Cardio)
+- Unknown categories get a consistent color derived from hashing the category name
+- Uses the chart color palette (7 colors) for variety
+- Same category name always produces the same color
 
 ---
 
@@ -181,28 +186,28 @@ This creates visual inconsistency and maintenance burden.
 
 ---
 
-## 16. BodyComposition Trend Colors May Be Inverted
+## ~~16. BodyComposition Trend Colors May Be Inverted~~ ✅ FIXED
 
-**File:** `frontend/src/pages/BodyComposition.tsx:75-76`
+**File:** `frontend/src/pages/BodyComposition.tsx`
 
 **Issue:** The StatCard shows weight increase as red (`--error`) and decrease as green (`--success`). This is appropriate for body fat, but for muscle mass, an increase should be green (good) and decrease should be red (bad).
 
-**Fix:** Pass a context parameter to StatCard indicating what metric is displayed, then invert the color logic for muscle mass.
+**Resolution:** Added `trendDirection` prop to StatCard with three modes:
+- `'neutral'` - Weight uses neutral gray (neither direction is inherently good/bad)
+- `'down-good'` - Body fat: decrease = green, increase = red
+- `'up-good'` - Muscle mass: increase = green, decrease = red
 
 ---
 
-## 17. Mobile Navigation Spacing Inconsistency
+## ~~17. Mobile Navigation Spacing Inconsistency~~ ✅ FIXED
 
-**File:** `frontend/src/components/Navigation.tsx:67`
+**File:** `frontend/src/index.css`
 
 **Issue:** The mobile nav spacer (`nav-spacer-mobile`) is rendered with `md:hidden`, which is correct, but the spacing behavior may not account for safe-area-inset-bottom on all devices.
 
-**Fix:** Verify the mobile nav spacer height accounts for both the nav height (68px) and potential safe area insets. Consider:
-```css
-.nav-spacer-mobile {
-    height: calc(68px + env(safe-area-inset-bottom));
-}
-```
+**Resolution:** Updated `.nav-spacer-mobile` and `.page__content` bottom padding to use `calc()` with `env(safe-area-inset-bottom, 0px)` to account for device safe areas:
+- `.nav-spacer-mobile`: `height: calc(68px + env(safe-area-inset-bottom, 0px))`
+- `.page__content`: `padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px))`
 
 ---
 
@@ -288,18 +293,24 @@ This creates visual inconsistency and maintenance burden.
 
 ## Summary
 
-### Completed ✅ (18 items)
+### Completed ✅ (All 25 items)
 - #1 Remove unused App.css
 - #2 Missing `--error-subtle` variable (plus other subtle variants)
 - #3 Inconsistent button implementation (consolidated to Button component with CSS classes)
 - #4 Unused components (deleted Badge, updated Input to use design system)
 - #5 Excessive inline styles (extracted to reusable CSS classes)
 - #6 Inconsistent hover states (converted JS handlers to CSS)
+- #7 Streak calculation (every-other-day logic, cross-month support)
 - #8 Offline banner colors
 - #9 Inconsistent loading spinners
 - #10 Select trigger height
+- #11 Hardcoded default exercise (auto-selects first from list)
+- #12 Native confirm dialogs (inline confirmation pattern)
 - #13 Repeated label styles (added `.form-label` class)
+- #14 Category colors (hash-based for unknown categories)
 - #15 Inconsistent page headers (added modifier classes)
+- #16 Body composition trend colors (context-aware: neutral/up-good/down-good)
+- #17 Mobile nav safe area spacing (calc with env())
 - #18 Card component mixed styling (uses CSS classes now)
 - #19 Duplicate card styling (consolidated)
 - #20 InstallPrompt positioning
@@ -309,12 +320,6 @@ This creates visual inconsistency and maintenance burden.
 - #24 Weight unit hardcoded
 - #25 Missing focus states
 
-### Remaining (7 items)
+### Remaining: None
 
-#### Requires Design Decisions
-- #7 Streak calculation (needs backend support or calculation logic)
-- #11 Hardcoded default exercise
-- #12 Native confirm dialogs (needs dialog component)
-- #14 Category colors (needs color palette decision)
-- #16 Body composition trend color logic
-- #17 Mobile nav safe area spacing
+All design fixes have been implemented.

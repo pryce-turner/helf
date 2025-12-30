@@ -628,7 +628,7 @@
     }
 
     .nav-spacer-mobile {
-        height: 68px;
+        height: calc(68px + env(safe-area-inset-bottom, 0px));
     }
 
     /* Interactive item styles */
@@ -1052,10 +1052,10 @@
 }
 
 /* Navigation spacing overrides - outside layer for proper specificity */
-/* Mobile: bottom nav needs bottom padding */
+/* Mobile: bottom nav needs bottom padding including safe area */
 @media (max-width: 767px) {
     .page__content {
-        padding-bottom: 100px !important;
+        padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
     }
 }
 

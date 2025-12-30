@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import {
@@ -13,6 +13,8 @@ import {
     Hash,
     MessageSquare,
     Pencil,
+    X,
+    Check,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ const WorkoutSession = () => {
     const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
     const [selectedCategory, setSelectedCategory] = useState("");
     const [selectedExercise, setSelectedExercise] = useState("");
+    const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
     const [formData, setFormData] = useState<WorkoutCreate>({
         date: date || format(new Date(), "yyyy-MM-dd"),
         exercise: "",
@@ -139,11 +142,26 @@ const WorkoutSession = () => {
         resetForm();
     };
 
-    const handleDelete = async (id: number) => {
-        if (confirm("Are you sure you want to delete this workout?")) {
-            await deleteWorkout.mutateAsync(id);
+    // Auto-cancel delete confirmation after 3 seconds
+    useEffect(() => {
+        if (confirmingDelete !== null) {
+            const timer = setTimeout(() => setConfirmingDelete(null), 3000);
+            return () => clearTimeout(timer);
         }
-    };
+    }, [confirmingDelete]);
+
+    const handleDeleteClick = useCallback((id: number) => {
+        setConfirmingDelete(id);
+    }, []);
+
+    const handleDeleteConfirm = useCallback(async (id: number) => {
+        await deleteWorkout.mutateAsync(id);
+        setConfirmingDelete(null);
+    }, [deleteWorkout]);
+
+    const handleDeleteCancel = useCallback(() => {
+        setConfirmingDelete(null);
+    }, []);
 
     const handleReorder = async (id: number, direction: "up" | "down") => {
         await reorderWorkout.mutateAsync({ id, direction });
@@ -154,21 +172,44 @@ const WorkoutSession = () => {
     const formattedDate = date ? format(new Date(date), "MMMM d, yyyy") : "";
 
     const getCategoryColor = (category: string) => {
-        const colors: Record<string, { bg: string; text: string; border: string }> = {
-            Push: { bg: 'var(--chart-2)', text: 'var(--chart-2)', border: 'var(--chart-2)' },
-            Pull: { bg: 'var(--accent)', text: 'var(--accent)', border: 'var(--accent)' },
-            Legs: { bg: 'var(--chart-3)', text: 'var(--chart-3)', border: 'var(--chart-3)' },
-            Core: { bg: 'var(--chart-4)', text: 'var(--chart-4)', border: 'var(--chart-4)' },
-            Cardio: { bg: 'var(--error)', text: 'var(--error)', border: 'var(--error)' },
+        // Predefined colors for common categories
+        const predefined: Record<string, string> = {
+            Push: 'var(--chart-2)',    // Blue
+            Pull: 'var(--accent)',      // Green
+            Legs: 'var(--chart-3)',     // Purple
+            Core: 'var(--chart-4)',     // Orange
+            Cardio: 'var(--error)',     // Red
         };
-        return colors[category] || { bg: 'var(--text-muted)', text: 'var(--text-muted)', border: 'var(--border)' };
+
+        // Color palette for hash-based assignment
+        const palette = [
+            'var(--chart-1)',  // Green
+            'var(--chart-2)',  // Blue
+            'var(--chart-3)',  // Purple
+            'var(--chart-4)',  // Orange
+            'var(--chart-5)',  // Yellow
+            'var(--info)',     // Light blue
+            'var(--error)',    // Red
+        ];
+
+        let color = predefined[category];
+        if (!color) {
+            // Simple hash function for consistent color assignment
+            let hash = 0;
+            for (let i = 0; i < category.length; i++) {
+                hash = category.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            color = palette[Math.abs(hash) % palette.length];
+        }
+
+        return { bg: color, text: color, border: color };
     };
 
     return (
         <>
             <Navigation />
             <div className="page">
-                <div className="page__content" style={{ maxWidth: '680px' }}>
+                <div className="page__content">
                 {/* Header */}
                 <div
                     className="flex flex-col sm:flex-row sm:items-center justify-between animate-in"
@@ -500,12 +541,31 @@ const WorkoutSession = () => {
                                                     >
                                                         <ChevronDown style={{ width: '20px', height: '20px' }} />
                                                     </button>
-                                                    <button
-                                                        className="action-btn action-btn--danger"
-                                                        onClick={() => handleDelete(workout.doc_id)}
-                                                    >
-                                                        <Trash2 style={{ width: '18px', height: '18px' }} />
-                                                    </button>
+                                                    {confirmingDelete === workout.doc_id ? (
+                                                        <div className="flex" style={{ gap: '2px' }}>
+                                                            <button
+                                                                className="action-btn action-btn--danger"
+                                                                onClick={() => handleDeleteConfirm(workout.doc_id)}
+                                                                title="Confirm delete"
+                                                            >
+                                                                <Check style={{ width: '18px', height: '18px' }} />
+                                                            </button>
+                                                            <button
+                                                                className="action-btn"
+                                                                onClick={handleDeleteCancel}
+                                                                title="Cancel"
+                                                            >
+                                                                <X style={{ width: '18px', height: '18px' }} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            className="action-btn action-btn--danger"
+                                                            onClick={() => handleDeleteClick(workout.doc_id)}
+                                                        >
+                                                            <Trash2 style={{ width: '18px', height: '18px' }} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardContent>

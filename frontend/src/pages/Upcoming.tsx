@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell } from 'lucide-react';
+import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
@@ -19,6 +19,28 @@ const Upcoming = () => {
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
   const [transferDate, setTransferDate] = useState<Date | undefined>(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
+
+  // Auto-cancel delete confirmation after 3 seconds
+  useEffect(() => {
+    if (confirmingDelete !== null) {
+      const timer = setTimeout(() => setConfirmingDelete(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [confirmingDelete]);
+
+  const handleDeleteClick = useCallback((session: number) => {
+    setConfirmingDelete(session);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async (session: number) => {
+    await deleteSession.mutateAsync(session);
+    setConfirmingDelete(null);
+  }, [deleteSession]);
+
+  const handleDeleteCancel = useCallback(() => {
+    setConfirmingDelete(null);
+  }, []);
 
   // Group workouts by session
   const sessionGroups = useMemo(() => {
@@ -40,12 +62,6 @@ const Upcoming = () => {
       }));
   }, [upcomingWorkouts]);
 
-  const handleDeleteSession = async (session: number) => {
-    if (confirm(`Are you sure you want to delete session ${session}?`)) {
-      await deleteSession.mutateAsync(session);
-    }
-  };
-
   const handleTransferSession = async (session: number) => {
     if (!transferDate) {
       alert('Please select a date');
@@ -53,12 +69,9 @@ const Upcoming = () => {
     }
 
     const dateStr = format(transferDate, 'yyyy-MM-dd');
-
-    if (confirm(`Transfer session ${session} to ${format(transferDate, 'MMM d, yyyy')}?`)) {
-      await transferSession.mutateAsync({ session, date: dateStr });
-      setSelectedSession(null);
-      setShowCalendar(false);
-    }
+    await transferSession.mutateAsync({ session, date: dateStr });
+    setSelectedSession(null);
+    setShowCalendar(false);
   };
 
   return (
@@ -98,14 +111,34 @@ const Upcoming = () => {
                           <CalendarIcon className="w-4 h-4" />
                           Transfer
                         </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteSession(session)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Delete
-                        </Button>
+                        {confirmingDelete === session ? (
+                          <div className="flex" style={{ gap: '4px' }}>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteConfirm(session)}
+                            >
+                              <Check className="w-4 h-4" />
+                              Confirm
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={handleDeleteCancel}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteClick(session)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardHeader>

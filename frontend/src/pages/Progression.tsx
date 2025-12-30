@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { format } from "date-fns";
 import Navigation from "@/components/Navigation";
@@ -28,12 +28,17 @@ import {
 
 const Progression = () => {
     const { exercise: urlExercise } = useParams<{ exercise?: string }>();
-    const [selectedExercise, setSelectedExercise] = useState(
-        urlExercise || "Barbell Squat",
-    );
+    const [selectedExercise, setSelectedExercise] = useState(urlExercise || "");
     const [includeUpcoming, setIncludeUpcoming] = useState(true);
 
     const { data: exercises } = useProgressionExercises();
+
+    // Auto-select first exercise when list loads (if no URL param or selection)
+    useEffect(() => {
+        if (!selectedExercise && exercises && exercises.length > 0) {
+            setSelectedExercise(exercises[0]);
+        }
+    }, [exercises, selectedExercise]);
     const { data: progressionData, isLoading } = useProgression(
         selectedExercise,
         includeUpcoming,

@@ -47,44 +47,59 @@ const BodyComposition = () => {
         unit,
         change,
         icon: Icon,
+        trendDirection = 'neutral',
     }: {
         title: string;
         value: number | null;
         unit: string;
         change: number | null;
         icon: any;
-    }) => (
-        <div className="stat-card animate-in">
-            <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {title}
+        trendDirection?: 'up-good' | 'down-good' | 'neutral';
+    }) => {
+        // Determine color based on trend direction preference
+        const getTrendColor = () => {
+            if (trendDirection === 'neutral' || change === null) return 'var(--text-secondary)';
+            const isIncrease = change > 0;
+            if (trendDirection === 'up-good') {
+                return isIncrease ? 'var(--success)' : 'var(--error)';
+            } else { // down-good
+                return isIncrease ? 'var(--error)' : 'var(--success)';
+            }
+        };
+
+        return (
+            <div className="stat-card animate-in">
+                <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {title}
+                    </div>
+                    <Icon style={{ width: '20px', height: '20px', color: 'var(--text-muted)' }} />
                 </div>
-                <Icon style={{ width: '20px', height: '20px', color: 'var(--text-muted)' }} />
-            </div>
-            <div className="stat-card__value">
-                {value !== null ? `${value.toFixed(1)} ${unit}` : "N/A"}
-            </div>
-            {change !== null && change !== 0 && (
-                <div
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--space-1)',
-                        fontSize: '12px',
-                        marginTop: 'var(--space-2)',
-                        color: change > 0 ? 'var(--error)' : 'var(--success)',
-                    }}
-                >
-                    {change > 0 ? (
-                        <TrendingUp style={{ width: '14px', height: '14px' }} />
-                    ) : (
-                        <TrendingDown style={{ width: '14px', height: '14px' }} />
-                    )}
-                    {Math.abs(change).toFixed(1)} {unit} from previous
+                <div className="stat-card__value">
+                    {value !== null ? `${value.toFixed(1)} ${unit}` : "N/A"}
                 </div>
-            )}
-        </div>
-    );
+                {change !== null && change !== 0 && (
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-1)',
+                            fontSize: '12px',
+                            marginTop: 'var(--space-2)',
+                            color: getTrendColor(),
+                        }}
+                    >
+                        {change > 0 ? (
+                            <TrendingUp style={{ width: '14px', height: '14px' }} />
+                        ) : (
+                            <TrendingDown style={{ width: '14px', height: '14px' }} />
+                        )}
+                        {Math.abs(change).toFixed(1)} {unit} from previous
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <>
@@ -121,6 +136,7 @@ const BodyComposition = () => {
                                             : null
                                     }
                                     icon={Weight}
+                                    trendDirection="neutral"
                                 />
                                 <StatCard
                                     title="Body Fat %"
@@ -128,6 +144,7 @@ const BodyComposition = () => {
                                     unit="%"
                                     change={stats.body_fat_change}
                                     icon={TrendingDown}
+                                    trendDirection="down-good"
                                 />
                                 <StatCard
                                     title="Muscle Mass"
@@ -143,6 +160,7 @@ const BodyComposition = () => {
                                             : null
                                     }
                                     icon={TrendingUp}
+                                    trendDirection="up-good"
                                 />
                                 <div className="stat-card animate-in">
                                     <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>

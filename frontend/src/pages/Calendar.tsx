@@ -1,8 +1,53 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Dumbbell } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Dumbbell, Flame } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useCalendar } from "@/hooks/useWorkouts";
+
+/**
+ * Calculate workout streak allowing every-other-day training.
+ * A streak breaks when there are 2+ consecutive rest days.
+ */
+const calculateStreak = (workoutCounts: Record<string, number>): number => {
+    // Get all dates with workouts, sorted descending (most recent first)
+    const workoutDates = Object.entries(workoutCounts)
+        .filter(([_, count]) => count > 0)
+        .map(([date]) => new Date(date + 'T00:00:00'))
+        .sort((a, b) => b.getTime() - a.getTime());
+
+    if (workoutDates.length === 0) return 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const twoDaysAgo = new Date(today);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+    // If most recent workout is more than 2 days ago, streak is broken
+    const mostRecent = workoutDates[0];
+    if (mostRecent.getTime() < twoDaysAgo.getTime()) {
+        return 0;
+    }
+
+    // Count streak - each workout day counts as 1
+    let streak = 1;
+    for (let i = 1; i < workoutDates.length; i++) {
+        const current = workoutDates[i - 1];
+        const previous = workoutDates[i];
+
+        const daysDiff = Math.floor(
+            (current.getTime() - previous.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        // If gap is more than 2 days, streak is broken
+        if (daysDiff > 2) {
+            break;
+        }
+        streak++;
+    }
+
+    return streak;
+};
 
 const Calendar = () => {
     const navigate = useNavigate();
@@ -10,9 +55,24 @@ const Calendar = () => {
     const [currentYear, setCurrentYear] = useState(today.getFullYear());
     const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
 
+    // Fetch current month
     const { data: calendarData, isLoading } = useCalendar(
         currentYear,
         currentMonth,
+    );
+
+    // Calculate previous month for streak calculation
+    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+    // Fetch previous month for streak calculation (only when viewing current month)
+    const isViewingCurrentMonth =
+        currentMonth === today.getMonth() + 1 &&
+        currentYear === today.getFullYear();
+
+    const { data: prevMonthData } = useCalendar(
+        prevYear,
+        prevMonth,
     );
 
     const monthName = new Date(
@@ -50,6 +110,17 @@ const Calendar = () => {
     };
 
     const workoutCounts = calendarData?.counts || {};
+
+    // Calculate streak using combined data from current and previous month
+    const streak = useMemo(() => {
+        if (!isViewingCurrentMonth) return null;
+
+        const combinedCounts: Record<string, number> = {
+            ...(prevMonthData?.counts || {}),
+            ...workoutCounts,
+        };
+        return calculateStreak(combinedCounts);
+    }, [workoutCounts, prevMonthData?.counts, isViewingCurrentMonth]);
 
     const getDayClasses = (_day: number, count: number, isToday: boolean) => {
         const classes = ['calendar-day'];
@@ -180,10 +251,21 @@ const Calendar = () => {
                             <div className="stat-card__label" style={{ marginBottom: 'var(--space-2)' }}>
                                 STREAK
                             </div>
-                            <div className="stat-card__value" style={{ fontSize: '28px' }}>
-                                🔥
+                            <div className="stat-card__value flex items-center justify-center" style={{ gap: 'var(--space-2)' }}>
+                                {streak !== null ? (
+                                    <>
+                                        <span>{streak}</span>
+                                        {streak > 0 && <Flame className="w-6 h-6" style={{ color: 'var(--chart-4)' }} />}
+                                    </>
+                                ) : (
+                                    <span style={{ fontSize: '18px', color: 'var(--text-muted)' }}>—</span>
+                                )}
                             </div>
-                            <div className="stat-card__label">Keep it up!</div>
+                            <div className="stat-card__label">
+                                {streak !== null
+                                    ? streak > 0 ? 'Workout days' : 'Start today!'
+                                    : 'View current month'}
+                            </div>
                         </div>
                     </div>
                 </div>

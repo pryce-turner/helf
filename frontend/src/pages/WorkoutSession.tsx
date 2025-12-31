@@ -87,12 +87,17 @@ const WorkoutSession = () => {
 
     const handleEditWorkout = (workout: Workout) => {
         setEditingWorkout(workout);
-        setSelectedCategory(workout.category);
+
+        // Look up the exercise's actual category (in case workout data is stale)
+        const exerciseData = exercises?.find((e) => e.name === workout.exercise);
+        const actualCategory = exerciseData?.category || workout.category;
+
+        setSelectedCategory(actualCategory);
         setSelectedExercise(workout.exercise);
         setFormData({
             date: workout.date,
             exercise: workout.exercise,
-            category: workout.category,
+            category: actualCategory,
             weight: workout.weight,
             weight_unit: workout.weight_unit || "lbs",
             reps: workout.reps,
@@ -141,6 +146,23 @@ const WorkoutSession = () => {
 
         resetForm();
     };
+
+    // Sync exercise selection when editing and exercises data is available
+    useEffect(() => {
+        if (editingWorkout && exercises) {
+            // Look up the exercise's actual category
+            const exerciseData = exercises.find(e => e.name === editingWorkout.exercise);
+            if (exerciseData) {
+                const actualCategory = exerciseData.category;
+                if (selectedCategory !== actualCategory) {
+                    setSelectedCategory(actualCategory);
+                }
+                if (selectedExercise !== editingWorkout.exercise) {
+                    setSelectedExercise(editingWorkout.exercise);
+                }
+            }
+        }
+    }, [editingWorkout, exercises, selectedCategory, selectedExercise]);
 
     // Auto-cancel delete confirmation after 3 seconds
     useEffect(() => {
@@ -310,7 +332,8 @@ const WorkoutSession = () => {
                                             Exercise
                                         </Label>
                                         <Select
-                                            value={selectedExercise}
+                                            key={selectedCategory}
+                                            value={categoryExercises.some(e => e.name === selectedExercise) ? selectedExercise : undefined}
                                             onValueChange={handleExerciseChange}
                                             disabled={!selectedCategory}
                                         >

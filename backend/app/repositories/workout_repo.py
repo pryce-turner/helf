@@ -25,7 +25,7 @@ class WorkoutRepository:
             all_workouts.append(doc_with_id)
 
         # Sort by date descending, then by order
-        all_workouts.sort(key=lambda x: (x.get('date', ''), x.get('order', 0)), reverse=True)
+        all_workouts.sort(key=lambda x: (x.get('date', ''), x.get('order') or 0), reverse=True)
         return all_workouts[skip:skip+limit]
 
     def get_by_id(self, doc_id: int) -> Optional[dict]:
@@ -35,9 +35,15 @@ class WorkoutRepository:
     def get_by_date(self, date: str) -> list[dict]:
         """Get all workouts for a specific date, sorted by order."""
         results = self.table.search(self.query.date == date)
-        # Add doc_id to each workout
-        workouts = [{**doc, 'doc_id': doc.doc_id} for doc in results]
-        workouts.sort(key=lambda x: x.get('order', 0))
+        # Add doc_id to each workout, ensuring order is never None
+        workouts = []
+        for doc in results:
+            workout = {**doc, 'doc_id': doc.doc_id}
+            # Ensure order is always a valid integer
+            if workout.get('order') is None:
+                workout['order'] = 0
+            workouts.append(workout)
+        workouts.sort(key=lambda x: x['order'])
         return workouts
 
     def create(self, workout: WorkoutCreate) -> dict:

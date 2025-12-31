@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
     ArrowLeft,
     Plus,
@@ -169,7 +169,7 @@ const WorkoutSession = () => {
 
     const categoryExercises =
         exercises?.filter((e) => e.category === selectedCategory) || [];
-    const formattedDate = date ? format(new Date(date), "MMMM d, yyyy") : "";
+    const formattedDate = date ? format(parseISO(date), "MMMM d, yyyy") : "";
 
     const getCategoryColor = (category: string) => {
         // Predefined colors for common categories

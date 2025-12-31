@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import Navigation from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -66,7 +66,7 @@ const Progression = () => {
                     }))
                   : []),
           ].sort(
-              (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+              (a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime(),
           )
         : [];
 
@@ -79,14 +79,14 @@ const Progression = () => {
         const historicalData = data.filter((d) => d.type === "historical");
 
         historicalData.forEach((point, index) => {
-            const pointDate = new Date(point.date);
+            const pointDate = parseISO(point.date);
             const windowStart = new Date(pointDate);
             windowStart.setDate(windowStart.getDate() - windowDays);
 
             const windowData = historicalData
                 .slice(0, index + 1)
                 .filter((d) => {
-                    const dDate = new Date(d.date);
+                    const dDate = parseISO(d.date);
                     return dDate >= windowStart && dDate <= pointDate;
                 });
 
@@ -198,7 +198,7 @@ const Progression = () => {
                                                 stroke="var(--text-muted)"
                                                 style={{ fontSize: '12px' }}
                                                 tickFormatter={(date) =>
-                                                    format(new Date(date), "MMM d")
+                                                    format(parseISO(date), "MMM d")
                                                 }
                                             />
                                             <YAxis
@@ -220,7 +220,7 @@ const Progression = () => {
                                                 }}
                                                 labelFormatter={(date) =>
                                                     format(
-                                                        new Date(date),
+                                                        parseISO(date),
                                                         "MMM d, yyyy",
                                                     )
                                                 }
@@ -298,7 +298,7 @@ const Progression = () => {
                                     <CardContent>
                                         <div className="flex flex-col gap-3" style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: 'var(--space-2)' }}>
                                             {progressionData.historical
-                                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                                .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
                                                 .map((point, index) => (
                                                     <div
                                                         key={index}
@@ -310,7 +310,7 @@ const Progression = () => {
                                                     >
                                                         <div>
                                                             <div className="font-semibold text-[var(--text-primary)] text-[15px]">
-                                                                {format(new Date(point.date), "MMM d, yyyy")}
+                                                                {format(parseISO(point.date), "MMM d, yyyy")}
                                                             </div>
                                                             <div className="text-[13px] text-[var(--text-muted)] font-mono mt-1.5">
                                                                 {point.weight} {point.weight_unit} × {point.reps} reps
@@ -356,7 +356,7 @@ const Progression = () => {
                                                                 Session {point.session}
                                                             </div>
                                                             <div className="text-[13px] text-[var(--text-secondary)] mt-1">
-                                                                {format(new Date(point.projected_date), "MMM d, yyyy")}
+                                                                {format(parseISO(point.projected_date), "MMM d, yyyy")}
                                                             </div>
                                                             <div className="text-[13px] text-[var(--text-muted)] font-mono mt-1.5">
                                                                 {point.weight} {point.weight_unit} × {point.reps} reps

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Weight, TrendingDown, TrendingUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -172,12 +172,12 @@ const BodyComposition = () => {
                                     {stats.first_date && stats.latest_date && (
                                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
                                             {format(
-                                                new Date(stats.first_date),
+                                                parseISO(stats.first_date),
                                                 "MMM d, yyyy",
                                             )}{" "}
                                             -{" "}
                                             {format(
-                                                new Date(stats.latest_date),
+                                                parseISO(stats.latest_date),
                                                 "MMM d, yyyy",
                                             )}
                                         </div>
@@ -229,7 +229,7 @@ const BodyComposition = () => {
                                                     style={{ fontSize: '12px' }}
                                                     tickFormatter={(date) =>
                                                         format(
-                                                            new Date(date),
+                                                            parseISO(date),
                                                             "MMM d",
                                                         )
                                                     }
@@ -266,7 +266,7 @@ const BodyComposition = () => {
                                                     }}
                                                     labelFormatter={(date) =>
                                                         format(
-                                                            new Date(date),
+                                                            parseISO(date),
                                                             "MMM d, yyyy",
                                                         )
                                                     }

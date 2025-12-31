@@ -1049,6 +1049,16 @@
     .gap-2 { gap: var(--space-2); }
     .gap-4 { gap: var(--space-4); }
     .gap-6 { gap: var(--space-6); }
+
+    /* Hide scrollbar utility */
+    .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
 }
 
 /* Navigation spacing overrides - outside layer for proper specificity */

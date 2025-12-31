@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X } from 'lucide-react';
+import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
@@ -10,6 +10,38 @@ import {
   useDeleteUpcomingSession,
   useTransferSession
 } from '@/hooks/useUpcoming';
+
+// Predefined colors for common categories (matching WorkoutSession)
+const getCategoryColor = (category: string) => {
+  const predefined: Record<string, string> = {
+    Push: 'var(--chart-2)',
+    Pull: 'var(--accent)',
+    Legs: 'var(--chart-3)',
+    Core: 'var(--chart-4)',
+    Cardio: 'var(--error)',
+  };
+
+  const palette = [
+    'var(--chart-1)',
+    'var(--chart-2)',
+    'var(--chart-3)',
+    'var(--chart-4)',
+    'var(--chart-5)',
+    'var(--info)',
+    'var(--error)',
+  ];
+
+  let color = predefined[category];
+  if (!color) {
+    let hash = 0;
+    for (let i = 0; i < category.length; i++) {
+      hash = category.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    color = palette[Math.abs(hash) % palette.length];
+  }
+
+  return { bg: color, text: color, border: color };
+};
 
 const Upcoming = () => {
   const { data: upcomingWorkouts, isLoading } = useUpcomingWorkouts();
@@ -88,18 +120,30 @@ const Upcoming = () => {
           {isLoading ? (
             <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>
               <div className="loading-spinner inline-block" />
-              <p className="mt-4 text-[var(--text-muted)]">Loading upcoming workouts...</p>
+              <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>
+                Loading upcoming workouts...
+              </p>
             </div>
           ) : sessionGroups.length > 0 ? (
-            <div className="flex flex-col gap-6">
-              {sessionGroups.map(({ session, workouts }) => (
-                <Card key={session} className="animate-in">
+            <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+              {sessionGroups.map(({ session, workouts }, sessionIndex) => (
+                <Card key={session} className="animate-in" style={{ animationDelay: `${sessionIndex * 50}ms` }}>
                   <CardHeader>
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                      <CardTitle className="font-display text-xl tracking-tight">
-                        SESSION {session}
-                      </CardTitle>
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between flex-wrap" style={{ gap: 'var(--space-4)' }}>
+                      <div className="flex items-center" style={{ gap: 'var(--space-3)' }}>
+                        <div className="workout-order" style={{ width: '44px', height: '44px', fontSize: '18px' }}>
+                          {session}
+                        </div>
+                        <div>
+                          <CardTitle className="font-display text-xl tracking-tight">
+                            SESSION {session}
+                          </CardTitle>
+                          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
+                            {workouts.length} exercise{workouts.length !== 1 ? 's' : ''} planned
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
                         <Button
                           variant="secondary"
                           size="sm"
@@ -108,17 +152,17 @@ const Upcoming = () => {
                             setShowCalendar(!showCalendar || selectedSession !== session);
                           }}
                         >
-                          <CalendarIcon className="w-4 h-4" />
+                          <CalendarIcon style={{ width: '16px', height: '16px' }} />
                           Transfer
                         </Button>
                         {confirmingDelete === session ? (
-                          <div className="flex" style={{ gap: '4px' }}>
+                          <div className="flex" style={{ gap: 'var(--space-1)' }}>
                             <Button
                               variant="destructive"
                               size="sm"
                               onClick={() => handleDeleteConfirm(session)}
                             >
-                              <Check className="w-4 h-4" />
+                              <Check style={{ width: '16px', height: '16px' }} />
                               Confirm
                             </Button>
                             <Button
@@ -126,7 +170,7 @@ const Upcoming = () => {
                               size="sm"
                               onClick={handleDeleteCancel}
                             >
-                              <X className="w-4 h-4" />
+                              <X style={{ width: '16px', height: '16px' }} />
                             </Button>
                           </div>
                         ) : (
@@ -135,7 +179,7 @@ const Upcoming = () => {
                             size="sm"
                             onClick={() => handleDeleteClick(session)}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 style={{ width: '16px', height: '16px' }} />
                             Delete
                           </Button>
                         )}
@@ -144,8 +188,29 @@ const Upcoming = () => {
                   </CardHeader>
                   <CardContent>
                     {showCalendar && selectedSession === session && (
-                      <div className="mb-6 p-4 bg-[var(--bg-tertiary)] rounded-[var(--radius-lg)]">
-                        <div className="flex flex-col items-center gap-4">
+                      <div
+                        style={{
+                          marginBottom: 'var(--space-6)',
+                          padding: 'var(--space-5)',
+                          background: 'var(--bg-tertiary)',
+                          borderRadius: 'var(--radius-lg)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: 'var(--text-muted)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                            marginBottom: 'var(--space-4)',
+                            textAlign: 'center',
+                          }}
+                        >
+                          Select transfer date
+                        </p>
+                        <div className="flex flex-col items-center" style={{ gap: 'var(--space-4)' }}>
                           <Calendar
                             mode="single"
                             selected={transferDate}
@@ -156,84 +221,121 @@ const Upcoming = () => {
                             onClick={() => handleTransferSession(session)}
                             disabled={!transferDate}
                           >
-                            <ArrowRight className="w-[18px] h-[18px]" />
+                            <ArrowRight style={{ width: '18px', height: '18px' }} />
                             Transfer to {transferDate && format(transferDate, 'MMM d, yyyy')}
                           </Button>
                         </div>
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-3">
-                      {workouts.map((workout, workoutIndex) => (
-                        <div key={workout.doc_id} className="data-item">
-                          <div className="flex items-start justify-between w-full">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-4">
-                                <span className="text-[var(--text-muted)] font-mono text-sm font-semibold min-w-[28px]">
-                                  #{workoutIndex + 1}
-                                </span>
-                                <div>
-                                  <h3 className="font-semibold text-base text-[var(--text-primary)]">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                      {workouts.map((workout, workoutIndex) => {
+                        const catColor = getCategoryColor(workout.category);
+                        return (
+                          <div
+                            key={workout.doc_id}
+                            style={{
+                              padding: 'var(--space-4)',
+                              background: 'var(--bg-tertiary)',
+                              borderRadius: 'var(--radius-md)',
+                              border: '1px solid var(--border-subtle)',
+                            }}
+                          >
+                            <div className="flex items-start" style={{ gap: 'var(--space-4)' }}>
+                              <div
+                                className="workout-order"
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  fontSize: '14px',
+                                  background: 'rgba(234, 179, 8, 0.1)',
+                                  color: 'var(--warning)',
+                                }}
+                              >
+                                {workoutIndex + 1}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
+                                  <h3
+                                    style={{
+                                      fontFamily: 'var(--font-body)',
+                                      fontSize: '16px',
+                                      fontWeight: 600,
+                                      color: 'var(--text-primary)',
+                                    }}
+                                  >
                                     {workout.exercise}
                                   </h3>
-                                  <p className="text-[13px] text-[var(--text-muted)] mt-1">
+                                  <span
+                                    className="category-badge"
+                                    style={{
+                                      border: `1px solid ${catColor.border}`,
+                                      color: catColor.text,
+                                      background: `${catColor.bg}20`,
+                                    }}
+                                  >
                                     {workout.category}
-                                  </p>
+                                  </span>
                                 </div>
-                              </div>
-                              <div className="flex flex-wrap mt-3 gap-5 text-[13px]">
-                                {workout.weight && (
-                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
-                                    {workout.weight} {workout.weight_unit}
-                                  </span>
-                                )}
-                                {workout.reps && (
-                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
-                                    {workout.reps} reps
-                                  </span>
-                                )}
-                                {workout.distance && (
-                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
-                                    {workout.distance} {workout.distance_unit}
-                                  </span>
-                                )}
-                                {workout.time && (
-                                  <span className="font-semibold font-mono text-[var(--text-secondary)]">
-                                    {workout.time}
-                                  </span>
-                                )}
-                                {workout.comment && (
-                                  <span className="text-[var(--text-muted)] italic">
-                                    {workout.comment}
-                                  </span>
-                                )}
+                                <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                                  {workout.weight && (
+                                    <div className="workout-chip">
+                                      <Weight style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                      <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                        {workout.weight} {workout.weight_unit}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {workout.reps && (
+                                    <div className="workout-chip">
+                                      <Hash style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                      <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                        {workout.reps} reps
+                                      </span>
+                                    </div>
+                                  )}
+                                  {workout.distance && (
+                                    <div className="workout-chip">
+                                      <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                        {workout.distance} {workout.distance_unit}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {workout.time && (
+                                    <div className="workout-chip">
+                                      <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                        {workout.time}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {workout.comment && (
+                                    <div className="workout-chip">
+                                      <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                                      <span className="workout-chip__comment" style={{ fontSize: '13px' }}>
+                                        {workout.comment}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 text-[13px] text-[var(--text-muted)]">
-                      {workouts.length} exercise{workouts.length > 1 ? 's' : ''} in this session
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
           ) : (
-            <Card className="border-2 border-dashed border-[var(--border)] bg-transparent">
-              <CardContent className="p-12 text-center">
-                <div className="w-20 h-20 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mx-auto mb-4">
-                  <Dumbbell className="w-10 h-10 text-[var(--text-muted)]" />
+            <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>
+              <CardContent className="empty-state">
+                <div className="empty-state__icon">
+                  <Dumbbell style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
                 </div>
-                <h3 className="font-display text-lg font-semibold mb-2">
-                  NO UPCOMING WORKOUTS
-                </h3>
-                <p className="text-[var(--text-secondary)]">
-                  No upcoming workouts planned.
-                </p>
-                <p className="text-[13px] text-[var(--text-muted)] mt-2">
+                <h3 className="empty-state__title">NO UPCOMING WORKOUTS</h3>
+                <p className="empty-state__text">No upcoming workouts planned.</p>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
                   Use the Wendler 5/3/1 generator or import workouts via CSV to plan your training.
                 </p>
               </CardContent>

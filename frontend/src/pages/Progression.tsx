@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
+import { Weight, Hash, MessageSquare, TrendingUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -288,44 +289,91 @@ const Progression = () => {
                                 </CardContent>
                             </Card>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 'var(--space-6)' }}>
                                 <Card className="animate-in">
                                     <CardHeader>
                                         <CardTitle className="font-display text-xl tracking-tight">
                                             HISTORICAL DATA
                                         </CardTitle>
+                                        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
+                                            {progressionData.historical.length} completed session{progressionData.historical.length !== 1 ? 's' : ''}
+                                        </p>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="flex flex-col gap-3" style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: 'var(--space-2)' }}>
+                                        <div className="stagger-children hide-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', maxHeight: '400px', overflowY: 'auto' }}>
                                             {progressionData.historical
                                                 .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
                                                 .map((point, index) => (
                                                     <div
                                                         key={index}
-                                                        className="data-item"
+                                                        className="animate-in"
                                                         style={{
-                                                            background: 'rgba(34, 197, 94, 0.08)',
-                                                            border: '1px solid rgba(34, 197, 94, 0.15)',
+                                                            padding: 'var(--space-4)',
+                                                            background: 'var(--bg-tertiary)',
+                                                            borderRadius: 'var(--radius-md)',
+                                                            border: '1px solid var(--border-subtle)',
+                                                            animationDelay: `${index * 30}ms`,
                                                         }}
                                                     >
-                                                        <div>
-                                                            <div className="font-semibold text-[var(--text-primary)] text-[15px]">
-                                                                {format(parseISO(point.date), "MMM d, yyyy")}
+                                                        <div className="flex items-start" style={{ gap: 'var(--space-4)' }}>
+                                                            <div
+                                                                className="workout-order"
+                                                                style={{
+                                                                    width: '36px',
+                                                                    height: '36px',
+                                                                    fontSize: '14px',
+                                                                    background: 'var(--success-subtle)',
+                                                                    color: 'var(--success)',
+                                                                }}
+                                                            >
+                                                                {progressionData.historical.length - index}
                                                             </div>
-                                                            <div className="text-[13px] text-[var(--text-muted)] font-mono mt-1.5">
-                                                                {point.weight} {point.weight_unit} × {point.reps} reps
-                                                            </div>
-                                                            {point.comment && (
-                                                                <div className="text-xs text-[var(--text-muted)] italic mt-2">
-                                                                    {point.comment}
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
+                                                                    <h3
+                                                                        style={{
+                                                                            fontFamily: 'var(--font-body)',
+                                                                            fontSize: '15px',
+                                                                            fontWeight: 600,
+                                                                            color: 'var(--text-primary)',
+                                                                        }}
+                                                                    >
+                                                                        {format(parseISO(point.date), "MMM d, yyyy")}
+                                                                    </h3>
                                                                 </div>
-                                                            )}
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-xl font-bold text-[var(--accent)] font-mono">
-                                                                {point.estimated_1rm.toFixed(1)}
+                                                                <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                                                                    {point.weight && (
+                                                                        <div className="workout-chip">
+                                                                            <Weight style={{ width: '14px', height: '14px', color: 'var(--success)' }} />
+                                                                            <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                                                                {point.weight} {point.weight_unit}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    {point.reps && (
+                                                                        <div className="workout-chip">
+                                                                            <Hash style={{ width: '14px', height: '14px', color: 'var(--success)' }} />
+                                                                            <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                                                                {point.reps} reps
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="workout-chip">
+                                                                        <TrendingUp style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
+                                                                        <span className="workout-chip__value" style={{ fontSize: '13px', color: 'var(--accent)' }}>
+                                                                            {point.estimated_1rm.toFixed(1)} 1RM
+                                                                        </span>
+                                                                    </div>
+                                                                    {point.comment && (
+                                                                        <div className="workout-chip">
+                                                                            <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                                                                            <span className="workout-chip__comment" style={{ fontSize: '13px' }}>
+                                                                                {point.comment}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                            <div className="text-[11px] text-[var(--text-muted)] mt-1">1RM</div>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -339,39 +387,91 @@ const Progression = () => {
                                             <CardTitle className="font-display text-xl tracking-tight">
                                                 UPCOMING WORKOUTS
                                             </CardTitle>
+                                            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
+                                                {progressionData.upcoming.length} planned session{progressionData.upcoming.length !== 1 ? 's' : ''}
+                                            </p>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="flex flex-col gap-3" style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: 'var(--space-2)' }}>
+                                            <div className="stagger-children hide-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', maxHeight: '400px', overflowY: 'auto' }}>
                                                 {progressionData.upcoming.map((point, index) => (
                                                     <div
                                                         key={index}
-                                                        className="data-item"
+                                                        className="animate-in"
                                                         style={{
-                                                            background: 'rgba(234, 179, 8, 0.1)',
-                                                            border: '1px solid rgba(234, 179, 8, 0.2)',
+                                                            padding: 'var(--space-4)',
+                                                            background: 'var(--bg-tertiary)',
+                                                            borderRadius: 'var(--radius-md)',
+                                                            border: '1px solid var(--border-subtle)',
+                                                            animationDelay: `${index * 30}ms`,
                                                         }}
                                                     >
-                                                        <div>
-                                                            <div className="font-semibold text-[var(--text-primary)] text-[15px]">
-                                                                Session {point.session}
+                                                        <div className="flex items-start" style={{ gap: 'var(--space-4)' }}>
+                                                            <div
+                                                                className="workout-order"
+                                                                style={{
+                                                                    width: '36px',
+                                                                    height: '36px',
+                                                                    fontSize: '14px',
+                                                                    background: 'var(--warning-subtle)',
+                                                                    color: 'var(--warning)',
+                                                                }}
+                                                            >
+                                                                {point.session}
                                                             </div>
-                                                            <div className="text-[13px] text-[var(--text-secondary)] mt-1">
-                                                                {format(parseISO(point.projected_date), "MMM d, yyyy")}
-                                                            </div>
-                                                            <div className="text-[13px] text-[var(--text-muted)] font-mono mt-1.5">
-                                                                {point.weight} {point.weight_unit} × {point.reps} reps
-                                                            </div>
-                                                            {point.comment && (
-                                                                <div className="text-xs text-[var(--text-muted)] italic mt-2">
-                                                                    {point.comment}
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
+                                                                    <h3
+                                                                        style={{
+                                                                            fontFamily: 'var(--font-body)',
+                                                                            fontSize: '15px',
+                                                                            fontWeight: 600,
+                                                                            color: 'var(--text-primary)',
+                                                                        }}
+                                                                    >
+                                                                        Session {point.session}
+                                                                    </h3>
+                                                                    <span
+                                                                        style={{
+                                                                            fontSize: '12px',
+                                                                            color: 'var(--text-secondary)',
+                                                                        }}
+                                                                    >
+                                                                        {format(parseISO(point.projected_date), "MMM d, yyyy")}
+                                                                    </span>
                                                                 </div>
-                                                            )}
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-xl font-bold text-[var(--warning)] font-mono">
-                                                                {point.estimated_1rm.toFixed(1)}
+                                                                <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                                                                    {point.weight && (
+                                                                        <div className="workout-chip">
+                                                                            <Weight style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                                                            <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                                                                {point.weight} {point.weight_unit}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    {point.reps && (
+                                                                        <div className="workout-chip">
+                                                                            <Hash style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                                                            <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                                                                {point.reps} reps
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="workout-chip">
+                                                                        <TrendingUp style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                                                        <span className="workout-chip__value" style={{ fontSize: '13px', color: 'var(--warning)' }}>
+                                                                            {point.estimated_1rm.toFixed(1)} 1RM
+                                                                        </span>
+                                                                    </div>
+                                                                    {point.comment && (
+                                                                        <div className="workout-chip">
+                                                                            <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                                                                            <span className="workout-chip__comment" style={{ fontSize: '13px' }}>
+                                                                                {point.comment}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                            <div className="text-[11px] text-[var(--text-muted)] mt-1">1RM</div>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -382,10 +482,17 @@ const Progression = () => {
                             </div>
                         </>
                     ) : (
-                        <Card className="border-2 border-dashed border-[var(--border)] bg-transparent">
-                            <CardContent className="p-12 text-center">
-                                <p className="text-[var(--text-secondary)]">
+                        <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>
+                            <CardContent className="empty-state">
+                                <div className="empty-state__icon">
+                                    <TrendingUp style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
+                                </div>
+                                <h3 className="empty-state__title">NO PROGRESSION DATA</h3>
+                                <p className="empty-state__text">
                                     No progression data available for this exercise.
+                                </p>
+                                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
+                                    Complete workouts with this exercise to see your progression over time.
                                 </p>
                             </CardContent>
                         </Card>

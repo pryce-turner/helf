@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { upcomingApi } from '@/lib/api';
-import type { UpcomingWorkoutCreate } from '@/types/upcoming';
+import type { UpcomingWorkoutCreate, WendlerGenerateRequest } from '@/types/upcoming';
 
 export function useUpcomingWorkouts() {
   return useQuery({
@@ -77,6 +77,31 @@ export function useTransferSession() {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['workouts'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
+    },
+  });
+}
+
+export function useWendlerMaxes() {
+  return useQuery({
+    queryKey: ['wendler', 'maxes'],
+    queryFn: async () => {
+      const response = await upcomingApi.getWendlerMaxes();
+      return response.data;
+    },
+  });
+}
+
+export function useGenerateWendler() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (request: WendlerGenerateRequest) => {
+      const response = await upcomingApi.generateWendler(request);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['upcoming'] });
+      queryClient.invalidateQueries({ queryKey: ['progression'] });
     },
   });
 }

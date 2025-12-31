@@ -50,3 +50,28 @@ class SessionTransferResponse(BaseModel):
     date: str
     count: int
     message: str
+
+
+class WendlerGenerateRequest(BaseModel):
+    """Request to generate Wendler 5/3/1 progression workouts."""
+    num_cycles: int = Field(4, ge=1, le=12, description="Number of 4-week cycles")
+    squat_max: Optional[float] = Field(None, description="Override 1RM for squat")
+    bench_max: Optional[float] = Field(None, description="Override 1RM for bench")
+    deadlift_max: Optional[float] = Field(None, description="Override 1RM for deadlift")
+
+
+class WendlerGenerateResponse(BaseModel):
+    """Response from generating Wendler progression."""
+    success: bool
+    message: str
+    count: int
+    sessions: Optional[int] = None
+    session_range: Optional[list[int]] = None
+    cycles: Optional[int] = None
+
+
+class WendlerCurrentMaxes(BaseModel):
+    """Current estimated 1RM values for main lifts."""
+    squat: Optional[float] = None
+    bench: Optional[float] = None
+    deadlift: Optional[float] = None

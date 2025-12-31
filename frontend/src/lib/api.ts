@@ -16,7 +16,13 @@ import type {
     BodyCompositionTrend,
 } from "../types/bodyComposition";
 import type { ProgressionResponse } from "../types/progression";
-import type { UpcomingWorkout, UpcomingWorkoutCreate } from "../types/upcoming";
+import type {
+    UpcomingWorkout,
+    UpcomingWorkoutCreate,
+    WendlerGenerateRequest,
+    WendlerGenerateResponse,
+    WendlerCurrentMaxes,
+} from "../types/upcoming";
 
 // Use relative URL - Vite proxy handles routing to backend in dev
 // In production, requests go to same origin
@@ -124,6 +130,12 @@ export const upcomingApi = {
             count: number;
             message: string;
         }>(`/api/upcoming/session/${session}/transfer`, { date }),
+
+    getWendlerMaxes: () =>
+        api.get<WendlerCurrentMaxes>("/api/upcoming/wendler/maxes"),
+
+    generateWendler: (request: WendlerGenerateRequest) =>
+        api.post<WendlerGenerateResponse>("/api/upcoming/wendler/generate", request),
 };
 
 // Body Composition

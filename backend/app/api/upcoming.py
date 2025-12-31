@@ -8,10 +8,14 @@ from app.models.upcoming import (
     UpcomingWorkoutBulkCreate,
     SessionTransferRequest,
     SessionTransferResponse,
+    WendlerGenerateRequest,
+    WendlerGenerateResponse,
+    WendlerCurrentMaxes,
 )
 from app.models.workout import WorkoutCreate
 from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 from app.repositories.workout_repo import WorkoutRepository
+from app.services.wendler_service import WendlerService
 
 router = APIRouter()
 
@@ -97,3 +101,31 @@ def transfer_session(session: int, request: SessionTransferRequest):
         count=count,
         message=f"Transferred {count} workouts to {request.date}"
     )
+
+
+@router.get("/wendler/maxes", response_model=WendlerCurrentMaxes)
+def get_wendler_current_maxes():
+    """Get current estimated 1RM values for main lifts."""
+    service = WendlerService()
+    maxes = service.get_current_maxes()
+
+    return WendlerCurrentMaxes(
+        squat=maxes.get('Barbell Squat'),
+        bench=maxes.get('Flat Barbell Bench Press'),
+        deadlift=maxes.get('Deadlift'),
+    )
+
+
+@router.post("/wendler/generate", response_model=WendlerGenerateResponse)
+def generate_wendler_progression(request: WendlerGenerateRequest):
+    """Generate Wendler 5/3/1 progression workouts."""
+    service = WendlerService()
+
+    result = service.generate_and_save(
+        num_cycles=request.num_cycles,
+        squat_max=request.squat_max,
+        bench_max=request.bench_max,
+        deadlift_max=request.deadlift_max,
+    )
+
+    return WendlerGenerateResponse(**result)

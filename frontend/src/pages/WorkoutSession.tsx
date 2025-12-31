@@ -39,6 +39,13 @@ import type { Workout } from "@/types/workout";
 import { useCategories, useExercises } from "@/hooks/useExercises";
 import type { WorkoutCreate } from "@/types/workout";
 
+// Get weight increment based on current weight value
+const getWeightIncrement = (weight: number): number => {
+    if (weight < 100) return 2.5;
+    if (weight <= 300) return 5;
+    return 10;
+};
+
 const WorkoutSession = () => {
     const { date } = useParams<{ date: string }>();
     const navigate = useNavigate();
@@ -363,10 +370,14 @@ const WorkoutSession = () => {
                                         <button
                                             type="button"
                                             className="stepper__btn stepper__btn--start"
-                                            onClick={() => setFormData({
-                                                ...formData,
-                                                weight: Math.max(0, (formData.weight || 0) - 5),
-                                            })}
+                                            onClick={() => {
+                                                const current = formData.weight || 0;
+                                                const increment = getWeightIncrement(current);
+                                                setFormData({
+                                                    ...formData,
+                                                    weight: Math.max(0, current - increment),
+                                                });
+                                            }}
                                         >
                                             <Minus style={{ width: '18px', height: '18px' }} />
                                         </button>
@@ -387,10 +398,14 @@ const WorkoutSession = () => {
                                         <button
                                             type="button"
                                             className="stepper__btn stepper__btn--end"
-                                            onClick={() => setFormData({
-                                                ...formData,
-                                                weight: (formData.weight || 0) + 5,
-                                            })}
+                                            onClick={() => {
+                                                const current = formData.weight || 0;
+                                                const increment = getWeightIncrement(current);
+                                                setFormData({
+                                                    ...formData,
+                                                    weight: current + increment,
+                                                });
+                                            }}
                                         >
                                             <Plus style={{ width: '18px', height: '18px' }} />
                                         </button>

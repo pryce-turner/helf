@@ -22,12 +22,12 @@
         --text-muted: #5c5c5e;
         --text-inverse: #09090b;
 
-        /* Brand accent - vibrant green */
-        --accent: #22c55e;
-        --accent-hover: #16a34a;
-        --accent-muted: #15803d;
-        --accent-glow: rgba(34, 197, 94, 0.15);
-        --accent-subtle: rgba(34, 197, 94, 0.08);
+        /* Brand accent - vibrant orange */
+        --accent: #f97316;
+        --accent-hover: #ea580c;
+        --accent-muted: #c2410c;
+        --accent-glow: rgba(249, 115, 22, 0.15);
+        --accent-subtle: rgba(249, 115, 22, 0.08);
 
         /* Semantic colors */
         --success: #22c55e;
@@ -40,10 +40,10 @@
         --info-subtle: rgba(59, 130, 246, 0.1);
 
         /* Data visualization palette */
-        --chart-1: #22c55e;
+        --chart-1: #f97316;
         --chart-2: #3b82f6;
         --chart-3: #a855f7;
-        --chart-4: #f97316;
+        --chart-4: #22c55e;
         --chart-5: #eab308;
 
         /* Borders & dividers */

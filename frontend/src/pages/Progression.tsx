@@ -31,6 +31,7 @@ const Progression = () => {
     const { exercise: urlExercise } = useParams<{ exercise?: string }>();
     const [selectedExercise, setSelectedExercise] = useState(urlExercise || "");
     const [includeUpcoming, setIncludeUpcoming] = useState(true);
+    const [maWindowDays, setMaWindowDays] = useState(30);
 
     const { data: exercises } = useProgressionExercises();
 
@@ -103,7 +104,7 @@ const Progression = () => {
     };
 
     const movingAverageData =
-        chartData.length > 0 ? calculateMovingAverage(chartData) : [];
+        chartData.length > 0 ? calculateMovingAverage(chartData, maWindowDays) : [];
 
     // Merge MA data with chart data
     const combinedData = chartData.map((point) => {
@@ -168,6 +169,21 @@ const Progression = () => {
                                 >
                                     Include upcoming workouts
                                 </label>
+                            </div>
+
+                            <div style={{ width: '120px' }}>
+                                <Select
+                                    value={String(maWindowDays)}
+                                    onValueChange={(v) => setMaWindowDays(Number(v))}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="30">30-day MA</SelectItem>
+                                        <SelectItem value="60">60-day MA</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
                     </div>
@@ -234,7 +250,7 @@ const Progression = () => {
                                                             value.toFixed(1),
                                                             name,
                                                         ];
-                                                    if (name === "30-day MA")
+                                                    if (name === `${maWindowDays}-day MA`)
                                                         return [
                                                             value.toFixed(1),
                                                             name,
@@ -280,7 +296,7 @@ const Progression = () => {
                                                 type="monotone"
                                                 dataKey="ma"
                                                 stroke="var(--accent)"
-                                                name="30-day MA"
+                                                name={`${maWindowDays}-day MA`}
                                                 strokeWidth={2}
                                                 dot={false}
                                             />

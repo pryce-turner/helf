@@ -201,6 +201,7 @@ const BodyComposition = () => {
                                         >
                                             <option value={7}>7 days</option>
                                             <option value={30}>30 days</option>
+                                            <option value={60}>60 days</option>
                                             <option value={90}>90 days</option>
                                             <option value={180}>180 days</option>
                                             <option value={365}>1 year</option>

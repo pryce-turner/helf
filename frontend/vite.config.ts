@@ -10,16 +10,15 @@ export default defineConfig({
         VitePWA({
             registerType: "autoUpdate",
             includeAssets: [
-                "favicon.ico",
+                "favicon.svg",
                 "apple-touch-icon.png",
-                "mask-icon.svg",
             ],
             manifest: {
                 name: "Helf - Health & Fitness Tracker",
                 short_name: "Helf",
                 description:
                     "Track workouts, progression, and body composition",
-                theme_color: "#3b82f6",
+                theme_color: "#f97316",
                 background_color: "#1a1a1a",
                 display: "standalone",
                 orientation: "portrait",

@@ -234,7 +234,7 @@ const Calendar = () => {
                             <div className="stat-card__value">
                                 {Object.values(workoutCounts).reduce((a, b) => a + b, 0)}
                             </div>
-                            <div className="stat-card__label">Total Workouts</div>
+                            <div className="stat-card__label">Total Sets</div>
                         </div>
 
                         <div className="stat-card animate-in">

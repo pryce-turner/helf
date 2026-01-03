@@ -99,7 +99,7 @@ class WorkoutRepository:
         # Find the workout index
         workout_index = None
         for i, w in enumerate(date_workouts):
-            if w.doc_id == doc_id:
+            if w['doc_id'] == doc_id:
                 workout_index = i
                 break
 
@@ -125,11 +125,11 @@ class WorkoutRepository:
         # Save updates
         self.table.update(
             {'order': date_workouts[workout_index]['order']},
-            doc_ids=[date_workouts[workout_index].doc_id]
+            doc_ids=[date_workouts[workout_index]['doc_id']]
         )
         self.table.update(
             {'order': date_workouts[swap_index]['order']},
-            doc_ids=[date_workouts[swap_index].doc_id]
+            doc_ids=[date_workouts[swap_index]['doc_id']]
         )
 
         return True

@@ -30,7 +30,10 @@ class WorkoutRepository:
 
     def get_by_id(self, doc_id: int) -> Optional[dict]:
         """Get a workout by ID."""
-        return self.table.get(doc_id=doc_id)
+        doc = self.table.get(doc_id=doc_id)
+        if doc:
+            return {**doc, 'doc_id': doc.doc_id}
+        return None
 
     def get_by_date(self, date: str) -> list[dict]:
         """Get all workouts for a specific date, sorted by order."""
@@ -59,7 +62,8 @@ class WorkoutRepository:
             workout_dict['order'] = len(date_workouts) + 1
 
         doc_id = self.table.insert(workout_dict)
-        return self.table.get(doc_id=doc_id)
+        doc = self.table.get(doc_id=doc_id)
+        return {**doc, 'doc_id': doc.doc_id}
 
     def update(self, doc_id: int, workout: WorkoutUpdate) -> Optional[dict]:
         """Update an existing workout."""
@@ -70,7 +74,8 @@ class WorkoutRepository:
         workout_dict['updated_at'] = get_current_datetime().isoformat()
 
         self.table.update(workout_dict, doc_ids=[doc_id])
-        return self.table.get(doc_id=doc_id)
+        doc = self.table.get(doc_id=doc_id)
+        return {**doc, 'doc_id': doc.doc_id}
 
     def delete(self, doc_id: int) -> bool:
         """Delete a workout."""

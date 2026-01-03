@@ -31,6 +31,7 @@ uv.lock
 *.swo
 *~
 .DS_Store
+.claude/
 
 # Application data
 data/*.csv

@@ -46,6 +46,10 @@ docker-compose.yml
 .uv/
 uv.lock
 
-# Other
-generate_wendler_progression.py
-*.bak
+# Documentation
+*.md
+
+# Frontend node_modules (will be installed fresh in build)
+frontend/node_modules/
+frontend/dist/
+frontend/dev-dist/

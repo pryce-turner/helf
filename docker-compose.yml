@@ -16,7 +16,7 @@ services:
             - MQTT_BROKER_PORT=1883
 
             # API configuration
-            - CORS_ORIGINS=*
+            - CORS_ORIGINS=["*"]
 
             # Production settings
             - PRODUCTION=true

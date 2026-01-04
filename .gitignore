@@ -36,8 +36,8 @@ uv.lock
 # Application data
 data/*.csv
 
-# NiceGUI storage
-.nicegui/
-
 # Data
 **/helf.json
+
+# Scratch
+TODO.md

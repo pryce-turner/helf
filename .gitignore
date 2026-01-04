@@ -35,6 +35,7 @@ uv.lock
 
 # Application data
 data/*.csv
+.env
 
 # Data
 **/helf.json

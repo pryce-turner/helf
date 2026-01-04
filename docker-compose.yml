@@ -6,7 +6,7 @@ services:
             - "30171:8080"
         volumes:
             # Persist workout data and database
-            - ${HELF_DATA_PATH:-./data}:/app/data
+            - ${HELF_DATA_PATH}:/app/data
         environment:
             # Data directory (container path)
             - DATA_DIR=/app/data

@@ -47,9 +47,27 @@ class WorkoutReorder(BaseModel):
     direction: str = Field(..., pattern="^(up|down)$")
 
 
+class WorkoutBulkReorder(BaseModel):
+    """Model for bulk reordering workouts by drag-and-drop."""
+    workout_ids: list[int] = Field(..., description="Ordered list of workout IDs")
+
+
 class WorkoutComplete(BaseModel):
     """Model for marking workout as complete."""
     completed: bool = Field(..., description="True to mark complete, False to mark incomplete")
+
+
+class WorkoutMoveDate(BaseModel):
+    """Model for moving all workouts to a different date."""
+    target_date: str = Field(..., description="Target date in YYYY-MM-DD format")
+
+
+class WorkoutMoveDateResponse(BaseModel):
+    """Response for moving workouts to a different date."""
+    source_date: str
+    target_date: str
+    count: int
+    message: str
 
 
 class CalendarResponse(BaseModel):

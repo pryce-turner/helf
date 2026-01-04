@@ -2,12 +2,29 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
     ArrowLeft,
+    ArrowRight,
     Plus,
     Minus,
     Trash2,
-    ChevronUp,
-    ChevronDown,
+    GripVertical,
     Dumbbell,
     Weight,
     Hash,
@@ -17,6 +34,7 @@ import {
     Check,
     CheckCircle2,
     Circle,
+    Calendar as CalendarIcon,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -30,13 +48,15 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
 import {
     useWorkouts,
     useCreateWorkout,
     useUpdateWorkout,
     useDeleteWorkout,
-    useReorderWorkout,
+    useBulkReorderWorkouts,
     useToggleComplete,
+    useMoveToDate,
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
 import { useCategories, useExercises } from "@/hooks/useExercises";
@@ -47,6 +67,321 @@ const getWeightIncrement = (weight: number): number => {
     if (weight < 100) return 2.5;
     if (weight <= 300) return 5;
     return 10;
+};
+
+// Sortable workout card component
+interface SortableWorkoutCardProps {
+    workout: Workout;
+    index: number;
+    editingWorkout: Workout | null;
+    confirmingDelete: number | null;
+    formData: WorkoutCreate;
+    getCategoryColor: (category: string) => { bg: string; text: string; border: string };
+    handleEditWorkout: (workout: Workout) => void;
+    toggleComplete: ReturnType<typeof useToggleComplete>;
+    handleDeleteClick: (id: number) => void;
+    handleDeleteConfirm: (id: number) => void;
+    handleDeleteCancel: () => void;
+    setFormData: React.Dispatch<React.SetStateAction<WorkoutCreate>>;
+    handleSubmit: (e: React.FormEvent) => void;
+    resetForm: () => void;
+}
+
+const SortableWorkoutCard = ({
+    workout,
+    index,
+    editingWorkout,
+    confirmingDelete,
+    formData,
+    getCategoryColor,
+    handleEditWorkout,
+    toggleComplete,
+    handleDeleteClick,
+    handleDeleteConfirm,
+    handleDeleteCancel,
+    setFormData,
+    handleSubmit,
+    resetForm,
+}: SortableWorkoutCardProps) => {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: workout.doc_id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        animationDelay: `${index * 50}ms`,
+    };
+
+    const catColor = getCategoryColor(workout.category);
+
+    return (
+        <Card
+            ref={setNodeRef}
+            style={style}
+            className="card-hover animate-in"
+        >
+            <CardContent style={{ padding: 'var(--space-5)' }}>
+                <div className="flex items-start justify-between" style={{ gap: 'var(--space-4)' }}>
+                    {/* Drag handle */}
+                    <button
+                        className="action-btn drag-handle"
+                        style={{
+                            cursor: isDragging ? 'grabbing' : 'grab',
+                            touchAction: 'none',
+                        }}
+                        {...attributes}
+                        {...listeners}
+                    >
+                        <GripVertical style={{ width: '20px', height: '20px' }} />
+                    </button>
+
+                    <div
+                        className="flex-1"
+                        onClick={() => !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? handleEditWorkout(workout) : undefined}
+                        style={{ cursor: !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? 'pointer' : 'default' }}
+                    >
+                        <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
+                            <button
+                                className="workout-checkbox"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleComplete.mutate({
+                                        id: workout.doc_id,
+                                        completed: !workout.completed_at
+                                    });
+                                }}
+                                title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
+                                style={{
+                                    color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
+                                    opacity: workout.completed_at ? 1 : 0.5,
+                                }}
+                            >
+                                {workout.completed_at ? (
+                                    <CheckCircle2 style={{ width: '24px', height: '24px' }} />
+                                ) : (
+                                    <Circle style={{ width: '24px', height: '24px' }} />
+                                )}
+                            </button>
+                            <div className="workout-order">
+                                {index + 1}
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                                    <h3
+                                        style={{
+                                            fontFamily: 'var(--font-body)',
+                                            fontSize: '18px',
+                                            fontWeight: 600,
+                                            color: 'var(--text-primary)',
+                                        }}
+                                    >
+                                        {workout.exercise}
+                                    </h3>
+                                    <span
+                                        className="category-badge"
+                                        style={{
+                                            border: `1px solid ${catColor.border}`,
+                                            color: catColor.text,
+                                            background: `${catColor.bg}20`,
+                                        }}
+                                    >
+                                        {workout.category}
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap" style={{ gap: 'var(--space-3)' }}>
+                                    {workout.weight && (
+                                        <div className="workout-chip">
+                                            <Weight style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
+                                            <span className="workout-chip__value">
+                                                {workout.weight} {workout.weight_unit}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {workout.reps && (
+                                        <div className="workout-chip">
+                                            <Hash style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
+                                            <span className="workout-chip__value">
+                                                {workout.reps} reps
+                                            </span>
+                                        </div>
+                                    )}
+                                    {workout.comment && (
+                                        <div className="workout-chip">
+                                            <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
+                                            <span className="workout-chip__comment">
+                                                {workout.comment}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
+                        {confirmingDelete === workout.doc_id ? (
+                            <div className="flex" style={{ gap: '2px' }}>
+                                <button
+                                    className="action-btn action-btn--danger"
+                                    onClick={() => handleDeleteConfirm(workout.doc_id)}
+                                    title="Confirm delete"
+                                >
+                                    <Check style={{ width: '18px', height: '18px' }} />
+                                </button>
+                                <button
+                                    className="action-btn"
+                                    onClick={handleDeleteCancel}
+                                    title="Cancel"
+                                >
+                                    <X style={{ width: '18px', height: '18px' }} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                className="action-btn action-btn--danger"
+                                onClick={() => handleDeleteClick(workout.doc_id)}
+                            >
+                                <Trash2 style={{ width: '18px', height: '18px' }} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Inline Edit Form */}
+                {editingWorkout?.doc_id === workout.doc_id && (
+                    <div
+                        className="animate-in"
+                        style={{
+                            marginTop: 'var(--space-5)',
+                            padding: 'var(--space-5)',
+                            borderTop: '1px solid var(--border-subtle)',
+                            background: 'linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)',
+                            borderRadius: 'var(--radius-md)',
+                        }}
+                    >
+                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                            <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 'var(--space-4)' }}>
+                                <div className="form-field">
+                                    <Label htmlFor="weight-edit" className="form-label">
+                                        <Weight style={{ width: '14px', height: '14px' }} />
+                                        Weight
+                                    </Label>
+                                    <div className="stepper">
+                                        <button
+                                            type="button"
+                                            className="stepper__btn stepper__btn--start"
+                                            onClick={() => {
+                                                const current = formData.weight || 0;
+                                                const increment = getWeightIncrement(current);
+                                                setFormData({
+                                                    ...formData,
+                                                    weight: Math.max(0, current - increment),
+                                                });
+                                            }}
+                                        >
+                                            <Minus style={{ width: '18px', height: '18px' }} />
+                                        </button>
+                                        <input
+                                            id="weight-edit"
+                                            type="number"
+                                            inputMode="decimal"
+                                            step="0.1"
+                                            placeholder="0"
+                                            className="input--stepper"
+                                            value={formData.weight || ""}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                setFormData({
+                                                    ...formData,
+                                                    weight: e.target.value ? parseFloat(e.target.value) : null,
+                                                })
+                                            }
+                                        />
+                                        <button
+                                            type="button"
+                                            className="stepper__btn stepper__btn--end"
+                                            onClick={() => {
+                                                const current = formData.weight || 0;
+                                                const increment = getWeightIncrement(current);
+                                                setFormData({
+                                                    ...formData,
+                                                    weight: current + increment,
+                                                });
+                                            }}
+                                        >
+                                            <Plus style={{ width: '18px', height: '18px' }} />
+                                        </button>
+                                        <span className="stepper__unit">{formData.weight_unit || 'lbs'}</span>
+                                    </div>
+                                </div>
+
+                                <div className="form-field">
+                                    <Label htmlFor="reps-edit" className="form-label">
+                                        <Hash style={{ width: '14px', height: '14px' }} />
+                                        Reps
+                                    </Label>
+                                    <Input
+                                        id="reps-edit"
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="e.g., 5 or 5+"
+                                        className="input--mono"
+                                        value={formData.reps || ""}
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                            setFormData({
+                                                ...formData,
+                                                reps: e.target.value || null,
+                                            })
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-field">
+                                <Label htmlFor="comment-edit" className="form-label">
+                                    <MessageSquare style={{ width: '14px', height: '14px' }} />
+                                    Comment
+                                </Label>
+                                <Input
+                                    id="comment-edit"
+                                    type="text"
+                                    placeholder="Optional note"
+                                    value={formData.comment || ""}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                        setFormData({
+                                            ...formData,
+                                            comment: e.target.value || null,
+                                        })
+                                    }
+                                />
+                            </div>
+
+                            <div className="flex justify-end" style={{ gap: 'var(--space-3)' }}>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={resetForm}
+                                >
+                                    <X style={{ width: '18px', height: '18px' }} />
+                                    Cancel
+                                </Button>
+                                <Button type="submit">
+                                    <Check style={{ width: '18px', height: '18px' }} />
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
 };
 
 const WorkoutSession = () => {
@@ -60,14 +395,29 @@ const WorkoutSession = () => {
     const createWorkout = useCreateWorkout();
     const updateWorkout = useUpdateWorkout();
     const deleteWorkout = useDeleteWorkout();
-    const reorderWorkout = useReorderWorkout();
+    const bulkReorderWorkouts = useBulkReorderWorkouts();
     const toggleComplete = useToggleComplete();
+    const moveToDate = useMoveToDate();
+
+    // Drag and drop sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8,
+            },
+        }),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
 
     const [showForm, setShowForm] = useState(false);
     const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
     const [selectedCategory, setSelectedCategory] = useState("");
     const [selectedExercise, setSelectedExercise] = useState("");
     const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
+    const [showMoveCalendar, setShowMoveCalendar] = useState(false);
+    const [targetDate, setTargetDate] = useState<Date | undefined>(new Date());
     const [formData, setFormData] = useState<WorkoutCreate>({
         date: date || format(new Date(), "yyyy-MM-dd"),
         exercise: "",
@@ -197,9 +547,32 @@ const WorkoutSession = () => {
         setConfirmingDelete(null);
     }, []);
 
-    const handleReorder = async (id: number, direction: "up" | "down") => {
-        await reorderWorkout.mutateAsync({ id, direction });
-    };
+    const handleDragEnd = useCallback(
+        (event: DragEndEvent) => {
+            const { active, over } = event;
+
+            if (over && active.id !== over.id && workouts) {
+                const sortedWorkouts = [...workouts].sort((a, b) => a.order - b.order);
+                const oldIndex = sortedWorkouts.findIndex((w) => w.doc_id === active.id);
+                const newIndex = sortedWorkouts.findIndex((w) => w.doc_id === over.id);
+
+                if (oldIndex !== -1 && newIndex !== -1) {
+                    const reordered = arrayMove(sortedWorkouts, oldIndex, newIndex);
+                    const workoutIds = reordered.map((w) => w.doc_id);
+                    bulkReorderWorkouts.mutate(workoutIds);
+                }
+            }
+        },
+        [workouts, bulkReorderWorkouts]
+    );
+
+    const handleMoveToDate = useCallback(async () => {
+        if (!date || !targetDate) return;
+        const targetDateStr = format(targetDate, "yyyy-MM-dd");
+        await moveToDate.mutateAsync({ sourceDate: date, targetDate: targetDateStr });
+        setShowMoveCalendar(false);
+        navigate(`/workout/${targetDateStr}`);
+    }, [date, targetDate, moveToDate, navigate]);
 
     const categoryExercises =
         exercises?.filter((e) => e.category === selectedCategory) || [];
@@ -268,19 +641,77 @@ const WorkoutSession = () => {
                         </div>
                     </div>
 
-                    <Button
-                        onClick={() => {
-                            if (showForm) {
-                                resetForm();
-                            } else {
-                                setShowForm(true);
-                            }
+                    <div className="flex" style={{ gap: 'var(--space-2)' }}>
+                        {workouts && workouts.length > 0 && (
+                            <Button
+                                variant="secondary"
+                                onClick={() => setShowMoveCalendar(!showMoveCalendar)}
+                            >
+                                <CalendarIcon style={{ width: '18px', height: '18px' }} />
+                                Move All
+                            </Button>
+                        )}
+                        <Button
+                            onClick={() => {
+                                if (showForm) {
+                                    resetForm();
+                                } else {
+                                    setShowForm(true);
+                                }
+                            }}
+                        >
+                            <Plus style={{ width: '20px', height: '20px' }} />
+                            Add Exercise
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Move to Date Calendar */}
+                {showMoveCalendar && (
+                    <Card
+                        className="animate-in"
+                        style={{
+                            marginBottom: 'var(--space-6)',
+                            border: '1px solid var(--border)',
                         }}
                     >
-                        <Plus style={{ width: '20px', height: '20px' }} />
-                        Add Exercise
-                    </Button>
-                </div>
+                        <CardContent style={{ padding: 'var(--space-5)' }}>
+                            <p
+                                style={{
+                                    fontFamily: 'var(--font-display)',
+                                    fontSize: '14px',
+                                    color: 'var(--text-secondary)',
+                                    marginBottom: 'var(--space-4)',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                }}
+                            >
+                                Select target date
+                            </p>
+                            <Calendar
+                                mode="single"
+                                selected={targetDate}
+                                onSelect={setTargetDate}
+                                className="rounded-[var(--radius-md)] border border-[var(--border)]"
+                            />
+                            <div className="flex justify-end" style={{ marginTop: 'var(--space-4)', gap: 'var(--space-2)' }}>
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => setShowMoveCalendar(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={handleMoveToDate}
+                                    disabled={!targetDate || format(targetDate, "yyyy-MM-dd") === date}
+                                >
+                                    <ArrowRight style={{ width: '18px', height: '18px' }} />
+                                    Move to {targetDate && format(targetDate, "MMM d, yyyy")}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Add Exercise Form - Only show at top for new exercises */}
                 {showForm && !editingWorkout && (
@@ -496,275 +927,40 @@ const WorkoutSession = () => {
                         </p>
                     </div>
                 ) : workouts && workouts.length > 0 ? (
-                    <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                        {workouts
-                            .sort((a, b) => a.order - b.order)
-                            .map((workout, index) => {
-                                const catColor = getCategoryColor(workout.category);
-                                return (
-                                    <Card
-                                        key={workout.doc_id}
-                                        className="card-hover animate-in"
-                                        style={{ animationDelay: `${index * 50}ms` }}
-                                    >
-                                        <CardContent style={{ padding: 'var(--space-5)' }}>
-                                            <div className="flex items-start justify-between" style={{ gap: 'var(--space-4)' }}>
-                                                <div
-                                                    className="flex-1"
-                                                    onClick={() => !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? handleEditWorkout(workout) : undefined}
-                                                    style={{ cursor: !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? 'pointer' : 'default' }}
-                                                >
-                                                    <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
-                                                        <button
-                                                            className="workout-checkbox"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                toggleComplete.mutate({
-                                                                    id: workout.doc_id,
-                                                                    completed: !workout.completed_at
-                                                                });
-                                                            }}
-                                                            title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
-                                                            style={{
-                                                                color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
-                                                                opacity: workout.completed_at ? 1 : 0.5,
-                                                            }}
-                                                        >
-                                                            {workout.completed_at ? (
-                                                                <CheckCircle2 style={{ width: '24px', height: '24px' }} />
-                                                            ) : (
-                                                                <Circle style={{ width: '24px', height: '24px' }} />
-                                                            )}
-                                                        </button>
-                                                        <div className="workout-order">
-                                                            {index + 1}
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-                                                                <h3
-                                                                    style={{
-                                                                        fontFamily: 'var(--font-body)',
-                                                                        fontSize: '18px',
-                                                                        fontWeight: 600,
-                                                                        color: 'var(--text-primary)',
-                                                                    }}
-                                                                >
-                                                                    {workout.exercise}
-                                                                </h3>
-                                                                <span
-                                                                    className="category-badge"
-                                                                    style={{
-                                                                        border: `1px solid ${catColor.border}`,
-                                                                        color: catColor.text,
-                                                                        background: `${catColor.bg}20`,
-                                                                    }}
-                                                                >
-                                                                    {workout.category}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex flex-wrap" style={{ gap: 'var(--space-3)' }}>
-                                                                {workout.weight && (
-                                                                    <div className="workout-chip">
-                                                                        <Weight style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
-                                                                        <span className="workout-chip__value">
-                                                                            {workout.weight} {workout.weight_unit}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                                {workout.reps && (
-                                                                    <div className="workout-chip">
-                                                                        <Hash style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
-                                                                        <span className="workout-chip__value">
-                                                                            {workout.reps} reps
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                                {workout.comment && (
-                                                                    <div className="workout-chip">
-                                                                        <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
-                                                                        <span className="workout-chip__comment">
-                                                                            {workout.comment}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
-                                                    <button
-                                                        className="action-btn"
-                                                        onClick={() => handleReorder(workout.doc_id, "up")}
-                                                        disabled={index === 0}
-                                                    >
-                                                        <ChevronUp style={{ width: '20px', height: '20px' }} />
-                                                    </button>
-                                                    <button
-                                                        className="action-btn"
-                                                        onClick={() => handleReorder(workout.doc_id, "down")}
-                                                        disabled={index === workouts.length - 1}
-                                                    >
-                                                        <ChevronDown style={{ width: '20px', height: '20px' }} />
-                                                    </button>
-                                                    {confirmingDelete === workout.doc_id ? (
-                                                        <div className="flex" style={{ gap: '2px' }}>
-                                                            <button
-                                                                className="action-btn action-btn--danger"
-                                                                onClick={() => handleDeleteConfirm(workout.doc_id)}
-                                                                title="Confirm delete"
-                                                            >
-                                                                <Check style={{ width: '18px', height: '18px' }} />
-                                                            </button>
-                                                            <button
-                                                                className="action-btn"
-                                                                onClick={handleDeleteCancel}
-                                                                title="Cancel"
-                                                            >
-                                                                <X style={{ width: '18px', height: '18px' }} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            className="action-btn action-btn--danger"
-                                                            onClick={() => handleDeleteClick(workout.doc_id)}
-                                                        >
-                                                            <Trash2 style={{ width: '18px', height: '18px' }} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Inline Edit Form */}
-                                            {editingWorkout?.doc_id === workout.doc_id && (
-                                                <div
-                                                    className="animate-in"
-                                                    style={{
-                                                        marginTop: 'var(--space-5)',
-                                                        padding: 'var(--space-5)',
-                                                        borderTop: '1px solid var(--border-subtle)',
-                                                        background: 'linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)',
-                                                        borderRadius: 'var(--radius-md)',
-                                                    }}
-                                                >
-                                                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 'var(--space-4)' }}>
-                                                            <div className="form-field">
-                                                                <Label htmlFor="weight-edit" className="form-label">
-                                                                    <Weight style={{ width: '14px', height: '14px' }} />
-                                                                    Weight
-                                                                </Label>
-                                                                <div className="stepper">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="stepper__btn stepper__btn--start"
-                                                                        onClick={() => {
-                                                                            const current = formData.weight || 0;
-                                                                            const increment = getWeightIncrement(current);
-                                                                            setFormData({
-                                                                                ...formData,
-                                                                                weight: Math.max(0, current - increment),
-                                                                            });
-                                                                        }}
-                                                                    >
-                                                                        <Minus style={{ width: '18px', height: '18px' }} />
-                                                                    </button>
-                                                                    <input
-                                                                        id="weight-edit"
-                                                                        type="number"
-                                                                        inputMode="decimal"
-                                                                        step="0.1"
-                                                                        placeholder="0"
-                                                                        className="input--stepper"
-                                                                        value={formData.weight || ""}
-                                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                                                            setFormData({
-                                                                                ...formData,
-                                                                                weight: e.target.value ? parseFloat(e.target.value) : null,
-                                                                            })
-                                                                        }
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        className="stepper__btn stepper__btn--end"
-                                                                        onClick={() => {
-                                                                            const current = formData.weight || 0;
-                                                                            const increment = getWeightIncrement(current);
-                                                                            setFormData({
-                                                                                ...formData,
-                                                                                weight: current + increment,
-                                                                            });
-                                                                        }}
-                                                                    >
-                                                                        <Plus style={{ width: '18px', height: '18px' }} />
-                                                                    </button>
-                                                                    <span className="stepper__unit">{formData.weight_unit || 'lbs'}</span>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="form-field">
-                                                                <Label htmlFor="reps-edit" className="form-label">
-                                                                    <Hash style={{ width: '14px', height: '14px' }} />
-                                                                    Reps
-                                                                </Label>
-                                                                <Input
-                                                                    id="reps-edit"
-                                                                    type="text"
-                                                                    inputMode="numeric"
-                                                                    placeholder="e.g., 5 or 5+"
-                                                                    className="input--mono"
-                                                                    value={formData.reps || ""}
-                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                                                        setFormData({
-                                                                            ...formData,
-                                                                            reps: e.target.value || null,
-                                                                        })
-                                                                    }
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="form-field">
-                                                            <Label htmlFor="comment-edit" className="form-label">
-                                                                <MessageSquare style={{ width: '14px', height: '14px' }} />
-                                                                Comment
-                                                            </Label>
-                                                            <Input
-                                                                id="comment-edit"
-                                                                type="text"
-                                                                placeholder="Optional note"
-                                                                value={formData.comment || ""}
-                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                                                    setFormData({
-                                                                        ...formData,
-                                                                        comment: e.target.value || null,
-                                                                    })
-                                                                }
-                                                            />
-                                                        </div>
-
-                                                        <div className="flex justify-end" style={{ gap: 'var(--space-3)' }}>
-                                                            <Button
-                                                                type="button"
-                                                                variant="secondary"
-                                                                onClick={resetForm}
-                                                            >
-                                                                <X style={{ width: '18px', height: '18px' }} />
-                                                                Cancel
-                                                            </Button>
-                                                            <Button type="submit">
-                                                                <Check style={{ width: '18px', height: '18px' }} />
-                                                                Save Changes
-                                                            </Button>
-                                                        </div>
-                                                    </form>
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                );
-                            })}
-                    </div>
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleDragEnd}
+                    >
+                        <SortableContext
+                            items={workouts.sort((a, b) => a.order - b.order).map((w) => w.doc_id)}
+                            strategy={verticalListSortingStrategy}
+                        >
+                            <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                                {workouts
+                                    .sort((a, b) => a.order - b.order)
+                                    .map((workout, index) => (
+                                        <SortableWorkoutCard
+                                            key={workout.doc_id}
+                                            workout={workout}
+                                            index={index}
+                                            editingWorkout={editingWorkout}
+                                            confirmingDelete={confirmingDelete}
+                                            formData={formData}
+                                            getCategoryColor={getCategoryColor}
+                                            handleEditWorkout={handleEditWorkout}
+                                            toggleComplete={toggleComplete}
+                                            handleDeleteClick={handleDeleteClick}
+                                            handleDeleteConfirm={handleDeleteConfirm}
+                                            handleDeleteCancel={handleDeleteCancel}
+                                            setFormData={setFormData}
+                                            handleSubmit={handleSubmit}
+                                            resetForm={resetForm}
+                                        />
+                                    ))}
+                            </div>
+                        </SortableContext>
+                    </DndContext>
                 ) : (
                     <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>
                         <CardContent className="empty-state">

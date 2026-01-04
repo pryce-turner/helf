@@ -1002,6 +1002,21 @@
         color: var(--error);
     }
 
+    .drag-handle {
+        color: var(--text-muted);
+        cursor: grab;
+    }
+
+    .drag-handle:hover {
+        color: var(--text-secondary);
+        background: var(--bg-hover);
+    }
+
+    .drag-handle:active {
+        cursor: grabbing;
+        color: var(--accent);
+    }
+
     /* Empty state */
     .empty-state {
         padding: var(--space-12);

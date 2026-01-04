@@ -149,6 +149,57 @@ class WorkoutRepository:
 
         return True
 
+    def bulk_reorder(self, workout_ids: list[int]) -> bool:
+        """
+        Bulk reorder workouts by setting order based on position in list.
+
+        Args:
+            workout_ids: Ordered list of workout IDs
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not workout_ids:
+            return False
+
+        for order, doc_id in enumerate(workout_ids, start=1):
+            self.table.update({'order': order}, doc_ids=[doc_id])
+
+        return True
+
+    def move_to_date(self, source_date: str, target_date: str) -> int:
+        """
+        Move all workouts from one date to another.
+
+        Args:
+            source_date: Source date in YYYY-MM-DD format
+            target_date: Target date in YYYY-MM-DD format
+
+        Returns:
+            Number of workouts moved
+        """
+        source_workouts = self.get_by_date(source_date)
+        if not source_workouts:
+            return 0
+
+        # Get existing workouts on target date to determine starting order
+        target_workouts = self.get_by_date(target_date)
+        starting_order = len(target_workouts) + 1
+
+        # Update each workout's date and order
+        now = get_current_datetime().isoformat()
+        for i, workout in enumerate(source_workouts):
+            self.table.update(
+                {
+                    'date': target_date,
+                    'order': starting_order + i,
+                    'updated_at': now,
+                },
+                doc_ids=[workout['doc_id']]
+            )
+
+        return len(source_workouts)
+
     def get_workout_counts_by_date(self, year: int, month: int) -> dict[str, int]:
         """Get workout counts grouped by date for a specific month."""
         # Search for all workouts in the month

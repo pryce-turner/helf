@@ -8,7 +8,10 @@ from app.models.workout import (
     WorkoutCreate,
     WorkoutUpdate,
     WorkoutReorder,
+    WorkoutBulkReorder,
     WorkoutComplete,
+    WorkoutMoveDate,
+    WorkoutMoveDateResponse,
     CalendarResponse,
 )
 from app.repositories.workout_repo import WorkoutRepository
@@ -85,25 +88,37 @@ def delete_workout(workout_id: int):
         raise HTTPException(status_code=404, detail="Workout not found")
 
 
-@router.patch("/{workout_id}/reorder")
-def reorder_workout(workout_id: int, reorder: WorkoutReorder):
-    """Reorder a workout within its date."""
+@router.patch("/reorder")
+def bulk_reorder_workouts(reorder: WorkoutBulkReorder):
+    """Bulk reorder workouts by providing ordered list of IDs."""
     repo = WorkoutRepository()
-
-    # Get the workout to find its date
-    workout = repo.get_by_id(workout_id)
-    if not workout:
-        raise HTTPException(status_code=404, detail="Workout not found")
-
-    success = repo.reorder(workout_id, workout['date'], reorder.direction)
+    success = repo.bulk_reorder(reorder.workout_ids)
 
     if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot move workout {reorder.direction}"
-        )
+        raise HTTPException(status_code=400, detail="Failed to reorder workouts")
 
-    return {"success": True, "message": f"Workout moved {reorder.direction}"}
+    return {"success": True, "message": "Workouts reordered"}
+
+
+@router.post("/date/{source_date}/move", response_model=WorkoutMoveDateResponse)
+def move_workouts_to_date(source_date: str, move: WorkoutMoveDate):
+    """Move all workouts from one date to another."""
+    repo = WorkoutRepository()
+
+    if source_date == move.target_date:
+        raise HTTPException(status_code=400, detail="Source and target dates must be different")
+
+    count = repo.move_to_date(source_date, move.target_date)
+
+    if count == 0:
+        raise HTTPException(status_code=404, detail="No workouts found on source date")
+
+    return WorkoutMoveDateResponse(
+        source_date=source_date,
+        target_date=move.target_date,
+        count=count,
+        message=f"Moved {count} workout(s) to {move.target_date}"
+    )
 
 
 @router.patch("/{workout_id}/complete", response_model=Workout)

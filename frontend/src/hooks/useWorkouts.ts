@@ -88,18 +88,12 @@ export function useDeleteWorkout() {
     });
 }
 
-export function useReorderWorkout() {
+export function useBulkReorderWorkouts() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: async ({
-            id,
-            direction,
-        }: {
-            id: number;
-            direction: "up" | "down";
-        }) => {
-            await workoutsApi.reorder(id, direction);
+        mutationFn: async (workoutIds: number[]) => {
+            await workoutsApi.bulkReorder(workoutIds);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["workouts"] });
@@ -123,6 +117,27 @@ export function useToggleComplete() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["workouts"] });
+        },
+    });
+}
+
+export function useMoveToDate() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({
+            sourceDate,
+            targetDate,
+        }: {
+            sourceDate: string;
+            targetDate: string;
+        }) => {
+            const response = await workoutsApi.moveToDate(sourceDate, targetDate);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["workouts"] });
+            queryClient.invalidateQueries({ queryKey: ["calendar"] });
         },
     });
 }

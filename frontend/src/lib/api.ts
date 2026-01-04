@@ -55,11 +55,19 @@ export const workoutsApi = {
 
     delete: (id: number) => api.delete(`/api/workouts/${id}`),
 
-    reorder: (id: number, direction: "up" | "down") =>
-        api.patch(`/api/workouts/${id}/reorder`, { direction }),
+    bulkReorder: (workoutIds: number[]) =>
+        api.patch("/api/workouts/reorder", { workout_ids: workoutIds }),
 
     toggleComplete: (id: number, completed: boolean) =>
         api.patch<Workout>(`/api/workouts/${id}/complete`, { completed }),
+
+    moveToDate: (sourceDate: string, targetDate: string) =>
+        api.post<{
+            source_date: string;
+            target_date: string;
+            count: number;
+            message: string;
+        }>(`/api/workouts/date/${sourceDate}/move`, { target_date: targetDate }),
 };
 
 // Exercises

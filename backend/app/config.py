@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     app_version: str = "2.0.0"
     debug: bool = False
 
-    # Paths
-    data_dir: Path = Path(os.getenv("DATA_DIR", "../data"))
+    # Paths - DATA_DIR for container, HELF_DATA_PATH for dev, fallback to ../data
+    data_dir: Path = Path(os.getenv("DATA_DIR") or os.getenv("HELF_DATA_PATH") or "../data")
 
     # Database
     db_path: Path | None = None

@@ -6,9 +6,9 @@ services:
             - "30171:8080"
         volumes:
             # Persist workout data and database
-            - /mnt/fast/apps/helf/data:/app/data
+            - ${HELF_DATA_PATH:-./data}:/app/data
         environment:
-            # Data directory
+            # Data directory (container path)
             - DATA_DIR=/app/data
 
             # MQTT configuration for smart scale integration

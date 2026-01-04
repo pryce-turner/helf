@@ -106,3 +106,23 @@ export function useReorderWorkout() {
         },
     });
 }
+
+export function useToggleComplete() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({
+            id,
+            completed,
+        }: {
+            id: number;
+            completed: boolean;
+        }) => {
+            const response = await workoutsApi.toggleComplete(id, completed);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["workouts"] });
+        },
+    });
+}

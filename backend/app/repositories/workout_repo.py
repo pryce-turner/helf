@@ -82,6 +82,21 @@ class WorkoutRepository:
         removed = self.table.remove(doc_ids=[doc_id])
         return len(removed) > 0
 
+    def toggle_complete(self, doc_id: int, completed: bool) -> Optional[dict]:
+        """Mark a workout as complete or incomplete."""
+        if not self.table.get(doc_id=doc_id):
+            return None
+
+        now = get_current_datetime()
+        update_data = {
+            'completed_at': now.isoformat() if completed else None,
+            'updated_at': now.isoformat()
+        }
+
+        self.table.update(update_data, doc_ids=[doc_id])
+        doc = self.table.get(doc_id=doc_id)
+        return {**doc, 'doc_id': doc.doc_id}
+
     def reorder(self, doc_id: int, date: str, direction: str) -> bool:
         """
         Reorder a workout within its date.

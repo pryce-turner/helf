@@ -15,6 +15,8 @@ import {
     Pencil,
     X,
     Check,
+    CheckCircle2,
+    Circle,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,7 @@ import {
     useUpdateWorkout,
     useDeleteWorkout,
     useReorderWorkout,
+    useToggleComplete,
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
 import { useCategories, useExercises } from "@/hooks/useExercises";
@@ -58,6 +61,7 @@ const WorkoutSession = () => {
     const updateWorkout = useUpdateWorkout();
     const deleteWorkout = useDeleteWorkout();
     const reorderWorkout = useReorderWorkout();
+    const toggleComplete = useToggleComplete();
 
     const [showForm, setShowForm] = useState(false);
     const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
@@ -504,14 +508,37 @@ const WorkoutSession = () => {
                                             <div className="flex items-start justify-between" style={{ gap: 'var(--space-4)' }}>
                                                 <div
                                                     className="flex-1"
-                                                    onClick={() => handleEditWorkout(workout)}
-                                                    style={{ cursor: 'pointer' }}
                                                 >
-                                                    <div className="flex items-start" style={{ gap: 'var(--space-4)' }}>
+                                                    <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
+                                                        <button
+                                                            className="workout-checkbox"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                toggleComplete.mutate({
+                                                                    id: workout.doc_id,
+                                                                    completed: !workout.completed_at
+                                                                });
+                                                            }}
+                                                            title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
+                                                            style={{
+                                                                color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
+                                                                opacity: workout.completed_at ? 1 : 0.5,
+                                                            }}
+                                                        >
+                                                            {workout.completed_at ? (
+                                                                <CheckCircle2 style={{ width: '24px', height: '24px' }} />
+                                                            ) : (
+                                                                <Circle style={{ width: '24px', height: '24px' }} />
+                                                            )}
+                                                        </button>
                                                         <div className="workout-order">
                                                             {index + 1}
                                                         </div>
-                                                        <div className="flex-1">
+                                                        <div
+                                                            className="flex-1"
+                                                            onClick={() => handleEditWorkout(workout)}
+                                                            style={{ cursor: 'pointer' }}
+                                                        >
                                                             <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                                                                 <h3
                                                                     style={{

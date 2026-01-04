@@ -8,6 +8,7 @@ from app.models.workout import (
     WorkoutCreate,
     WorkoutUpdate,
     WorkoutReorder,
+    WorkoutComplete,
     CalendarResponse,
 )
 from app.repositories.workout_repo import WorkoutRepository
@@ -103,3 +104,16 @@ def reorder_workout(workout_id: int, reorder: WorkoutReorder):
         )
 
     return {"success": True, "message": f"Workout moved {reorder.direction}"}
+
+
+@router.patch("/{workout_id}/complete", response_model=Workout)
+def toggle_workout_complete(workout_id: int, complete: WorkoutComplete):
+    """Mark a workout set as complete or incomplete."""
+    repo = WorkoutRepository()
+
+    updated = repo.toggle_complete(workout_id, complete.completed)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    return updated

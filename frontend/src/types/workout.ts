@@ -10,6 +10,7 @@ export interface Workout {
   distance_unit: string | null;
   time: string | null;
   comment: string | null;
+  completed_at: string | null;
   order: number;
   created_at: string;
   updated_at: string;
@@ -26,6 +27,7 @@ export interface WorkoutCreate {
   distance_unit?: string | null;
   time?: string | null;
   comment?: string | null;
+  completed_at?: string | null;
   order?: number;
 }
 

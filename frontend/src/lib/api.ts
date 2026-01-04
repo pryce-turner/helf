@@ -57,6 +57,9 @@ export const workoutsApi = {
 
     reorder: (id: number, direction: "up" | "down") =>
         api.patch(`/api/workouts/${id}/reorder`, { direction }),
+
+    toggleComplete: (id: number, completed: boolean) =>
+        api.patch<Workout>(`/api/workouts/${id}/complete`, { completed }),
 };
 
 // Exercises

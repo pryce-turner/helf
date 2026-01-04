@@ -1031,6 +1031,24 @@
         margin-bottom: var(--space-6);
     }
 
+    /* Workout checkbox button */
+    .workout-checkbox {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        flex-shrink: 0;
+    }
+
+    .workout-checkbox:hover {
+        opacity: 1 !important;
+        transform: scale(1.1);
+    }
+
     /* Checkbox styling */
     .checkbox {
         width: 16px;

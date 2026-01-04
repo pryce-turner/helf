@@ -17,6 +17,7 @@ class WorkoutBase(BaseModel):
     distance_unit: Optional[str] = None
     time: Optional[str] = None
     comment: Optional[str] = None
+    completed_at: Optional[datetime] = None
 
 
 class WorkoutCreate(WorkoutBase):
@@ -44,6 +45,11 @@ class Workout(WorkoutBase):
 class WorkoutReorder(BaseModel):
     """Model for reordering workouts."""
     direction: str = Field(..., pattern="^(up|down)$")
+
+
+class WorkoutComplete(BaseModel):
+    """Model for marking workout as complete."""
+    completed: bool = Field(..., description="True to mark complete, False to mark incomplete")
 
 
 class CalendarResponse(BaseModel):

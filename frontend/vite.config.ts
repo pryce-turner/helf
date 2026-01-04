@@ -9,10 +9,7 @@ export default defineConfig({
         react(),
         VitePWA({
             registerType: "autoUpdate",
-            includeAssets: [
-                "favicon.svg",
-                "apple-touch-icon.png",
-            ],
+            includeAssets: ["favicon.svg", "apple-touch-icon.png"],
             manifest: {
                 name: "Helf - Health & Fitness Tracker",
                 short_name: "Helf",
@@ -104,7 +101,7 @@ export default defineConfig({
         },
     },
     server: {
-        port: 8080,
+        port: 5173,
         host: true,
         allowedHosts: ["dev.pryce.fyi"],
         proxy: {

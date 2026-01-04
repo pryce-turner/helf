@@ -35,6 +35,7 @@ import {
     CheckCircle2,
     Circle,
     Calendar as CalendarIcon,
+    History,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ import {
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
 import { useCategories, useExercises } from "@/hooks/useExercises";
+import { useProgression } from "@/hooks/useProgression";
 import type { WorkoutCreate } from "@/types/workout";
 
 // Get weight increment based on current weight value
@@ -111,6 +113,15 @@ const SortableWorkoutCard = ({
         transition,
         isDragging,
     } = useSortable({ id: workout.doc_id });
+
+    const [showRecentWeights, setShowRecentWeights] = useState(false);
+    const isEditing = editingWorkout?.doc_id === workout.doc_id;
+
+    // Fetch progression data only when editing and toggle is on
+    const { data: progressionData } = useProgression(
+        isEditing && showRecentWeights ? workout.exercise : "",
+        false
+    );
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -360,6 +371,120 @@ const SortableWorkoutCard = ({
                                         })
                                     }
                                 />
+                            </div>
+
+                            {/* Recent Weights Toggle */}
+                            <div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowRecentWeights(!showRecentWeights)}
+                                    className="flex items-center"
+                                    style={{
+                                        gap: 'var(--space-2)',
+                                        padding: 'var(--space-2) var(--space-3)',
+                                        background: showRecentWeights ? 'var(--accent-glow)' : 'var(--bg-secondary)',
+                                        border: `1px solid ${showRecentWeights ? 'var(--accent-muted)' : 'var(--border)'}`,
+                                        borderRadius: 'var(--radius-sm)',
+                                        color: showRecentWeights ? 'var(--accent)' : 'var(--text-secondary)',
+                                        fontSize: '13px',
+                                        fontFamily: 'var(--font-body)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                >
+                                    <History style={{ width: '14px', height: '14px' }} />
+                                    Recent weights
+                                </button>
+
+                                {showRecentWeights && progressionData?.historical && progressionData.historical.length > 0 && (
+                                    <div
+                                        style={{
+                                            marginTop: 'var(--space-3)',
+                                            padding: 'var(--space-3)',
+                                            background: 'var(--bg-secondary)',
+                                            borderRadius: 'var(--radius-sm)',
+                                            border: '1px solid var(--border)',
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: 'var(--space-2)',
+                                                maxHeight: '150px',
+                                                overflowY: 'auto',
+                                            }}
+                                        >
+                                            {progressionData.historical
+                                                .slice(-5)
+                                                .reverse()
+                                                .map((entry, i) => (
+                                                    <button
+                                                        key={i}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormData({
+                                                                ...formData,
+                                                                weight: entry.weight,
+                                                                reps: entry.reps,
+                                                            });
+                                                        }}
+                                                        style={{
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            padding: 'var(--space-2)',
+                                                            background: 'var(--bg-tertiary)',
+                                                            border: '1px solid var(--border-subtle)',
+                                                            borderRadius: 'var(--radius-sm)',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.15s ease',
+                                                            textAlign: 'left',
+                                                        }}
+                                                        onMouseOver={(e) => {
+                                                            e.currentTarget.style.background = 'var(--bg-hover)';
+                                                            e.currentTarget.style.borderColor = 'var(--accent-muted)';
+                                                        }}
+                                                        onMouseOut={(e) => {
+                                                            e.currentTarget.style.background = 'var(--bg-tertiary)';
+                                                            e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                                                        }}
+                                                    >
+                                                        <span
+                                                            style={{
+                                                                fontFamily: 'var(--font-mono)',
+                                                                fontSize: '13px',
+                                                                color: 'var(--text-primary)',
+                                                            }}
+                                                        >
+                                                            {entry.weight} {entry.weight_unit} × {entry.reps}
+                                                        </span>
+                                                        <span
+                                                            style={{
+                                                                fontSize: '12px',
+                                                                color: 'var(--text-muted)',
+                                                            }}
+                                                        >
+                                                            {entry.date}
+                                                        </span>
+                                                    </button>
+                                                ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {showRecentWeights && (!progressionData?.historical || progressionData.historical.length === 0) && (
+                                    <p
+                                        style={{
+                                            marginTop: 'var(--space-3)',
+                                            fontSize: '13px',
+                                            color: 'var(--text-muted)',
+                                            fontStyle: 'italic',
+                                        }}
+                                    >
+                                        No previous entries for this exercise
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex justify-end" style={{ gap: 'var(--space-3)' }}>

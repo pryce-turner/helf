@@ -117,7 +117,8 @@ const WorkoutSession = () => {
             time: workout.time,
             comment: workout.comment,
         });
-        setShowForm(true);
+        // Don't show the top form when editing
+        setShowForm(false);
     };
 
     const resetForm = () => {
@@ -281,8 +282,8 @@ const WorkoutSession = () => {
                     </Button>
                 </div>
 
-                {/* Add Exercise Form */}
-                {showForm && (
+                {/* Add Exercise Form - Only show at top for new exercises */}
+                {showForm && !editingWorkout && (
                     <Card
                         className="animate-in"
                         style={{
@@ -508,6 +509,8 @@ const WorkoutSession = () => {
                                             <div className="flex items-start justify-between" style={{ gap: 'var(--space-4)' }}>
                                                 <div
                                                     className="flex-1"
+                                                    onClick={() => !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? handleEditWorkout(workout) : undefined}
+                                                    style={{ cursor: !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? 'pointer' : 'default' }}
                                                 >
                                                     <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
                                                         <button
@@ -534,11 +537,7 @@ const WorkoutSession = () => {
                                                         <div className="workout-order">
                                                             {index + 1}
                                                         </div>
-                                                        <div
-                                                            className="flex-1"
-                                                            onClick={() => handleEditWorkout(workout)}
-                                                            style={{ cursor: 'pointer' }}
-                                                        >
+                                                        <div className="flex-1">
                                                             <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                                                                 <h3
                                                                     style={{
@@ -633,6 +632,130 @@ const WorkoutSession = () => {
                                                     )}
                                                 </div>
                                             </div>
+
+                                            {/* Inline Edit Form */}
+                                            {editingWorkout?.doc_id === workout.doc_id && (
+                                                <div
+                                                    className="animate-in"
+                                                    style={{
+                                                        marginTop: 'var(--space-5)',
+                                                        padding: 'var(--space-5)',
+                                                        borderTop: '1px solid var(--border-subtle)',
+                                                        background: 'linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)',
+                                                        borderRadius: 'var(--radius-md)',
+                                                    }}
+                                                >
+                                                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 'var(--space-4)' }}>
+                                                            <div className="form-field">
+                                                                <Label htmlFor="weight-edit" className="form-label">
+                                                                    <Weight style={{ width: '14px', height: '14px' }} />
+                                                                    Weight
+                                                                </Label>
+                                                                <div className="stepper">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="stepper__btn stepper__btn--start"
+                                                                        onClick={() => {
+                                                                            const current = formData.weight || 0;
+                                                                            const increment = getWeightIncrement(current);
+                                                                            setFormData({
+                                                                                ...formData,
+                                                                                weight: Math.max(0, current - increment),
+                                                                            });
+                                                                        }}
+                                                                    >
+                                                                        <Minus style={{ width: '18px', height: '18px' }} />
+                                                                    </button>
+                                                                    <input
+                                                                        id="weight-edit"
+                                                                        type="number"
+                                                                        step="0.1"
+                                                                        placeholder="0"
+                                                                        className="input--stepper"
+                                                                        value={formData.weight || ""}
+                                                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                                            setFormData({
+                                                                                ...formData,
+                                                                                weight: e.target.value ? parseFloat(e.target.value) : null,
+                                                                            })
+                                                                        }
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        className="stepper__btn stepper__btn--end"
+                                                                        onClick={() => {
+                                                                            const current = formData.weight || 0;
+                                                                            const increment = getWeightIncrement(current);
+                                                                            setFormData({
+                                                                                ...formData,
+                                                                                weight: current + increment,
+                                                                            });
+                                                                        }}
+                                                                    >
+                                                                        <Plus style={{ width: '18px', height: '18px' }} />
+                                                                    </button>
+                                                                    <span className="stepper__unit">{formData.weight_unit || 'lbs'}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="form-field">
+                                                                <Label htmlFor="reps-edit" className="form-label">
+                                                                    <Hash style={{ width: '14px', height: '14px' }} />
+                                                                    Reps
+                                                                </Label>
+                                                                <Input
+                                                                    id="reps-edit"
+                                                                    type="text"
+                                                                    placeholder="e.g., 5 or 5+"
+                                                                    className="input--mono"
+                                                                    value={formData.reps || ""}
+                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            reps: e.target.value || null,
+                                                                        })
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="form-field">
+                                                            <Label htmlFor="comment-edit" className="form-label">
+                                                                <MessageSquare style={{ width: '14px', height: '14px' }} />
+                                                                Comment
+                                                            </Label>
+                                                            <Input
+                                                                id="comment-edit"
+                                                                type="text"
+                                                                placeholder="Optional note"
+                                                                value={formData.comment || ""}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        comment: e.target.value || null,
+                                                                    })
+                                                                }
+                                                            />
+                                                        </div>
+
+                                                        <div className="flex justify-end" style={{ gap: 'var(--space-3)' }}>
+                                                            <Button
+                                                                type="button"
+                                                                variant="secondary"
+                                                                onClick={resetForm}
+                                                            >
+                                                                <X style={{ width: '18px', height: '18px' }} />
+                                                                Cancel
+                                                            </Button>
+                                                            <Button type="submit">
+                                                                <Check style={{ width: '18px', height: '18px' }} />
+                                                                Save Changes
+                                                            </Button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            )}
                                         </CardContent>
                                     </Card>
                                 );

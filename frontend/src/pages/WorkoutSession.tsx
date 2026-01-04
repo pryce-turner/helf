@@ -389,6 +389,7 @@ const WorkoutSession = () => {
                                         <input
                                             id="weight"
                                             type="number"
+                                            inputMode="decimal"
                                             step="0.1"
                                             placeholder="0"
                                             className="input--stepper"
@@ -426,6 +427,7 @@ const WorkoutSession = () => {
                                     <Input
                                         id="reps"
                                         type="text"
+                                        inputMode="numeric"
                                         placeholder="e.g., 5 or 5+"
                                         className="input--mono"
                                         value={formData.reps || ""}
@@ -670,6 +672,7 @@ const WorkoutSession = () => {
                                                                     <input
                                                                         id="weight-edit"
                                                                         type="number"
+                                                                        inputMode="decimal"
                                                                         step="0.1"
                                                                         placeholder="0"
                                                                         className="input--stepper"
@@ -707,6 +710,7 @@ const WorkoutSession = () => {
                                                                 <Input
                                                                     id="reps-edit"
                                                                     type="text"
+                                                                    inputMode="numeric"
                                                                     placeholder="e.g., 5 or 5+"
                                                                     className="input--mono"
                                                                     value={formData.reps || ""}

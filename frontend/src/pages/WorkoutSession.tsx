@@ -297,103 +297,101 @@ const SortableWorkoutCard = ({
             </span>
           </div>
 
-          {/* Data chips - only show if there's data */}
-          {(workout.weight || workout.reps || workout.comment) && (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "var(--space-3)",
-                minHeight: "70px",
-              }}
-            >
-              {workout.weight && (
-                <div
+          {/* Data chips - keep row height consistent even when empty */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "var(--space-3)",
+              minHeight: "70px",
+            }}
+          >
+            {workout.weight && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "var(--bg-tertiary)",
+                  padding: "8px 14px",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              >
+                <Weight
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "var(--bg-tertiary)",
-                    padding: "8px 14px",
-                    borderRadius: "var(--radius-sm)",
+                    width: "16px",
+                    height: "16px",
+                    color: "var(--accent)",
+                  }}
+                />
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-primary)",
+                    fontSize: "15px",
                   }}
                 >
-                  <Weight
-                    style={{
-                      width: "16px",
-                      height: "16px",
-                      color: "var(--accent)",
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      fontFamily: "var(--font-mono)",
-                      color: "var(--text-primary)",
-                      fontSize: "15px",
-                    }}
-                  >
-                    {workout.weight} {workout.weight_unit}
-                  </span>
-                </div>
-              )}
-              {workout.reps && (
-                <div
+                  {workout.weight} {workout.weight_unit}
+                </span>
+              </div>
+            )}
+            {workout.reps && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "var(--bg-tertiary)",
+                  padding: "8px 14px",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              >
+                <Hash
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "var(--bg-tertiary)",
-                    padding: "8px 14px",
-                    borderRadius: "var(--radius-sm)",
+                    width: "16px",
+                    height: "16px",
+                    color: "var(--accent)",
+                  }}
+                />
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-primary)",
+                    fontSize: "15px",
                   }}
                 >
-                  <Hash
-                    style={{
-                      width: "16px",
-                      height: "16px",
-                      color: "var(--accent)",
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      fontFamily: "var(--font-mono)",
-                      color: "var(--text-primary)",
-                      fontSize: "15px",
-                    }}
-                  >
-                    {workout.reps} reps
-                  </span>
-                </div>
-              )}
-              {workout.comment && (
-                <div
+                  {workout.reps} reps
+                </span>
+              </div>
+            )}
+            {workout.comment && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "var(--bg-tertiary)",
+                  padding: "8px 14px",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              >
+                <MessageSquare
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "var(--bg-tertiary)",
-                    padding: "8px 14px",
-                    borderRadius: "var(--radius-sm)",
+                    width: "16px",
+                    height: "16px",
+                    color: "var(--text-muted)",
                   }}
+                />
+                <span
+                  style={{ color: "var(--text-secondary)", fontSize: "14px" }}
                 >
-                  <MessageSquare
-                    style={{
-                      width: "16px",
-                      height: "16px",
-                      color: "var(--text-muted)",
-                    }}
-                  />
-                  <span
-                    style={{ color: "var(--text-secondary)", fontSize: "14px" }}
-                  >
-                    {workout.comment}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+                  {workout.comment}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Inline Edit Form */}

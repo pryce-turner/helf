@@ -141,119 +141,54 @@ const SortableWorkoutCard = ({
             style={style}
             className="card-hover animate-in"
         >
-            <CardContent style={{ padding: 'var(--space-4)' }}>
-                {/* Single row layout with all controls inline */}
+            <CardContent style={{ padding: 'var(--space-4)', position: 'relative' }}>
+                {/* Vertical icon stack - positioned top right */}
                 <div
-                    className="flex items-center"
-                    style={{ gap: 'var(--space-3)' }}
+                    className="flex flex-col items-center"
+                    style={{
+                        position: 'absolute',
+                        top: 'var(--space-3)',
+                        right: 'var(--space-3)',
+                        gap: 'var(--space-1)',
+                    }}
                 >
-                    {/* Drag handle */}
-                    <button
-                        className="action-btn drag-handle"
-                        style={{
-                            cursor: isDragging ? 'grabbing' : 'grab',
-                            touchAction: 'none',
-                            flexShrink: 0,
-                        }}
-                        {...attributes}
-                        {...listeners}
-                    >
-                        <GripVertical style={{ width: '18px', height: '18px' }} />
-                    </button>
+                        {/* Completion checkbox */}
+                        <button
+                            className="action-btn"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                toggleComplete.mutate({
+                                    id: workout.doc_id,
+                                    completed: !workout.completed_at
+                                });
+                            }}
+                            title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
+                            style={{
+                                color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
+                                opacity: workout.completed_at ? 1 : 0.5,
+                            }}
+                        >
+                            {workout.completed_at ? (
+                                <CheckCircle2 style={{ width: '20px', height: '20px' }} />
+                            ) : (
+                                <Circle style={{ width: '20px', height: '20px' }} />
+                            )}
+                        </button>
 
-                    {/* Completion checkbox */}
-                    <button
-                        className="workout-checkbox"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            toggleComplete.mutate({
-                                id: workout.doc_id,
-                                completed: !workout.completed_at
-                            });
-                        }}
-                        title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
-                        style={{
-                            color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
-                            opacity: workout.completed_at ? 1 : 0.5,
-                            flexShrink: 0,
-                        }}
-                    >
-                        {workout.completed_at ? (
-                            <CheckCircle2 style={{ width: '22px', height: '22px' }} />
-                        ) : (
-                            <Circle style={{ width: '22px', height: '22px' }} />
-                        )}
-                    </button>
+                        {/* Drag handle */}
+                        <button
+                            className="action-btn drag-handle"
+                            style={{
+                                cursor: isDragging ? 'grabbing' : 'grab',
+                                touchAction: 'none',
+                            }}
+                            {...attributes}
+                            {...listeners}
+                        >
+                            <GripVertical style={{ width: '18px', height: '18px' }} />
+                        </button>
 
-                    {/* Order number */}
-                    <div className="workout-order-compact">
-                        {index + 1}
-                    </div>
-
-                    {/* Main content - clickable area */}
-                    <div
-                        className="flex-1 min-w-0"
-                        onClick={() => !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? handleEditWorkout(workout) : undefined}
-                        style={{ cursor: !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? 'pointer' : 'default' }}
-                    >
-                        {/* Exercise name and category - inline on mobile, with chips below */}
-                        <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-2)' }}>
-                            <h3
-                                style={{
-                                    fontFamily: 'var(--font-body)',
-                                    fontSize: '16px',
-                                    fontWeight: 600,
-                                    color: 'var(--text-primary)',
-                                    margin: 0,
-                                }}
-                            >
-                                {workout.exercise}
-                            </h3>
-                            <span
-                                className="category-badge-compact"
-                                style={{
-                                    border: `1px solid ${catColor.border}`,
-                                    color: catColor.text,
-                                    background: `${catColor.bg}20`,
-                                }}
-                            >
-                                {workout.category}
-                            </span>
-                        </div>
-
-                        {/* Data chips - only show if there's data */}
-                        {(workout.weight || workout.reps || workout.comment) && (
-                            <div className="flex flex-wrap items-center" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
-                                {workout.weight && (
-                                    <div className="workout-chip-compact">
-                                        <Weight style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
-                                        <span className="workout-chip__value">
-                                            {workout.weight} {workout.weight_unit}
-                                        </span>
-                                    </div>
-                                )}
-                                {workout.reps && (
-                                    <div className="workout-chip-compact">
-                                        <Hash style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
-                                        <span className="workout-chip__value">
-                                            {workout.reps} reps
-                                        </span>
-                                    </div>
-                                )}
-                                {workout.comment && (
-                                    <div className="workout-chip-compact">
-                                        <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
-                                        <span className="workout-chip__comment">
-                                            {workout.comment}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Delete button */}
-                    <div className="flex items-center" style={{ flexShrink: 0 }}>
+                        {/* Delete button */}
                         {confirmingDelete === workout.doc_id ? (
                             <div className="flex" style={{ gap: '2px' }}>
                                 <button
@@ -279,7 +214,71 @@ const SortableWorkoutCard = ({
                                 <Trash2 style={{ width: '16px', height: '16px' }} />
                             </button>
                         )}
+                </div>
+
+                {/* Main content - clickable area */}
+                <div
+                    onClick={() => !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? handleEditWorkout(workout) : undefined}
+                    style={{
+                        cursor: !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? 'pointer' : 'default',
+                        paddingRight: '50px',
+                    }}
+                >
+                    {/* Exercise name and category */}
+                    <div style={{ marginBottom: 'var(--space-2)' }}>
+                        <h3
+                            style={{
+                                fontFamily: 'var(--font-body)',
+                                fontSize: '16px',
+                                fontWeight: 600,
+                                color: 'var(--text-primary)',
+                                margin: 0,
+                                marginBottom: 'var(--space-1)',
+                            }}
+                        >
+                            {workout.exercise}
+                        </h3>
+                        <span
+                            className="category-badge-compact"
+                            style={{
+                                border: `1px solid ${catColor.border}`,
+                                color: catColor.text,
+                                background: `${catColor.bg}20`,
+                            }}
+                        >
+                            {workout.category}
+                        </span>
                     </div>
+
+                    {/* Data chips - only show if there's data */}
+                    {(workout.weight || workout.reps || workout.comment) && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                            {workout.weight && (
+                                <div className="workout-chip-compact">
+                                    <Weight style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
+                                    <span className="workout-chip__value">
+                                        {workout.weight} {workout.weight_unit}
+                                    </span>
+                                </div>
+                            )}
+                            {workout.reps && (
+                                <div className="workout-chip-compact">
+                                    <Hash style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
+                                    <span className="workout-chip__value">
+                                        {workout.reps} reps
+                                    </span>
+                                </div>
+                            )}
+                            {workout.comment && (
+                                <div className="workout-chip-compact">
+                                    <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                        {workout.comment}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Inline Edit Form */}

@@ -7,11 +7,12 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-    "tinydb>=4.8.0",
+    "sqlalchemy>=2.0.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
     "paho-mqtt>=2.0.0",
     "python-dateutil>=2.9.0",
+    "pytest>=9.0.2",
 ]
 
 [project.optional-dependencies]

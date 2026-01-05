@@ -33,7 +33,7 @@ class Settings(BaseSettings):
         super().__init__(**kwargs)
         # Set db_path if not provided
         if self.db_path is None:
-            self.db_path = self.data_dir / "helf.json"
+            self.db_path = self.data_dir / "helf.db"
         # Ensure data directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
 

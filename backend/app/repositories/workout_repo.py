@@ -1,10 +1,12 @@
 """Workout repository for database operations."""
 
-from tinydb import Query
-from datetime import datetime
 from typing import Optional
 
-from app.database import get_table, WORKOUTS_TABLE
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
+
+from app.database import SessionLocal
+from app.db.models import Category, Exercise, Workout
 from app.models.workout import WorkoutCreate, WorkoutUpdate
 from app.utils.date_helpers import get_current_datetime
 
@@ -12,209 +14,294 @@ from app.utils.date_helpers import get_current_datetime
 class WorkoutRepository:
     """Repository for workout data operations."""
 
-    def __init__(self):
-        self.table = get_table(WORKOUTS_TABLE)
-        self.query = Query()
+    def _serialize(self, workout: Workout) -> dict:
+        reps = workout.reps
+        if isinstance(reps, str) and reps.isdigit():
+            reps = int(reps)
+
+        return {
+            "doc_id": workout.id,
+            "date": workout.date,
+            "exercise": workout.exercise.name if workout.exercise else None,
+            "category": workout.category.name if workout.category else None,
+            "weight": workout.weight,
+            "weight_unit": workout.weight_unit,
+            "reps": reps,
+            "distance": workout.distance,
+            "distance_unit": workout.distance_unit,
+            "time": workout.time,
+            "comment": workout.comment,
+            "order": workout.order,
+            "created_at": workout.created_at,
+            "updated_at": workout.updated_at,
+            "completed_at": workout.completed_at,
+        }
+
+    def _get_or_create_category(self, session, name: str) -> Category:
+        category = session.execute(
+            select(Category).where(Category.name == name)
+        ).scalar_one_or_none()
+        if category:
+            return category
+
+        category = Category(
+            name=name,
+            created_at=get_current_datetime(),
+        )
+        session.add(category)
+        session.flush()
+        return category
+
+    def _get_or_create_exercise(self, session, name: str, category: Category) -> Exercise:
+        exercise = session.execute(
+            select(Exercise).where(Exercise.name == name)
+        ).scalar_one_or_none()
+        if exercise:
+            return exercise
+
+        exercise = Exercise(
+            name=name,
+            category_id=category.id,
+            last_used=None,
+            use_count=0,
+            created_at=get_current_datetime(),
+        )
+        session.add(exercise)
+        session.flush()
+        return exercise
 
     def get_all(self, skip: int = 0, limit: int = 100) -> list[dict]:
         """Get all workouts with pagination."""
-        # Get all documents with their doc_ids
-        all_workouts = []
-        for doc in self.table.all():
-            doc_with_id = {**doc, 'doc_id': doc.doc_id}
-            all_workouts.append(doc_with_id)
-
-        # Sort by date descending, then by order
-        all_workouts.sort(key=lambda x: (x.get('date', ''), x.get('order') or 0), reverse=True)
-        return all_workouts[skip:skip+limit]
+        with SessionLocal() as session:
+            workouts = session.execute(
+                select(Workout)
+                .options(selectinload(Workout.exercise), selectinload(Workout.category))
+                .order_by(Workout.date.desc(), Workout.order.desc())
+                .offset(skip)
+                .limit(limit)
+            ).scalars().all()
+            return [self._serialize(workout) for workout in workouts]
 
     def get_by_id(self, doc_id: int) -> Optional[dict]:
         """Get a workout by ID."""
-        doc = self.table.get(doc_id=doc_id)
-        if doc:
-            return {**doc, 'doc_id': doc.doc_id}
-        return None
+        with SessionLocal() as session:
+            workout = session.execute(
+                select(Workout)
+                .options(selectinload(Workout.exercise), selectinload(Workout.category))
+                .where(Workout.id == doc_id)
+            ).scalar_one_or_none()
+            return self._serialize(workout) if workout else None
 
     def get_by_date(self, date: str) -> list[dict]:
         """Get all workouts for a specific date, sorted by order."""
-        results = self.table.search(self.query.date == date)
-        # Add doc_id to each workout, ensuring order is never None
-        workouts = []
-        for doc in results:
-            workout = {**doc, 'doc_id': doc.doc_id}
-            # Ensure order is always a valid integer
-            if workout.get('order') is None:
-                workout['order'] = 0
-            workouts.append(workout)
-        workouts.sort(key=lambda x: x['order'])
-        return workouts
+        with SessionLocal() as session:
+            workouts = session.execute(
+                select(Workout)
+                .options(selectinload(Workout.exercise), selectinload(Workout.category))
+                .where(Workout.date == date)
+                .order_by(Workout.order.asc())
+            ).scalars().all()
+            return [self._serialize(workout) for workout in workouts]
 
     def create(self, workout: WorkoutCreate) -> dict:
         """Create a new workout."""
         now = get_current_datetime()
         workout_dict = workout.model_dump(exclude_none=False)
-        workout_dict['created_at'] = now.isoformat()
-        workout_dict['updated_at'] = now.isoformat()
 
-        # Auto-assign order if not provided
-        if workout_dict.get('order') is None:
-            date_workouts = self.get_by_date(workout.date)
-            workout_dict['order'] = len(date_workouts) + 1
+        with SessionLocal() as session:
+            category = self._get_or_create_category(session, workout_dict["category"])
+            exercise = self._get_or_create_exercise(session, workout_dict["exercise"], category)
 
-        doc_id = self.table.insert(workout_dict)
-        doc = self.table.get(doc_id=doc_id)
-        return {**doc, 'doc_id': doc.doc_id}
+            if workout_dict.get("order") is None:
+                count = session.execute(
+                    select(func.count()).select_from(Workout).where(Workout.date == workout.date)
+                ).scalar_one()
+                workout_dict["order"] = count + 1
+
+            reps = workout_dict.get("reps")
+            if reps is not None and not isinstance(reps, str):
+                reps = str(reps)
+
+            order_value = workout_dict.get("order")
+            if order_value is None:
+                order_value = 1
+
+            new_workout = Workout(
+                date=workout_dict["date"],
+                exercise_id=exercise.id,
+                category_id=category.id,
+                weight=workout_dict.get("weight"),
+                weight_unit=workout_dict.get("weight_unit") or "lbs",
+                reps=reps,
+                distance=workout_dict.get("distance"),
+                distance_unit=workout_dict.get("distance_unit"),
+                time=workout_dict.get("time"),
+                comment=workout_dict.get("comment"),
+                order=order_value,
+                created_at=now,
+                updated_at=now,
+                completed_at=workout_dict.get("completed_at"),
+            )
+            session.add(new_workout)
+            session.commit()
+            session.refresh(new_workout)
+            session.refresh(exercise)
+            session.refresh(category)
+            return self._serialize(new_workout)
 
     def update(self, doc_id: int, workout: WorkoutUpdate) -> Optional[dict]:
         """Update an existing workout."""
-        if not self.table.get(doc_id=doc_id):
-            return None
-
         workout_dict = workout.model_dump(exclude_none=False)
-        workout_dict['updated_at'] = get_current_datetime().isoformat()
 
-        self.table.update(workout_dict, doc_ids=[doc_id])
-        doc = self.table.get(doc_id=doc_id)
-        return {**doc, 'doc_id': doc.doc_id}
+        with SessionLocal() as session:
+            existing = session.get(Workout, doc_id)
+            if not existing:
+                return None
+
+            category = self._get_or_create_category(session, workout_dict["category"])
+            exercise = self._get_or_create_exercise(session, workout_dict["exercise"], category)
+
+            reps = workout_dict.get("reps")
+            if reps is not None and not isinstance(reps, str):
+                reps = str(reps)
+
+            existing.date = workout_dict["date"]
+            existing.exercise_id = exercise.id
+            existing.category_id = category.id
+            existing.weight = workout_dict.get("weight")
+            existing.weight_unit = workout_dict.get("weight_unit") or "lbs"
+            existing.reps = reps
+            existing.distance = workout_dict.get("distance")
+            existing.distance_unit = workout_dict.get("distance_unit")
+            existing.time = workout_dict.get("time")
+            existing.comment = workout_dict.get("comment")
+            if workout_dict.get("order") is not None:
+                existing.order = workout_dict.get("order")
+            existing.completed_at = workout_dict.get("completed_at")
+            existing.updated_at = get_current_datetime()
+
+            session.commit()
+            session.refresh(existing)
+            return self._serialize(existing)
 
     def delete(self, doc_id: int) -> bool:
         """Delete a workout."""
-        removed = self.table.remove(doc_ids=[doc_id])
-        return len(removed) > 0
+        with SessionLocal() as session:
+            workout = session.get(Workout, doc_id)
+            if not workout:
+                return False
+            session.delete(workout)
+            session.commit()
+            return True
 
     def toggle_complete(self, doc_id: int, completed: bool) -> Optional[dict]:
         """Mark a workout as complete or incomplete."""
-        if not self.table.get(doc_id=doc_id):
-            return None
+        with SessionLocal() as session:
+            workout = session.get(Workout, doc_id)
+            if not workout:
+                return None
 
-        now = get_current_datetime()
-        update_data = {
-            'completed_at': now.isoformat() if completed else None,
-            'updated_at': now.isoformat()
-        }
-
-        self.table.update(update_data, doc_ids=[doc_id])
-        doc = self.table.get(doc_id=doc_id)
-        return {**doc, 'doc_id': doc.doc_id}
+            now = get_current_datetime()
+            workout.completed_at = now if completed else None
+            workout.updated_at = now
+            session.commit()
+            session.refresh(workout)
+            return self._serialize(workout)
 
     def reorder(self, doc_id: int, date: str, direction: str) -> bool:
-        """
-        Reorder a workout within its date.
+        """Reorder a workout within its date."""
+        with SessionLocal() as session:
+            workouts = session.execute(
+                select(Workout)
+                .where(Workout.date == date)
+                .order_by(Workout.order.asc())
+            ).scalars().all()
 
-        Args:
-            doc_id: ID of the workout to reorder
-            date: Date of the workout
-            direction: 'up' or 'down'
+            workout_index = None
+            for i, w in enumerate(workouts):
+                if w.id == doc_id:
+                    workout_index = i
+                    break
 
-        Returns:
-            True if successful, False otherwise
-        """
-        date_workouts = self.get_by_date(date)
+            if workout_index is None:
+                return False
 
-        # Find the workout index
-        workout_index = None
-        for i, w in enumerate(date_workouts):
-            if w['doc_id'] == doc_id:
-                workout_index = i
-                break
+            if direction == "up" and workout_index == 0:
+                return False
+            if direction == "down" and workout_index == len(workouts) - 1:
+                return False
 
-        if workout_index is None:
-            return False
+            swap_index = workout_index - 1 if direction == "up" else workout_index + 1
 
-        # Check boundaries
-        if direction == 'up' and workout_index == 0:
-            return False
-        if direction == 'down' and workout_index == len(date_workouts) - 1:
-            return False
-
-        # Swap with adjacent workout
-        if direction == 'up':
-            swap_index = workout_index - 1
-        else:
-            swap_index = workout_index + 1
-
-        # Update order values
-        date_workouts[workout_index]['order'] = swap_index + 1
-        date_workouts[swap_index]['order'] = workout_index + 1
-
-        # Save updates
-        self.table.update(
-            {'order': date_workouts[workout_index]['order']},
-            doc_ids=[date_workouts[workout_index]['doc_id']]
-        )
-        self.table.update(
-            {'order': date_workouts[swap_index]['order']},
-            doc_ids=[date_workouts[swap_index]['doc_id']]
-        )
-
-        return True
+            workouts[workout_index].order, workouts[swap_index].order = (
+                workouts[swap_index].order,
+                workouts[workout_index].order,
+            )
+            session.commit()
+            return True
 
     def bulk_reorder(self, workout_ids: list[int]) -> bool:
-        """
-        Bulk reorder workouts by setting order based on position in list.
-
-        Args:
-            workout_ids: Ordered list of workout IDs
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Bulk reorder workouts by setting order based on position in list."""
         if not workout_ids:
             return False
 
-        for order, doc_id in enumerate(workout_ids, start=1):
-            self.table.update({'order': order}, doc_ids=[doc_id])
+        with SessionLocal() as session:
+            workouts = session.execute(
+                select(Workout).where(Workout.id.in_(workout_ids))
+            ).scalars().all()
 
-        return True
+            workout_map = {workout.id: workout for workout in workouts}
+            for order, doc_id in enumerate(workout_ids, start=1):
+                if doc_id in workout_map:
+                    workout_map[doc_id].order = order
+
+            session.commit()
+            return True
 
     def move_to_date(self, source_date: str, target_date: str) -> int:
-        """
-        Move all workouts from one date to another.
+        """Move all workouts from one date to another."""
+        with SessionLocal() as session:
+            source_workouts = session.execute(
+                select(Workout).where(Workout.date == source_date).order_by(Workout.order.asc())
+            ).scalars().all()
+            if not source_workouts:
+                return 0
 
-        Args:
-            source_date: Source date in YYYY-MM-DD format
-            target_date: Target date in YYYY-MM-DD format
+            target_count = session.execute(
+                select(func.count()).select_from(Workout).where(Workout.date == target_date)
+            ).scalar_one()
+            starting_order = target_count + 1
 
-        Returns:
-            Number of workouts moved
-        """
-        source_workouts = self.get_by_date(source_date)
-        if not source_workouts:
-            return 0
+            now = get_current_datetime()
+            for i, workout in enumerate(source_workouts):
+                workout.date = target_date
+                workout.order = starting_order + i
+                workout.updated_at = now
 
-        # Get existing workouts on target date to determine starting order
-        target_workouts = self.get_by_date(target_date)
-        starting_order = len(target_workouts) + 1
-
-        # Update each workout's date and order
-        now = get_current_datetime().isoformat()
-        for i, workout in enumerate(source_workouts):
-            self.table.update(
-                {
-                    'date': target_date,
-                    'order': starting_order + i,
-                    'updated_at': now,
-                },
-                doc_ids=[workout['doc_id']]
-            )
-
-        return len(source_workouts)
+            session.commit()
+            return len(source_workouts)
 
     def get_workout_counts_by_date(self, year: int, month: int) -> dict[str, int]:
         """Get workout counts grouped by date for a specific month."""
-        # Search for all workouts in the month
-        pattern = f'{year}-{month:02d}'
-        workouts = self.table.search(self.query.date.matches(f'^{pattern}-.*'))
+        pattern = f"{year}-{month:02d}-%"
 
-        counts = {}
-        for workout in workouts:
-            date = workout['date']
-            counts[date] = counts.get(date, 0) + 1
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(Workout.date, func.count())
+                .where(Workout.date.like(pattern))
+                .group_by(Workout.date)
+            ).all()
 
-        return counts
+            return {date: count for date, count in rows}
 
     def get_by_exercise(self, exercise: str) -> list[dict]:
         """Get all workouts for a specific exercise."""
-        workouts = self.table.search(self.query.exercise == exercise)
-        workouts.sort(key=lambda x: x.get('date', ''))
-        return workouts
+        with SessionLocal() as session:
+            workouts = session.execute(
+                select(Workout)
+                .join(Exercise)
+                .options(selectinload(Workout.exercise), selectinload(Workout.category))
+                .where(Exercise.name == exercise)
+                .order_by(Workout.date.asc())
+            ).scalars().all()
+            return [self._serialize(workout) for workout in workouts]

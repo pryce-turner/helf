@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""Generate test workout data for January 2026."""
+"""Generate test workout data for January 2026 (SQLite)."""
 
-import json
 from datetime import datetime, timedelta
 from pathlib import Path
+import sys
+
+# Add backend directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from app.config import settings
+from app.database import SessionLocal, init_db
+from app.db.models import Category, Exercise, Workout
 
 # Categories and exercises
 CATEGORIES = {
@@ -13,7 +20,7 @@ CATEGORIES = {
     "Shoulders": ["Overhead Press", "Lateral Raise", "Face Pulls", "Arnold Press"],
     "Arms": ["Barbell Curl", "Tricep Dips", "Hammer Curl", "Skull Crushers"],
     "Core": ["Plank", "Ab Wheel", "Hanging Leg Raise", "Cable Crunch"],
-    "Cardio": ["Running", "Cycling", "Rowing"]
+    "Cardio": ["Running", "Cycling", "Rowing"],
 }
 
 # Workout templates for different days
@@ -38,157 +45,141 @@ WORKOUT_SPLITS = {
         "Leg Press": {"weight": 315, "reps": 12, "sets": 3},
         "Leg Curl": {"weight": 100, "reps": 12, "sets": 3},
         "Plank": {"weight": 0, "reps": 60, "sets": 3},
-    }
+    },
 }
 
+
 def generate_database():
-    """Generate TinyDB database with test data."""
+    """Generate SQLite database with test data."""
+    init_db()
 
-    db_data = {
-        "_default": {},
-        "categories": {},
-        "exercises": {},
-        "workouts": {},
-        "upcoming_workouts": {},
-        "body_composition": {}
-    }
+    with SessionLocal() as session:
+        # Clear existing data
+        session.query(Workout).delete()
+        session.query(Exercise).delete()
+        session.query(Category).delete()
+        session.commit()
 
-    # Generate categories
-    category_id = 1
-    for category_name in CATEGORIES.keys():
-        db_data["categories"][str(category_id)] = {
-            "name": category_name,
-            "created_at": datetime(2025, 12, 1, 10, 0, 0).isoformat()
-        }
-        category_id += 1
+        # Generate categories
+        category_map: dict[str, Category] = {}
+        created_at = datetime(2025, 12, 1, 10, 0, 0)
+        for category_name in CATEGORIES.keys():
+            category = Category(name=category_name, created_at=created_at)
+            session.add(category)
+            category_map[category_name] = category
+        session.flush()
 
-    # Generate exercises
-    exercise_id = 1
-    for category_name, exercises in CATEGORIES.items():
-        for exercise_name in exercises:
-            db_data["exercises"][str(exercise_id)] = {
-                "name": exercise_name,
-                "category": category_name,
-                "last_used": None,
-                "use_count": 0,
-                "created_at": datetime(2025, 12, 1, 10, 0, 0).isoformat()
-            }
-            exercise_id += 1
+        # Generate exercises
+        exercise_map: dict[str, Exercise] = {}
+        for category_name, exercises in CATEGORIES.items():
+            for exercise_name in exercises:
+                exercise = Exercise(
+                    name=exercise_name,
+                    category_id=category_map[category_name].id,
+                    last_used=None,
+                    use_count=0,
+                    created_at=created_at,
+                )
+                session.add(exercise)
+                exercise_map[exercise_name] = exercise
+        session.flush()
 
-    # Generate workouts for January 2026
-    workout_id = 1
-    start_date = datetime(2026, 1, 1)
+        # Generate workouts for January 2026
+        start_date = datetime(2026, 1, 1)
 
-    # 3 workouts per week (Monday, Wednesday, Friday) for January
-    workout_days = []
-    current_date = start_date
-    while current_date.month == 1:
-        if current_date.weekday() in [0, 2, 4]:  # Mon, Wed, Fri
-            workout_days.append(current_date)
-        current_date += timedelta(days=1)
+        # 3 workouts per week (Monday, Wednesday, Friday) for January
+        workout_days = []
+        current_date = start_date
+        while current_date.month == 1:
+            if current_date.weekday() in [0, 2, 4]:
+                workout_days.append(current_date)
+            current_date += timedelta(days=1)
 
-    # Rotate through workout splits
-    split_rotation = ["Push", "Pull", "Legs"]
+        split_rotation = ["Push", "Pull", "Legs"]
 
-    for day_idx, workout_date in enumerate(workout_days):
-        split_type = split_rotation[day_idx % 3]
-        workout_template = WORKOUT_SPLITS[split_type]
+        for day_idx, workout_date in enumerate(workout_days):
+            split_type = split_rotation[day_idx % 3]
+            workout_template = WORKOUT_SPLITS[split_type]
 
-        # Add slight progressive overload (0-5 lbs per week)
-        week_number = day_idx // 3
-        progression = week_number * 2.5
+            week_number = day_idx // 3
+            progression = week_number * 2.5
 
-        order = 0
-        for exercise_name, base_stats in workout_template.items():
-            # Find category for this exercise
-            category = None
-            for cat, exercises in CATEGORIES.items():
-                if exercise_name in exercises:
-                    category = cat
-                    break
+            order = 0
+            for exercise_name, base_stats in workout_template.items():
+                category_name = None
+                for cat, exercises in CATEGORIES.items():
+                    if exercise_name in exercises:
+                        category_name = cat
+                        break
 
-            # Determine number of sets
-            num_sets = base_stats.get("sets", 3)
+                num_sets = base_stats.get("sets", 3)
 
-            # Create multiple entries for each set
-            for set_num in range(num_sets):
-                weight = base_stats["weight"] + progression if base_stats["weight"] > 0 else 0
-                reps = base_stats["reps"]
+                for set_num in range(num_sets):
+                    weight = base_stats["weight"] + progression if base_stats["weight"] > 0 else 0
+                    reps = base_stats["reps"]
 
-                # Add variation to sets (sometimes hit AMRAP on last set)
-                if set_num == num_sets - 1 and reps <= 8:
-                    # Last set might be AMRAP
-                    if day_idx % 2 == 0:
-                        reps = f"{reps}+"
+                    if set_num == num_sets - 1 and reps <= 8:
+                        if day_idx % 2 == 0:
+                            reps = f"{reps}+"
 
-                workout_entry = {
-                    "date": workout_date.strftime("%Y-%m-%d"),
-                    "exercise": exercise_name,
-                    "category": category,
-                    "weight": weight if weight > 0 else None,
-                    "weight_unit": "lbs",
-                    "reps": reps,
-                    "distance": None,
-                    "distance_unit": None,
-                    "time": None,
-                    "comment": f"Week {week_number + 1}" if set_num == 0 else None,
-                    "order": order,
-                    "created_at": workout_date.replace(hour=8, minute=0, second=0).isoformat(),
-                    "updated_at": workout_date.replace(hour=8, minute=0, second=0).isoformat()
-                }
+                    workout_entry = Workout(
+                        date=workout_date.strftime("%Y-%m-%d"),
+                        exercise_id=exercise_map[exercise_name].id,
+                        category_id=category_map[category_name].id,
+                        weight=weight if weight > 0 else None,
+                        weight_unit="lbs",
+                        reps=str(reps) if reps is not None else None,
+                        distance=None,
+                        distance_unit=None,
+                        time=None,
+                        comment=f"Week {week_number + 1}" if set_num == 0 else None,
+                        order=order,
+                        created_at=workout_date.replace(hour=8, minute=0, second=0),
+                        updated_at=workout_date.replace(hour=8, minute=0, second=0),
+                    )
+                    session.add(workout_entry)
+                    order += 1
 
-                db_data["workouts"][str(workout_id)] = workout_entry
-                workout_id += 1
-                order += 1
+        # Add some cardio workouts
+        cardio_dates = [
+            datetime(2026, 1, 4),
+            datetime(2026, 1, 11),
+            datetime(2026, 1, 18),
+            datetime(2026, 1, 25),
+        ]
+        for cardio_date in cardio_dates:
+            workout_entry = Workout(
+                date=cardio_date.strftime("%Y-%m-%d"),
+                exercise_id=exercise_map["Running"].id,
+                category_id=category_map["Cardio"].id,
+                weight=None,
+                weight_unit="lbs",
+                reps=None,
+                distance=5.0,
+                distance_unit="km",
+                time="30:00",
+                comment="Easy recovery run",
+                order=0,
+                created_at=cardio_date.replace(hour=7, minute=0, second=0),
+                updated_at=cardio_date.replace(hour=7, minute=0, second=0),
+            )
+            session.add(workout_entry)
 
-    # Add some cardio workouts
-    cardio_dates = [datetime(2026, 1, 4), datetime(2026, 1, 11), datetime(2026, 1, 18), datetime(2026, 1, 25)]
-    for cardio_date in cardio_dates:
-        db_data["workouts"][str(workout_id)] = {
-            "date": cardio_date.strftime("%Y-%m-%d"),
-            "exercise": "Running",
-            "category": "Cardio",
-            "weight": None,
-            "weight_unit": "lbs",
-            "reps": None,
-            "distance": 5.0,
-            "distance_unit": "km",
-            "time": "30:00",
-            "comment": "Easy recovery run",
-            "order": 0,
-            "created_at": cardio_date.replace(hour=7, minute=0, second=0).isoformat(),
-            "updated_at": cardio_date.replace(hour=7, minute=0, second=0).isoformat()
-        }
-        workout_id += 1
+        session.commit()
 
-    return db_data
 
 def main():
     """Generate and save test database."""
-    data_dir = Path(__file__).parent.parent / "data"
+    data_dir = Path(settings.data_dir)
     data_dir.mkdir(exist_ok=True)
+    db_path = data_dir / "helf.db"
 
-    db_path = data_dir / "helf.json"
+    print("Generating test data...")
+    generate_database()
 
-    print(f"Generating test data...")
-    db_data = generate_database()
-
-    # Count entries
-    num_categories = len(db_data["categories"])
-    num_exercises = len(db_data["exercises"])
-    num_workouts = len(db_data["workouts"])
-
-    print(f"Generated:")
-    print(f"  - {num_categories} categories")
-    print(f"  - {num_exercises} exercises")
-    print(f"  - {num_workouts} workout entries")
-
-    # Write to file
-    with open(db_path, 'w') as f:
-        json.dump(db_data, f, indent=2)
-
-    print(f"\nDatabase written to: {db_path}")
+    print("\nDatabase written to:", db_path)
     print("✓ Test data generation complete!")
+
 
 if __name__ == "__main__":
     main()

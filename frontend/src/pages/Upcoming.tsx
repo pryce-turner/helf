@@ -478,7 +478,7 @@ const Upcoming = () => {
                 <h3 className="empty-state__title">NO UPCOMING WORKOUTS</h3>
                 <p className="empty-state__text">No upcoming workouts planned.</p>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-                  Use the Wendler 5/3/1 generator or import workouts via CSV to plan your training.
+                  Use the Wendler 5/3/1 generator or bulk add workouts to plan your training.
                 </p>
               </CardContent>
             </Card>

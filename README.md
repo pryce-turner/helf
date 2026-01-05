@@ -1,6 +1,6 @@
 # Helf - Health & Fitness Tracker
 
-A modern, Progressive Web App for tracking workouts, monitoring body composition, and planning training sessions. Built with FastAPI, React, and TinyDB.
+A modern, Progressive Web App for tracking workouts, monitoring body composition, and planning training sessions. Built with FastAPI, React, and SQLite.
 
 ## Features
 
@@ -20,7 +20,7 @@ A modern, Progressive Web App for tracking workouts, monitoring body composition
 
 ### 📅 Workout Planning
 - **Session Management** - Organize upcoming workouts by session
-- **Bulk Import** - Import multiple workouts from CSV
+- **Bulk Import** - Import multiple workouts at once
 - **Easy Transfer** - Move planned workouts to historical with one click
 - **Wendler 5/3/1 Support** - Generate periodized training plans
 
@@ -42,7 +42,7 @@ A modern, Progressive Web App for tracking workouts, monitoring body composition
 
 ### Backend
 - **FastAPI** - High-performance Python web framework
-- **TinyDB** - Lightweight JSON-based database
+- **SQLite + SQLAlchemy** - Relational database with ORM
 - **Pydantic** - Data validation with type hints
 - **Paho-MQTT** - Smart scale integration
 - **Uvicorn** - ASGI server with multi-worker support
@@ -144,20 +144,20 @@ Once running, interactive API documentation is available at:
 │   └─────────────────────────────┘   │
 │   ┌─────────────────────────────┐   │
 │   │  Data Access Layer          │   │
-│   │  - TinyDB Repositories      │   │
+│   │  - SQLAlchemy Repositories  │   │
 │   └─────────────────────────────┘   │
 └──────────────┬──────────────────────┘
                │
                ▼
         ┌──────────────┐      ┌──────────┐
-        │  TinyDB      │      │   MQTT   │
-        │  (JSON)      │      │  Broker  │
+        │  SQLite      │      │   MQTT   │
+        │  (SQL)       │      │  Broker  │
         └──────────────┘      └──────────┘
 ```
 
 ## Database Schema
 
-### TinyDB Collections
+### SQLite Tables
 
 **workouts**
 - Historical workout data with exercise details
@@ -236,7 +236,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATA_DIR` | `/app/data` | Directory for TinyDB database |
+| `DATA_DIR` | `/app/data` | Directory for SQLite database |
 | `MQTT_BROKER_HOST` | `host.docker.internal` | MQTT broker hostname |
 | `MQTT_BROKER_PORT` | `1883` | MQTT broker port |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins |
@@ -244,14 +244,14 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
 
 ### Data Migration
 
-If migrating from the old NiceGUI + CSV version:
+If migrating from an existing TinyDB JSON export:
 
 ```bash
 cd backend
-python migrations/csv_to_tinydb.py
+python migrations/tinydb_to_sqlite.py
 ```
 
-This will convert your CSV files to TinyDB format while preserving backups.
+This will convert your legacy data into the SQLite format while preserving backups.
 
 ## Project Structure
 
@@ -265,7 +265,7 @@ helf/
 │   │   ├── services/       # Business logic
 │   │   ├── utils/          # Helper functions
 │   │   ├── config.py       # Settings
-│   │   ├── database.py     # TinyDB setup
+│   │   ├── database.py     # SQLAlchemy setup
 │   │   └── main.py         # FastAPI app
 │   ├── migrations/         # Data migration scripts
 │   └── pyproject.toml      # Python dependencies
@@ -281,8 +281,7 @@ helf/
 │   ├── package.json        # Node dependencies
 │   └── vite.config.ts      # Vite + PWA config
 ├── data/                    # Data storage
-│   ├── helf.json           # TinyDB database
-│   └── *.csv               # CSV backups
+│   └── helf.db             # SQLite database
 ├── Dockerfile               # Multi-stage build
 ├── docker-compose.yml       # Docker Compose config
 └── DEPLOYMENT.md            # Deployment guide
@@ -326,7 +325,7 @@ npm test
 
 ## Roadmap
 
-- [x] Backend API (FastAPI + TinyDB)
+- [x] Backend API (FastAPI + SQLite)
 - [x] Frontend (React + TypeScript)
 - [x] PWA Support (Service Worker + Manifest)
 - [x] Docker Deployment
@@ -339,10 +338,9 @@ npm test
 
 The old NiceGUI version is preserved in git history. To migrate:
 
-1. Keep your CSV files in the `data/` directory
-2. Run the migration script (see Data Migration above)
-3. Deploy the new Docker image
-4. Verify data integrity
+1. Run the migration script (see Data Migration above)
+2. Deploy the new Docker image
+3. Verify data integrity
 
 ## Contributing
 
@@ -359,5 +357,5 @@ This project is open source and available under the MIT License.
 ---
 
 **Version**: 2.0.0  
-**Architecture**: FastAPI + React + TinyDB  
+**Architecture**: FastAPI + React + SQLite  
 **Built with**: TypeScript, Python, shadcn/ui, Tailwind CSS

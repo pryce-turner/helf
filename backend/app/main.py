@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from app.config import settings
-from app.database import close_db
+from app.database import close_db, init_db
 from app.api import workouts, exercises, progression, upcoming, body_comp
 from app.services.mqtt_service import MQTTService
 
@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
     global mqtt_service
 
     # Startup
+    init_db()
     mqtt_service = MQTTService(
         broker_host=settings.mqtt_broker_host,
         broker_port=settings.mqtt_broker_port,

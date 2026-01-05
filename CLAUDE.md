@@ -10,7 +10,7 @@ Helf is a modern Progressive Web App (PWA) for tracking workouts, monitoring bod
 
 ### Backend
 - **Framework**: FastAPI 0.127+
-- **Database**: TinyDB 4.8+ (JSON-based document store)
+- **Database**: SQLite + SQLAlchemy 2.x
 - **MQTT**: Paho-MQTT 2.1+ (smart scale integration)
 - **Validation**: Pydantic v2
 - **Server**: Uvicorn with multi-worker support
@@ -45,14 +45,14 @@ helf/
 │   │   │   ├── upcoming.py
 │   │   │   └── body_comp.py
 │   │   ├── models/           # Pydantic models
-│   │   ├── repositories/     # TinyDB data access layer
+│   │   ├── repositories/     # SQLAlchemy data access layer
 │   │   ├── services/         # Business logic
 │   │   ├── utils/            # Helper functions (1RM calc, dates)
 │   │   ├── config.py         # Application settings
-│   │   ├── database.py       # TinyDB connection
+│   │   ├── database.py       # SQLAlchemy session/engine
 │   │   └── main.py           # FastAPI application entry
 │   ├── migrations/
-│   │   └── csv_to_tinydb.py  # Migration script
+│   │   └── tinydb_to_sqlite.py  # TinyDB JSON migration script
 │   └── pyproject.toml
 ├── frontend/
 │   ├── src/
@@ -67,7 +67,7 @@ helf/
 │   ├── package.json
 │   └── vite.config.ts
 ├── data/                     # Data storage (gitignored)
-│   └── helf.json             # TinyDB database
+│   └── helf.db               # SQLite database
 ├── tests/
 ├── Dockerfile                # Multi-stage build
 ├── docker-compose.yml
@@ -109,7 +109,7 @@ docker-compose up -d
 ### Environment Variables
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATA_DIR` | `/app/data` | TinyDB database directory |
+| `DATA_DIR` | `/app/data` | SQLite database directory |
 | `MQTT_BROKER_HOST` | `host.docker.internal` | MQTT broker hostname |
 | `MQTT_BROKER_PORT` | `1883` | MQTT broker port |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins |
@@ -117,8 +117,7 @@ docker-compose up -d
 
 ### Data Persistence
 Data is stored in `/mnt/fast/apps/helf/data` by default. Contains:
-- `helf.json` - TinyDB database
-- CSV backups (if migrated from v1)
+- `helf.db` - SQLite database
 
 ## API Endpoints
 
@@ -180,7 +179,7 @@ Data is stored in `/mnt/fast/apps/helf/data` by default. Contains:
 
 ### Workout Planning
 - Session-based upcoming workout management
-- Bulk import from CSV
+- Bulk import
 - Wendler 5/3/1 generator support
 - One-click transfer to historical data
 
@@ -266,7 +265,7 @@ npm run build  # Includes tsc
 
 ### Database issues
 - Check data directory permissions
-- Verify `helf.json` exists in data directory
+- Verify `helf.db` exists in data directory
 - Review container logs: `docker logs helf-app`
 
 ## Git Workflow
@@ -279,15 +278,15 @@ npm run build  # Includes tsc
 - Include Claude Code attribution when AI-assisted
 
 ### Ignored Files
-- `data/*.csv` - CSV data files
-- `**/helf.json` - TinyDB database
+- `**/helf.db` - SQLite database
+- `**/helf.json` - Legacy TinyDB export
 - `.claude/` - Claude documentation
 - `.venv/` - Python virtual environment
 - `node_modules/` - Node dependencies
 
 ## Architecture Decisions
 
-1. **TinyDB over SQLite**: Simpler for single-user use case, JSON format is human-readable
+1. **SQLite over TinyDB**: Better performance and query flexibility for growing datasets
 2. **Repository Pattern**: Clean separation between data access and business logic
 3. **React Query over Redux**: Better suited for server state management
 4. **Recharts over Plotly**: Better React integration, smaller bundle size
@@ -295,15 +294,15 @@ npm run build  # Includes tsc
 
 ## Migration from v1.x
 
-If migrating from the old NiceGUI + CSV version:
+If migrating from a legacy TinyDB JSON export:
 ```bash
 cd backend
-python migrations/csv_to_tinydb.py
+python migrations/tinydb_to_sqlite.py
 ```
-This converts CSV files to TinyDB while preserving backups.
+This converts TinyDB JSON to SQLite while preserving your existing data.
 
 ---
 
 **Version**: 2.0.0
-**Architecture**: FastAPI + React + TinyDB
+**Architecture**: FastAPI + React + SQLite
 **Last Updated**: January 2026

@@ -1,6 +1,6 @@
 /* Load required fonts from Fontshare and Google Fonts */
-@import url('https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=satoshi@400,500,600,700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=satoshi@400,500,600,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -419,17 +419,32 @@
     }
 
     /* Stagger children */
-    .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-    .stagger-children > *:nth-child(2) { animation-delay: 50ms; }
-    .stagger-children > *:nth-child(3) { animation-delay: 100ms; }
-    .stagger-children > *:nth-child(4) { animation-delay: 150ms; }
-    .stagger-children > *:nth-child(5) { animation-delay: 200ms; }
-    .stagger-children > *:nth-child(6) { animation-delay: 250ms; }
-    .stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+    .stagger-children > *:nth-child(1) {
+        animation-delay: 0ms;
+    }
+    .stagger-children > *:nth-child(2) {
+        animation-delay: 50ms;
+    }
+    .stagger-children > *:nth-child(3) {
+        animation-delay: 100ms;
+    }
+    .stagger-children > *:nth-child(4) {
+        animation-delay: 150ms;
+    }
+    .stagger-children > *:nth-child(5) {
+        animation-delay: 200ms;
+    }
+    .stagger-children > *:nth-child(6) {
+        animation-delay: 250ms;
+    }
+    .stagger-children > *:nth-child(7) {
+        animation-delay: 300ms;
+    }
 
     /* Pulse animation for active elements */
     @keyframes pulse-glow {
-        0%, 100% {
+        0%,
+        100% {
             box-shadow: 0 0 10px var(--accent-glow);
         }
         50% {
@@ -547,6 +562,9 @@
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         height: 68px;
+        padding: 0 var(--space-3);
+        max-width: 320px;
+        margin: 0 auto;
     }
 
     .nav-mobile-link {
@@ -832,7 +850,9 @@
     }
 
     @keyframes spin {
-        to { transform: rotate(360deg); }
+        to {
+            transform: rotate(360deg);
+        }
     }
 
     /* Section spacing */
@@ -1126,10 +1146,18 @@
     }
 
     /* Grid gaps */
-    .gap-1 { gap: var(--space-1); }
-    .gap-2 { gap: var(--space-2); }
-    .gap-4 { gap: var(--space-4); }
-    .gap-6 { gap: var(--space-6); }
+    .gap-1 {
+        gap: var(--space-1);
+    }
+    .gap-2 {
+        gap: var(--space-2);
+    }
+    .gap-4 {
+        gap: var(--space-4);
+    }
+    .gap-6 {
+        gap: var(--space-6);
+    }
 
     /* Hide scrollbar utility */
     .hide-scrollbar {
@@ -1146,7 +1174,9 @@
 /* Mobile: bottom nav needs bottom padding including safe area */
 @media (max-width: 767px) {
     .page__content {
-        padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+        padding-bottom: calc(
+            100px + env(safe-area-inset-bottom, 0px)
+        ) !important;
     }
 }
 
@@ -1160,7 +1190,9 @@
 
 /* Accessibility - Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
+    *,
+    *::before,
+    *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
     }

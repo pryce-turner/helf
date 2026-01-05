@@ -142,84 +142,85 @@ const SortableWorkoutCard = ({
             className="card-hover animate-in"
         >
             <CardContent style={{ padding: 'var(--space-4)', position: 'relative' }}>
-                {/* Vertical icon stack - positioned top right */}
-                <div
-                    className="flex flex-col items-center justify-between"
-                    style={{
-                        position: 'absolute',
-                        top: 'var(--space-4)',
-                        right: 'var(--space-4)',
-                        bottom: 'var(--space-4)',
-                    }}
-                >
-                        {/* Completion checkbox */}
-                        <button
-                            className="action-btn"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                toggleComplete.mutate({
-                                    id: workout.doc_id,
-                                    completed: !workout.completed_at
-                                });
-                            }}
-                            title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
-                            style={{
-                                color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
-                                opacity: workout.completed_at ? 1 : 0.5,
-                                padding: '4px',
-                            }}
-                        >
-                            {workout.completed_at ? (
-                                <CheckCircle2 style={{ width: '28px', height: '28px' }} />
+                {!isEditing && (
+                    <div
+                        className="flex flex-col items-center justify-between"
+                        style={{
+                            position: 'absolute',
+                            top: 'var(--space-4)',
+                            right: 'var(--space-4)',
+                            bottom: 'var(--space-4)',
+                        }}
+                    >
+                            {/* Completion checkbox */}
+                            <button
+                                className="action-btn"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleComplete.mutate({
+                                        id: workout.doc_id,
+                                        completed: !workout.completed_at
+                                    });
+                                }}
+                                title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
+                                style={{
+                                    color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
+                                    opacity: workout.completed_at ? 1 : 0.5,
+                                    padding: '4px',
+                                }}
+                            >
+                                {workout.completed_at ? (
+                                    <CheckCircle2 style={{ width: '28px', height: '28px' }} />
+                                ) : (
+                                    <Circle style={{ width: '28px', height: '28px' }} />
+                                )}
+                            </button>
+
+                            {/* Drag handle */}
+                            <button
+                                className="action-btn drag-handle"
+                                style={{
+                                    cursor: isDragging ? 'grabbing' : 'grab',
+                                    touchAction: 'none',
+                                    padding: '4px',
+                                }}
+                                {...attributes}
+                                {...listeners}
+                            >
+                                <GripVertical style={{ width: '26px', height: '26px' }} />
+                            </button>
+
+                            {/* Delete button */}
+                            {confirmingDelete === workout.doc_id ? (
+                                <div className="flex" style={{ gap: '4px' }}>
+                                    <button
+                                        className="action-btn action-btn--danger"
+                                        onClick={() => handleDeleteConfirm(workout.doc_id)}
+                                        title="Confirm delete"
+                                        style={{ padding: '4px' }}
+                                    >
+                                        <Check style={{ width: '24px', height: '24px' }} />
+                                    </button>
+                                    <button
+                                        className="action-btn"
+                                        onClick={handleDeleteCancel}
+                                        title="Cancel"
+                                        style={{ padding: '4px' }}
+                                    >
+                                        <X style={{ width: '24px', height: '24px' }} />
+                                    </button>
+                                </div>
                             ) : (
-                                <Circle style={{ width: '28px', height: '28px' }} />
-                            )}
-                        </button>
-
-                        {/* Drag handle */}
-                        <button
-                            className="action-btn drag-handle"
-                            style={{
-                                cursor: isDragging ? 'grabbing' : 'grab',
-                                touchAction: 'none',
-                                padding: '4px',
-                            }}
-                            {...attributes}
-                            {...listeners}
-                        >
-                            <GripVertical style={{ width: '26px', height: '26px' }} />
-                        </button>
-
-                        {/* Delete button */}
-                        {confirmingDelete === workout.doc_id ? (
-                            <div className="flex" style={{ gap: '4px' }}>
                                 <button
                                     className="action-btn action-btn--danger"
-                                    onClick={() => handleDeleteConfirm(workout.doc_id)}
-                                    title="Confirm delete"
+                                    onClick={() => handleDeleteClick(workout.doc_id)}
                                     style={{ padding: '4px' }}
                                 >
-                                    <Check style={{ width: '24px', height: '24px' }} />
+                                    <Trash2 style={{ width: '24px', height: '24px' }} />
                                 </button>
-                                <button
-                                    className="action-btn"
-                                    onClick={handleDeleteCancel}
-                                    title="Cancel"
-                                    style={{ padding: '4px' }}
-                                >
-                                    <X style={{ width: '24px', height: '24px' }} />
-                                </button>
-                            </div>
-                        ) : (
-                            <button
-                                className="action-btn action-btn--danger"
-                                onClick={() => handleDeleteClick(workout.doc_id)}
-                                style={{ padding: '4px' }}
-                            >
-                                <Trash2 style={{ width: '24px', height: '24px' }} />
-                            </button>
-                        )}
-                </div>
+                            )}
+                    </div>
+                )}
 
                 {/* Main content - clickable area */}
                 <div
@@ -259,7 +260,14 @@ const SortableWorkoutCard = ({
 
                     {/* Data chips - only show if there's data */}
                     {(workout.weight || workout.reps || workout.comment) && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+                        <div
+                            style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 'var(--space-3)',
+                                minHeight: '70px',
+                            }}
+                        >
                             {workout.weight && (
                                 <div style={{
                                     display: 'flex',

@@ -144,12 +144,12 @@ const SortableWorkoutCard = ({
             <CardContent style={{ padding: 'var(--space-4)', position: 'relative' }}>
                 {/* Vertical icon stack - positioned top right */}
                 <div
-                    className="flex flex-col items-center"
+                    className="flex flex-col items-center justify-between"
                     style={{
                         position: 'absolute',
-                        top: 'var(--space-3)',
-                        right: 'var(--space-3)',
-                        gap: 'var(--space-1)',
+                        top: 'var(--space-4)',
+                        right: 'var(--space-4)',
+                        bottom: 'var(--space-4)',
                     }}
                 >
                         {/* Completion checkbox */}
@@ -166,12 +166,13 @@ const SortableWorkoutCard = ({
                             style={{
                                 color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
                                 opacity: workout.completed_at ? 1 : 0.5,
+                                padding: '4px',
                             }}
                         >
                             {workout.completed_at ? (
-                                <CheckCircle2 style={{ width: '20px', height: '20px' }} />
+                                <CheckCircle2 style={{ width: '28px', height: '28px' }} />
                             ) : (
-                                <Circle style={{ width: '20px', height: '20px' }} />
+                                <Circle style={{ width: '28px', height: '28px' }} />
                             )}
                         </button>
 
@@ -181,37 +182,41 @@ const SortableWorkoutCard = ({
                             style={{
                                 cursor: isDragging ? 'grabbing' : 'grab',
                                 touchAction: 'none',
+                                padding: '4px',
                             }}
                             {...attributes}
                             {...listeners}
                         >
-                            <GripVertical style={{ width: '18px', height: '18px' }} />
+                            <GripVertical style={{ width: '26px', height: '26px' }} />
                         </button>
 
                         {/* Delete button */}
                         {confirmingDelete === workout.doc_id ? (
-                            <div className="flex" style={{ gap: '2px' }}>
+                            <div className="flex" style={{ gap: '4px' }}>
                                 <button
                                     className="action-btn action-btn--danger"
                                     onClick={() => handleDeleteConfirm(workout.doc_id)}
                                     title="Confirm delete"
+                                    style={{ padding: '4px' }}
                                 >
-                                    <Check style={{ width: '16px', height: '16px' }} />
+                                    <Check style={{ width: '24px', height: '24px' }} />
                                 </button>
                                 <button
                                     className="action-btn"
                                     onClick={handleDeleteCancel}
                                     title="Cancel"
+                                    style={{ padding: '4px' }}
                                 >
-                                    <X style={{ width: '16px', height: '16px' }} />
+                                    <X style={{ width: '24px', height: '24px' }} />
                                 </button>
                             </div>
                         ) : (
                             <button
                                 className="action-btn action-btn--danger"
                                 onClick={() => handleDeleteClick(workout.doc_id)}
+                                style={{ padding: '4px' }}
                             >
-                                <Trash2 style={{ width: '16px', height: '16px' }} />
+                                <Trash2 style={{ width: '24px', height: '24px' }} />
                             </button>
                         )}
                 </div>
@@ -224,26 +229,28 @@ const SortableWorkoutCard = ({
                         paddingRight: '50px',
                     }}
                 >
-                    {/* Exercise name and category */}
-                    <div style={{ marginBottom: 'var(--space-2)' }}>
+                    {/* Exercise name and category - inline */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                         <h3
                             style={{
                                 fontFamily: 'var(--font-body)',
-                                fontSize: '16px',
+                                fontSize: '18px',
                                 fontWeight: 600,
                                 color: 'var(--text-primary)',
                                 margin: 0,
-                                marginBottom: 'var(--space-1)',
                             }}
                         >
                             {workout.exercise}
                         </h3>
                         <span
-                            className="category-badge-compact"
                             style={{
+                                padding: '4px 10px',
+                                borderRadius: 'var(--radius-sm)',
                                 border: `1px solid ${catColor.border}`,
                                 color: catColor.text,
                                 background: `${catColor.bg}20`,
+                                fontSize: '13px',
+                                fontWeight: 500,
                             }}
                         >
                             {workout.category}
@@ -252,27 +259,58 @@ const SortableWorkoutCard = ({
 
                     {/* Data chips - only show if there's data */}
                     {(workout.weight || workout.reps || workout.comment) && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
                             {workout.weight && (
-                                <div className="workout-chip-compact">
-                                    <Weight style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
-                                    <span className="workout-chip__value">
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'var(--bg-tertiary)',
+                                    padding: '8px 14px',
+                                    borderRadius: 'var(--radius-sm)',
+                                }}>
+                                    <Weight style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
+                                    <span style={{
+                                        fontWeight: 600,
+                                        fontFamily: 'var(--font-mono)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '15px',
+                                    }}>
                                         {workout.weight} {workout.weight_unit}
                                     </span>
                                 </div>
                             )}
                             {workout.reps && (
-                                <div className="workout-chip-compact">
-                                    <Hash style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
-                                    <span className="workout-chip__value">
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'var(--bg-tertiary)',
+                                    padding: '8px 14px',
+                                    borderRadius: 'var(--radius-sm)',
+                                }}>
+                                    <Hash style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
+                                    <span style={{
+                                        fontWeight: 600,
+                                        fontFamily: 'var(--font-mono)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '15px',
+                                    }}>
                                         {workout.reps} reps
                                     </span>
                                 </div>
                             )}
                             {workout.comment && (
-                                <div className="workout-chip-compact">
-                                    <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
-                                    <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'var(--bg-tertiary)',
+                                    padding: '8px 14px',
+                                    borderRadius: 'var(--radius-sm)',
+                                }}>
+                                    <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
                                         {workout.comment}
                                     </span>
                                 </div>

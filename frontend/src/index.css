@@ -930,6 +930,29 @@
         border-radius: var(--radius-sm);
     }
 
+    /* Compact workout chips for inline card layout */
+    .workout-chip-compact {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--bg-tertiary);
+        padding: 4px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+    }
+
+    .workout-chip-compact .workout-chip__value {
+        font-size: 13px;
+    }
+
+    .workout-chip-compact .workout-chip__comment {
+        font-size: 12px;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .workout-chip__value {
         font-weight: 600;
         font-family: var(--font-mono);
@@ -957,6 +980,23 @@
         flex-shrink: 0;
     }
 
+    /* Compact workout order badge - for inline card layout */
+    .workout-order-compact {
+        background: var(--accent-subtle);
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 13px;
+        min-width: 28px;
+        height: 28px;
+        padding: 0 6px;
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-mono);
+        flex-shrink: 0;
+    }
+
     /* Category badge */
     .category-badge {
         padding: 4px 12px;
@@ -965,10 +1005,18 @@
         font-weight: 600;
     }
 
+    /* Compact category badge */
+    .category-badge-compact {
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        font-size: 11px;
+        font-weight: 600;
+    }
+
     /* Reorder/action buttons */
     .action-btn {
-        width: 36px;
-        height: 36px;
+        width: 32px;
+        height: 32px;
         padding: 0;
         display: flex;
         align-items: center;

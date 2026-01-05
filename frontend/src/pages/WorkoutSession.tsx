@@ -141,105 +141,119 @@ const SortableWorkoutCard = ({
             style={style}
             className="card-hover animate-in"
         >
-            <CardContent style={{ padding: 'var(--space-5)' }}>
-                <div className="flex items-start justify-between" style={{ gap: 'var(--space-4)' }}>
+            <CardContent style={{ padding: 'var(--space-4)' }}>
+                {/* Single row layout with all controls inline */}
+                <div
+                    className="flex items-center"
+                    style={{ gap: 'var(--space-3)' }}
+                >
                     {/* Drag handle */}
                     <button
                         className="action-btn drag-handle"
                         style={{
                             cursor: isDragging ? 'grabbing' : 'grab',
                             touchAction: 'none',
+                            flexShrink: 0,
                         }}
                         {...attributes}
                         {...listeners}
                     >
-                        <GripVertical style={{ width: '20px', height: '20px' }} />
+                        <GripVertical style={{ width: '18px', height: '18px' }} />
                     </button>
 
+                    {/* Completion checkbox */}
+                    <button
+                        className="workout-checkbox"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleComplete.mutate({
+                                id: workout.doc_id,
+                                completed: !workout.completed_at
+                            });
+                        }}
+                        title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
+                        style={{
+                            color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
+                            opacity: workout.completed_at ? 1 : 0.5,
+                            flexShrink: 0,
+                        }}
+                    >
+                        {workout.completed_at ? (
+                            <CheckCircle2 style={{ width: '22px', height: '22px' }} />
+                        ) : (
+                            <Circle style={{ width: '22px', height: '22px' }} />
+                        )}
+                    </button>
+
+                    {/* Order number */}
+                    <div className="workout-order-compact">
+                        {index + 1}
+                    </div>
+
+                    {/* Main content - clickable area */}
                     <div
-                        className="flex-1"
+                        className="flex-1 min-w-0"
                         onClick={() => !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? handleEditWorkout(workout) : undefined}
                         style={{ cursor: !editingWorkout || editingWorkout.doc_id !== workout.doc_id ? 'pointer' : 'default' }}
                     >
-                        <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
-                            <button
-                                className="workout-checkbox"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleComplete.mutate({
-                                        id: workout.doc_id,
-                                        completed: !workout.completed_at
-                                    });
-                                }}
-                                title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
+                        {/* Exercise name and category - inline on mobile, with chips below */}
+                        <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                            <h3
                                 style={{
-                                    color: workout.completed_at ? 'var(--accent)' : 'var(--text-muted)',
-                                    opacity: workout.completed_at ? 1 : 0.5,
+                                    fontFamily: 'var(--font-body)',
+                                    fontSize: '16px',
+                                    fontWeight: 600,
+                                    color: 'var(--text-primary)',
+                                    margin: 0,
                                 }}
                             >
-                                {workout.completed_at ? (
-                                    <CheckCircle2 style={{ width: '24px', height: '24px' }} />
-                                ) : (
-                                    <Circle style={{ width: '24px', height: '24px' }} />
-                                )}
-                            </button>
-                            <div className="workout-order">
-                                {index + 1}
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-                                    <h3
-                                        style={{
-                                            fontFamily: 'var(--font-body)',
-                                            fontSize: '18px',
-                                            fontWeight: 600,
-                                            color: 'var(--text-primary)',
-                                        }}
-                                    >
-                                        {workout.exercise}
-                                    </h3>
-                                    <span
-                                        className="category-badge"
-                                        style={{
-                                            border: `1px solid ${catColor.border}`,
-                                            color: catColor.text,
-                                            background: `${catColor.bg}20`,
-                                        }}
-                                    >
-                                        {workout.category}
-                                    </span>
-                                </div>
-                                <div className="flex flex-wrap" style={{ gap: 'var(--space-3)' }}>
-                                    {workout.weight && (
-                                        <div className="workout-chip">
-                                            <Weight style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
-                                            <span className="workout-chip__value">
-                                                {workout.weight} {workout.weight_unit}
-                                            </span>
-                                        </div>
-                                    )}
-                                    {workout.reps && (
-                                        <div className="workout-chip">
-                                            <Hash style={{ width: '16px', height: '16px', color: 'var(--accent)' }} />
-                                            <span className="workout-chip__value">
-                                                {workout.reps} reps
-                                            </span>
-                                        </div>
-                                    )}
-                                    {workout.comment && (
-                                        <div className="workout-chip">
-                                            <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
-                                            <span className="workout-chip__comment">
-                                                {workout.comment}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                                {workout.exercise}
+                            </h3>
+                            <span
+                                className="category-badge-compact"
+                                style={{
+                                    border: `1px solid ${catColor.border}`,
+                                    color: catColor.text,
+                                    background: `${catColor.bg}20`,
+                                }}
+                            >
+                                {workout.category}
+                            </span>
                         </div>
+
+                        {/* Data chips - only show if there's data */}
+                        {(workout.weight || workout.reps || workout.comment) && (
+                            <div className="flex flex-wrap items-center" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                                {workout.weight && (
+                                    <div className="workout-chip-compact">
+                                        <Weight style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
+                                        <span className="workout-chip__value">
+                                            {workout.weight} {workout.weight_unit}
+                                        </span>
+                                    </div>
+                                )}
+                                {workout.reps && (
+                                    <div className="workout-chip-compact">
+                                        <Hash style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
+                                        <span className="workout-chip__value">
+                                            {workout.reps} reps
+                                        </span>
+                                    </div>
+                                )}
+                                {workout.comment && (
+                                    <div className="workout-chip-compact">
+                                        <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                                        <span className="workout-chip__comment">
+                                            {workout.comment}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
-                    <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
+                    {/* Delete button */}
+                    <div className="flex items-center" style={{ flexShrink: 0 }}>
                         {confirmingDelete === workout.doc_id ? (
                             <div className="flex" style={{ gap: '2px' }}>
                                 <button
@@ -247,14 +261,14 @@ const SortableWorkoutCard = ({
                                     onClick={() => handleDeleteConfirm(workout.doc_id)}
                                     title="Confirm delete"
                                 >
-                                    <Check style={{ width: '18px', height: '18px' }} />
+                                    <Check style={{ width: '16px', height: '16px' }} />
                                 </button>
                                 <button
                                     className="action-btn"
                                     onClick={handleDeleteCancel}
                                     title="Cancel"
                                 >
-                                    <X style={{ width: '18px', height: '18px' }} />
+                                    <X style={{ width: '16px', height: '16px' }} />
                                 </button>
                             </div>
                         ) : (
@@ -262,7 +276,7 @@ const SortableWorkoutCard = ({
                                 className="action-btn action-btn--danger"
                                 onClick={() => handleDeleteClick(workout.doc_id)}
                             >
-                                <Trash2 style={{ width: '18px', height: '18px' }} />
+                                <Trash2 style={{ width: '16px', height: '16px' }} />
                             </button>
                         )}
                     </div>
@@ -376,144 +390,132 @@ const SortableWorkoutCard = ({
                                 />
                             </div>
 
-                            {/* Recent Weights Toggle */}
-                            <div>
-                                <button
+                            {/* Action buttons - 2x2 grid */}
+                            <div className="grid grid-cols-2" style={{ gap: 'var(--space-3)' }}>
+                                <Button
                                     type="button"
+                                    variant={showRecentWeights ? "default" : "secondary"}
                                     onClick={() => setShowRecentWeights(!showRecentWeights)}
-                                    className="flex items-center"
-                                    style={{
-                                        gap: 'var(--space-2)',
-                                        padding: 'var(--space-2) var(--space-3)',
-                                        background: showRecentWeights ? 'var(--accent-glow)' : 'var(--bg-secondary)',
-                                        border: `1px solid ${showRecentWeights ? 'var(--accent-muted)' : 'var(--border)'}`,
-                                        borderRadius: 'var(--radius-sm)',
-                                        color: showRecentWeights ? 'var(--accent)' : 'var(--text-secondary)',
-                                        fontSize: '13px',
-                                        fontFamily: 'var(--font-body)',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease',
-                                    }}
+                                    className="w-full justify-center"
                                 >
-                                    <History style={{ width: '14px', height: '14px' }} />
-                                    Recent weights
-                                </button>
-
-                                {showRecentWeights && progressionData?.historical && progressionData.historical.length > 0 && (
-                                    <div
-                                        style={{
-                                            marginTop: 'var(--space-3)',
-                                            padding: 'var(--space-3)',
-                                            background: 'var(--bg-secondary)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            border: '1px solid var(--border)',
-                                        }}
-                                    >
-                                        <div
-                                            style={{
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                gap: 'var(--space-2)',
-                                                maxHeight: '150px',
-                                                overflowY: 'auto',
-                                            }}
-                                        >
-                                            {progressionData.historical
-                                                .slice(-5)
-                                                .reverse()
-                                                .map((entry, i) => (
-                                                    <button
-                                                        key={i}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setFormData({
-                                                                ...formData,
-                                                                weight: entry.weight,
-                                                                reps: entry.reps,
-                                                            });
-                                                        }}
-                                                        style={{
-                                                            display: 'flex',
-                                                            justifyContent: 'space-between',
-                                                            alignItems: 'center',
-                                                            padding: 'var(--space-2)',
-                                                            background: 'var(--bg-tertiary)',
-                                                            border: '1px solid var(--border-subtle)',
-                                                            borderRadius: 'var(--radius-sm)',
-                                                            cursor: 'pointer',
-                                                            transition: 'all 0.15s ease',
-                                                            textAlign: 'left',
-                                                        }}
-                                                        onMouseOver={(e) => {
-                                                            e.currentTarget.style.background = 'var(--bg-hover)';
-                                                            e.currentTarget.style.borderColor = 'var(--accent-muted)';
-                                                        }}
-                                                        onMouseOut={(e) => {
-                                                            e.currentTarget.style.background = 'var(--bg-tertiary)';
-                                                            e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                                                        }}
-                                                    >
-                                                        <span
-                                                            style={{
-                                                                fontFamily: 'var(--font-mono)',
-                                                                fontSize: '13px',
-                                                                color: 'var(--text-primary)',
-                                                            }}
-                                                        >
-                                                            {entry.weight} {entry.weight_unit} × {entry.reps}
-                                                        </span>
-                                                        <span
-                                                            style={{
-                                                                fontSize: '12px',
-                                                                color: 'var(--text-muted)',
-                                                            }}
-                                                        >
-                                                            {entry.date}
-                                                        </span>
-                                                    </button>
-                                                ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {showRecentWeights && (!progressionData?.historical || progressionData.historical.length === 0) && (
-                                    <p
-                                        style={{
-                                            marginTop: 'var(--space-3)',
-                                            fontSize: '13px',
-                                            color: 'var(--text-muted)',
-                                            fontStyle: 'italic',
-                                        }}
-                                    >
-                                        No previous entries for this exercise
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="flex justify-between" style={{ gap: 'var(--space-3)' }}>
+                                    <History style={{ width: '18px', height: '18px' }} />
+                                    Recent
+                                </Button>
                                 <Button
                                     type="button"
                                     variant="secondary"
                                     onClick={handleDuplicate}
+                                    className="w-full justify-center"
                                 >
                                     <Copy style={{ width: '18px', height: '18px' }} />
                                     Duplicate
                                 </Button>
-                                <div className="flex" style={{ gap: 'var(--space-3)' }}>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        onClick={resetForm}
-                                    >
-                                        <X style={{ width: '18px', height: '18px' }} />
-                                        Cancel
-                                    </Button>
-                                    <Button type="submit">
-                                        <Check style={{ width: '18px', height: '18px' }} />
-                                        Save Changes
-                                    </Button>
-                                </div>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={resetForm}
+                                    className="w-full justify-center"
+                                >
+                                    <X style={{ width: '18px', height: '18px' }} />
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    className="w-full justify-center"
+                                >
+                                    <Check style={{ width: '18px', height: '18px' }} />
+                                    Save
+                                </Button>
                             </div>
+
+                            {/* Recent weights dropdown */}
+                            {showRecentWeights && progressionData?.historical && progressionData.historical.length > 0 && (
+                                <div
+                                    style={{
+                                        padding: 'var(--space-3)',
+                                        background: 'var(--bg-secondary)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        border: '1px solid var(--border)',
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 'var(--space-2)',
+                                            maxHeight: '150px',
+                                            overflowY: 'auto',
+                                        }}
+                                    >
+                                        {progressionData.historical
+                                            .slice(-5)
+                                            .reverse()
+                                            .map((entry, i) => (
+                                                <button
+                                                    key={i}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setFormData({
+                                                            ...formData,
+                                                            weight: entry.weight,
+                                                            reps: entry.reps,
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        padding: 'var(--space-2)',
+                                                        background: 'var(--bg-tertiary)',
+                                                        border: '1px solid var(--border-subtle)',
+                                                        borderRadius: 'var(--radius-sm)',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.15s ease',
+                                                        textAlign: 'left',
+                                                    }}
+                                                    onMouseOver={(e) => {
+                                                        e.currentTarget.style.background = 'var(--bg-hover)';
+                                                        e.currentTarget.style.borderColor = 'var(--accent-muted)';
+                                                    }}
+                                                    onMouseOut={(e) => {
+                                                        e.currentTarget.style.background = 'var(--bg-tertiary)';
+                                                        e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                                                    }}
+                                                >
+                                                    <span
+                                                        style={{
+                                                            fontFamily: 'var(--font-mono)',
+                                                            fontSize: '13px',
+                                                            color: 'var(--text-primary)',
+                                                        }}
+                                                    >
+                                                        {entry.weight} {entry.weight_unit} × {entry.reps}
+                                                    </span>
+                                                    <span
+                                                        style={{
+                                                            fontSize: '12px',
+                                                            color: 'var(--text-muted)',
+                                                        }}
+                                                    >
+                                                        {entry.date}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {showRecentWeights && (!progressionData?.historical || progressionData.historical.length === 0) && (
+                                <p
+                                    style={{
+                                        fontSize: '13px',
+                                        color: 'var(--text-muted)',
+                                        fontStyle: 'italic',
+                                    }}
+                                >
+                                    No previous entries for this exercise
+                                </p>
+                            )}
                         </form>
                     </div>
                 )}
@@ -1058,7 +1060,7 @@ const WorkoutSession = () => {
                                         ) : (
                                             <Plus style={{ width: '20px', height: '20px' }} />
                                         )}
-                                        {editingWorkout ? 'Save Changes' : 'Add Workout'}
+                                        {editingWorkout ? 'Save' : 'Add Workout'}
                                     </Button>
                                 </div>
                             </form>

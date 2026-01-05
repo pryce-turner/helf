@@ -36,6 +36,7 @@ import {
     Circle,
     Calendar as CalendarIcon,
     History,
+    Copy,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -86,6 +87,7 @@ interface SortableWorkoutCardProps {
     handleDeleteCancel: () => void;
     setFormData: React.Dispatch<React.SetStateAction<WorkoutCreate>>;
     handleSubmit: (e: React.FormEvent) => void;
+    handleDuplicate: () => void;
     resetForm: () => void;
 }
 
@@ -103,6 +105,7 @@ const SortableWorkoutCard = ({
     handleDeleteCancel,
     setFormData,
     handleSubmit,
+    handleDuplicate,
     resetForm,
 }: SortableWorkoutCardProps) => {
     const {
@@ -487,19 +490,29 @@ const SortableWorkoutCard = ({
                                 )}
                             </div>
 
-                            <div className="flex justify-end" style={{ gap: 'var(--space-3)' }}>
+                            <div className="flex justify-between" style={{ gap: 'var(--space-3)' }}>
                                 <Button
                                     type="button"
                                     variant="secondary"
-                                    onClick={resetForm}
+                                    onClick={handleDuplicate}
                                 >
-                                    <X style={{ width: '18px', height: '18px' }} />
-                                    Cancel
+                                    <Copy style={{ width: '18px', height: '18px' }} />
+                                    Duplicate
                                 </Button>
-                                <Button type="submit">
-                                    <Check style={{ width: '18px', height: '18px' }} />
-                                    Save Changes
-                                </Button>
+                                <div className="flex" style={{ gap: 'var(--space-3)' }}>
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={resetForm}
+                                    >
+                                        <X style={{ width: '18px', height: '18px' }} />
+                                        Cancel
+                                    </Button>
+                                    <Button type="submit">
+                                        <Check style={{ width: '18px', height: '18px' }} />
+                                        Save Changes
+                                    </Button>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -671,6 +684,16 @@ const WorkoutSession = () => {
     const handleDeleteCancel = useCallback(() => {
         setConfirmingDelete(null);
     }, []);
+
+    const handleDuplicate = useCallback(async () => {
+        if (!formData.exercise || !formData.category || !date) return;
+
+        await createWorkout.mutateAsync({
+            ...formData,
+            date,
+        });
+        resetForm();
+    }, [formData, date, createWorkout, resetForm]);
 
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
@@ -1080,6 +1103,7 @@ const WorkoutSession = () => {
                                             handleDeleteCancel={handleDeleteCancel}
                                             setFormData={setFormData}
                                             handleSubmit={handleSubmit}
+                                            handleDuplicate={handleDuplicate}
                                             resetForm={resetForm}
                                         />
                                     ))}

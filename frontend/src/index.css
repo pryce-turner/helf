@@ -554,15 +554,16 @@
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
         border-top: 1px solid var(--border-subtle);
-        padding-bottom: env(safe-area-inset-bottom);
+        padding-top: var(--space-2);
+        padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
         z-index: 100;
     }
 
     .nav-mobile__inner {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        height: 68px;
-        padding: 0 var(--space-3);
+        min-height: 68px;
+        padding: 5px var(--space-3) 5px;
         max-width: 320px;
         margin: 0 auto;
     }

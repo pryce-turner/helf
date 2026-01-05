@@ -1,7 +1,7 @@
 """Exercise and category data models."""
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CategoryBase(BaseModel):
@@ -19,9 +19,7 @@ class Category(CategoryBase):
     id: int = Field(..., alias="doc_id")
     created_at: datetime
 
-    class Config:
-        populate_by_name = True
-        from_attributes = True
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class ExerciseBase(BaseModel):
@@ -42,9 +40,7 @@ class Exercise(ExerciseBase):
     use_count: int = 0
     created_at: datetime
 
-    class Config:
-        populate_by_name = True
-        from_attributes = True
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class ExercisesByCategoryResponse(BaseModel):

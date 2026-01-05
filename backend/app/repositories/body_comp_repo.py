@@ -148,13 +148,22 @@ class BodyCompositionRepository:
             first = measurements[0]
             latest = measurements[-1]
 
+            def _ensure_pacific(dt: datetime) -> datetime:
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=PACIFIC_TZ)
+                return dt.astimezone(PACIFIC_TZ)
+
             now = datetime.now(PACIFIC_TZ)
             thirty_days_ago = now - timedelta(days=30)
             sixty_days_ago = now - timedelta(days=60)
 
-            last_30_days = [m for m in measurements if m.timestamp >= thirty_days_ago]
+            last_30_days = [
+                m for m in measurements if _ensure_pacific(m.timestamp) >= thirty_days_ago
+            ]
             prev_30_days = [
-                m for m in measurements if sixty_days_ago <= m.timestamp < thirty_days_ago
+                m
+                for m in measurements
+                if sixty_days_ago <= _ensure_pacific(m.timestamp) < thirty_days_ago
             ]
 
             def calculate_avg_weight(measurement_list):

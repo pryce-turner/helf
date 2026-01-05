@@ -13,6 +13,7 @@ dependencies = [
     "paho-mqtt>=2.0.0",
     "python-dateutil>=2.9.0",
     "pytest>=9.0.2",
+    "httpx>=0.28.1",
 ]
 
 [project.optional-dependencies]
@@ -35,7 +36,6 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100

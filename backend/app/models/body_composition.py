@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BodyCompositionBase(BaseModel):
@@ -31,9 +31,7 @@ class BodyComposition(BodyCompositionBase):
     id: int = Field(..., alias="doc_id")
     created_at: datetime
 
-    class Config:
-        populate_by_name = True
-        from_attributes = True
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class BodyCompositionStats(BaseModel):

@@ -19,9 +19,11 @@ import type { ProgressionResponse } from "../types/progression";
 import type {
     UpcomingWorkout,
     UpcomingWorkoutCreate,
-    WendlerGenerateRequest,
-    WendlerGenerateResponse,
     WendlerCurrentMaxes,
+    LiftoscriptGenerateRequest,
+    LiftoscriptGenerateResponse,
+    PresetInfo,
+    PresetContent,
 } from "../types/upcoming";
 
 // Use relative URL - Vite proxy handles routing to backend in dev
@@ -145,8 +147,15 @@ export const upcomingApi = {
     getWendlerMaxes: () =>
         api.get<WendlerCurrentMaxes>("/api/upcoming/wendler/maxes"),
 
-    generateWendler: (request: WendlerGenerateRequest) =>
-        api.post<WendlerGenerateResponse>("/api/upcoming/wendler/generate", request),
+    // Liftoscript endpoints
+    getPresets: () =>
+        api.get<PresetInfo[]>("/api/upcoming/presets"),
+
+    getPreset: (name: string) =>
+        api.get<PresetContent>(`/api/upcoming/presets/${encodeURIComponent(name)}`),
+
+    generateLiftoscript: (request: LiftoscriptGenerateRequest) =>
+        api.post<LiftoscriptGenerateResponse>("/api/upcoming/liftoscript/generate", request),
 };
 
 // Body Composition

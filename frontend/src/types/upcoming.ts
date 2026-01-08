@@ -26,24 +26,38 @@ export interface UpcomingWorkoutCreate {
   comment?: string | null;
 }
 
-export interface WendlerGenerateRequest {
-  num_cycles?: number;
-  squat_max?: number | null;
-  bench_max?: number | null;
-  deadlift_max?: number | null;
-}
-
-export interface WendlerGenerateResponse {
-  success: boolean;
-  message: string;
-  count: number;
-  sessions?: number;
-  session_range?: number[];
-  cycles?: number;
-}
-
 export interface WendlerCurrentMaxes {
   squat: number | null;
   bench: number | null;
   deadlift: number | null;
+}
+
+// Liftoscript types
+export interface LiftoscriptGenerateRequest {
+  script: string;
+  squat_max?: number | null;
+  bench_max?: number | null;
+  deadlift_max?: number | null;
+  num_cycles: number;
+}
+
+export interface LiftoscriptGenerateResponse {
+  success: boolean;
+  message: string;
+  count: number;
+  sessions: number;
+  deleted_count: number;
+}
+
+export interface PresetInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  requires_maxes: boolean;
+}
+
+export interface PresetContent {
+  name: string;
+  display_name: string;
+  script: string;
 }

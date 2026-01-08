@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { upcomingApi } from '@/lib/api';
-import type { UpcomingWorkoutCreate, WendlerGenerateRequest } from '@/types/upcoming';
+import type { UpcomingWorkoutCreate, LiftoscriptGenerateRequest } from '@/types/upcoming';
 
 export function useUpcomingWorkouts() {
   return useQuery({
@@ -91,12 +91,34 @@ export function useWendlerMaxes() {
   });
 }
 
-export function useGenerateWendler() {
+// Liftoscript hooks
+export function usePresets() {
+  return useQuery({
+    queryKey: ['presets'],
+    queryFn: async () => {
+      const response = await upcomingApi.getPresets();
+      return response.data;
+    },
+  });
+}
+
+export function usePreset(name: string) {
+  return useQuery({
+    queryKey: ['presets', name],
+    queryFn: async () => {
+      const response = await upcomingApi.getPreset(name);
+      return response.data;
+    },
+    enabled: !!name,
+  });
+}
+
+export function useLiftoscriptGenerate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (request: WendlerGenerateRequest) => {
-      const response = await upcomingApi.generateWendler(request);
+    mutationFn: async (request: LiftoscriptGenerateRequest) => {
+      const response = await upcomingApi.generateLiftoscript(request);
       return response.data;
     },
     onSuccess: () => {

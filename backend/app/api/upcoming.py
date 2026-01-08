@@ -1,5 +1,7 @@
 """Upcoming workout API endpoints."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 
 from app.models.upcoming import (
@@ -8,14 +10,26 @@ from app.models.upcoming import (
     UpcomingWorkoutBulkCreate,
     SessionTransferRequest,
     SessionTransferResponse,
-    WendlerGenerateRequest,
-    WendlerGenerateResponse,
     WendlerCurrentMaxes,
+    LiftoscriptGenerateRequest,
+    LiftoscriptGenerateResponse,
+    PresetInfo,
+    PresetContent,
 )
 from app.models.workout import WorkoutCreate
 from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 from app.repositories.workout_repo import WorkoutRepository
 from app.services.wendler_service import WendlerService
+from app.services.liftoscript_service import LiftoscriptParser
+
+# Available presets with metadata
+PRESETS = {
+    "wendler_531": {
+        "display_name": "Wendler 5/3/1",
+        "description": "Classic 4-week strength program with 3 training days per week. Includes squat, bench, and deadlift progression with accessories.",
+        "requires_maxes": True,
+    },
+}
 
 router = APIRouter()
 
@@ -79,15 +93,15 @@ def transfer_session(session: int, request: SessionTransferRequest):
     for i, upcoming_workout in enumerate(session_workouts):
         historical_workout = WorkoutCreate(
             date=request.date,
-            exercise=upcoming_workout['exercise'],
-            category=upcoming_workout['category'],
-            weight=upcoming_workout.get('weight'),
-            weight_unit=upcoming_workout.get('weight_unit', 'lbs'),
-            reps=upcoming_workout.get('reps'),
-            distance=upcoming_workout.get('distance'),
-            distance_unit=upcoming_workout.get('distance_unit'),
-            time=upcoming_workout.get('time'),
-            comment=upcoming_workout.get('comment'),
+            exercise=upcoming_workout["exercise"],
+            category=upcoming_workout["category"],
+            weight=upcoming_workout.get("weight"),
+            weight_unit=upcoming_workout.get("weight_unit", "lbs"),
+            reps=upcoming_workout.get("reps"),
+            distance=upcoming_workout.get("distance"),
+            distance_unit=upcoming_workout.get("distance_unit"),
+            time=upcoming_workout.get("time"),
+            comment=upcoming_workout.get("comment"),
             order=i + 1,
         )
         workout_repo.create(historical_workout)
@@ -99,7 +113,7 @@ def transfer_session(session: int, request: SessionTransferRequest):
         session=session,
         date=request.date,
         count=count,
-        message=f"Transferred {count} workouts to {request.date}"
+        message=f"Transferred {count} workouts to {request.date}",
     )
 
 
@@ -110,22 +124,96 @@ def get_wendler_current_maxes():
     maxes = service.get_current_maxes()
 
     return WendlerCurrentMaxes(
-        squat=maxes.get('Barbell Squat'),
-        bench=maxes.get('Flat Barbell Bench Press'),
-        deadlift=maxes.get('Deadlift'),
+        squat=maxes.get("Barbell Squat"),
+        bench=maxes.get("Flat Barbell Bench Press"),
+        deadlift=maxes.get("Deadlift"),
     )
 
 
-@router.post("/wendler/generate", response_model=WendlerGenerateResponse)
-def generate_wendler_progression(request: WendlerGenerateRequest):
-    """Generate Wendler 5/3/1 progression workouts."""
+@router.post("/liftoscript/generate", response_model=LiftoscriptGenerateResponse)
+def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
+    """Generate upcoming workouts from Liftoscript program."""
+    repo = UpcomingWorkoutRepository()
     service = WendlerService()
 
-    result = service.generate_and_save(
-        num_cycles=request.num_cycles,
-        squat_max=request.squat_max,
-        bench_max=request.bench_max,
-        deadlift_max=request.deadlift_max,
+    # Get current maxes if not provided
+    current_maxes = service.get_current_maxes()
+
+    squat_max = request.squat_max or current_maxes.get("Barbell Squat", 225)
+    bench_max = request.bench_max or current_maxes.get("Flat Barbell Bench Press", 185)
+    deadlift_max = request.deadlift_max or current_maxes.get("Deadlift", 275)
+
+    # Parse the script
+    parser = LiftoscriptParser()
+    try:
+        workouts = parser.parse(
+            script=request.script,
+            squat_max=squat_max,
+            bench_max=bench_max,
+            deadlift_max=deadlift_max,
+            num_cycles=request.num_cycles,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse script: {str(e)}")
+
+    if not workouts:
+        return LiftoscriptGenerateResponse(
+            success=False,
+            message="No workouts generated from script",
+            count=0,
+            sessions=0,
+            deleted_count=0,
+        )
+
+    # Delete all existing upcoming workouts
+    deleted_count = repo.delete_all()
+
+    # Create new workouts
+    created = repo.create_bulk(workouts)
+
+    # Count unique sessions
+    sessions = len(set(w.session for w in workouts))
+
+    return LiftoscriptGenerateResponse(
+        success=True,
+        message=f"Generated {len(created)} workouts across {sessions} sessions",
+        count=len(created),
+        sessions=sessions,
+        deleted_count=deleted_count,
     )
 
-    return WendlerGenerateResponse(**result)
+
+@router.get("/presets", response_model=list[PresetInfo])
+def get_presets():
+    """Get list of available workout program presets."""
+    return [
+        PresetInfo(
+            name=name,
+            display_name=data["display_name"],
+            description=data["description"],
+            requires_maxes=data["requires_maxes"],
+        )
+        for name, data in PRESETS.items()
+    ]
+
+
+@router.get("/presets/{name}", response_model=PresetContent)
+def get_preset(name: str):
+    """Get a specific preset by name."""
+    if name not in PRESETS:
+        raise HTTPException(status_code=404, detail=f"Preset '{name}' not found")
+
+    # Read the preset file
+    preset_dir = Path(__file__).parent.parent / "presets"
+    preset_file = preset_dir / f"{name}.liftoscript"
+
+    if not preset_file.exists():
+        raise HTTPException(status_code=404, detail=f"Preset file '{name}' not found")
+
+    script = preset_file.read_text()
+
+    return PresetContent(
+        name=name,
+        display_name=PRESETS[name]["display_name"],
+        script=script,
+    )

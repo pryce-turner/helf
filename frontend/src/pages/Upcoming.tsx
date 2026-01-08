@@ -1,19 +1,24 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Zap, Loader2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2 } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import LiftoscriptEditor from '@/components/LiftoscriptEditor';
+import PresetSelector from '@/components/PresetSelector';
 import {
   useUpcomingWorkouts,
   useDeleteUpcomingSession,
   useTransferSession,
   useWendlerMaxes,
-  useGenerateWendler,
+  usePresets,
+  usePreset,
+  useLiftoscriptGenerate,
 } from '@/hooks/useUpcoming';
+import type { PresetInfo } from '@/types/upcoming';
 
 // Predefined colors for common categories (matching WorkoutSession)
 const getCategoryColor = (category: string) => {
@@ -50,23 +55,44 @@ const getCategoryColor = (category: string) => {
 const Upcoming = () => {
   const { data: upcomingWorkouts, isLoading } = useUpcomingWorkouts();
   const { data: wendlerMaxes } = useWendlerMaxes();
+  const { data: presets } = usePresets();
   const deleteSession = useDeleteUpcomingSession();
   const transferSession = useTransferSession();
-  const generateWendler = useGenerateWendler();
+  const generateLiftoscript = useLiftoscriptGenerate();
 
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
   const [transferDate, setTransferDate] = useState<Date | undefined>(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
-  // Wendler generation state
-  const [showWendlerDialog, setShowWendlerDialog] = useState(false);
+  // Program editor state
+  const [showEditor, setShowEditor] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+  const [scriptContent, setScriptContent] = useState<string>('');
   const [numCycles, setNumCycles] = useState(4);
   const [squatMax, setSquatMax] = useState<string>('');
   const [benchMax, setBenchMax] = useState<string>('');
   const [deadliftMax, setDeadliftMax] = useState<string>('');
+  const [editorError, setEditorError] = useState<string>('');
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  // Update form when maxes are loaded
+  // Fetch preset content when a preset is selected
+  const { data: presetContent } = usePreset(selectedPreset !== 'custom' ? selectedPreset : '');
+
+  // Find the current preset info
+  const currentPresetInfo = useMemo<PresetInfo | null>(() => {
+    if (selectedPreset === 'custom' || !presets) return null;
+    return presets.find(p => p.name === selectedPreset) || null;
+  }, [selectedPreset, presets]);
+
+  // Update script content when preset content is loaded
+  useEffect(() => {
+    if (presetContent?.script) {
+      setScriptContent(presetContent.script);
+    }
+  }, [presetContent]);
+
+  // Update 1RM inputs when maxes are loaded
   useEffect(() => {
     if (wendlerMaxes) {
       if (wendlerMaxes.squat) setSquatMax(String(Math.round(wendlerMaxes.squat)));
@@ -96,14 +122,46 @@ const Upcoming = () => {
     setConfirmingDelete(null);
   }, []);
 
-  const handleGenerateWendler = async () => {
-    await generateWendler.mutateAsync({
-      num_cycles: numCycles,
-      squat_max: squatMax ? parseFloat(squatMax) : null,
-      bench_max: benchMax ? parseFloat(benchMax) : null,
-      deadlift_max: deadliftMax ? parseFloat(deadliftMax) : null,
-    });
-    setShowWendlerDialog(false);
+  const handlePresetChange = (presetName: string) => {
+    setSelectedPreset(presetName);
+    if (presetName === 'custom') {
+      setScriptContent('');
+    }
+    setEditorError('');
+  };
+
+  const handleGenerateClick = () => {
+    if (!scriptContent.trim()) {
+      setEditorError('Please enter a program script');
+      return;
+    }
+    
+    // Check if we need to show confirmation dialog
+    if (upcomingWorkouts && upcomingWorkouts.length > 0) {
+      setShowConfirmDialog(true);
+    } else {
+      performGenerate();
+    }
+  };
+
+  const performGenerate = async () => {
+    setEditorError('');
+    try {
+      await generateLiftoscript.mutateAsync({
+        script: scriptContent,
+        squat_max: squatMax ? parseFloat(squatMax) : null,
+        bench_max: benchMax ? parseFloat(benchMax) : null,
+        deadlift_max: deadliftMax ? parseFloat(deadliftMax) : null,
+        num_cycles: numCycles,
+      });
+      setShowEditor(false);
+      setShowConfirmDialog(false);
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { detail?: string } } };
+      const message = axiosError?.response?.data?.detail || 'Failed to generate workouts';
+      setEditorError(message);
+      setShowConfirmDialog(false);
+    }
   };
 
   // Group workouts by session
@@ -150,113 +208,209 @@ const Upcoming = () => {
                 <h1 className="page__title">UPCOMING WORKOUTS</h1>
                 <p className="page__subtitle">Plan and manage your future training sessions</p>
               </div>
-              <Button onClick={() => setShowWendlerDialog(true)}>
-                <Zap style={{ width: '18px', height: '18px' }} />
-                Generate Wendler 5/3/1
+              <Button onClick={() => setShowEditor(!showEditor)}>
+                <Edit3 style={{ width: '18px', height: '18px' }} />
+                {showEditor ? 'Close Editor' : 'Edit Program'}
               </Button>
             </div>
           </div>
 
-          {/* Wendler Generation Dialog */}
-          {showWendlerDialog && (
+          {/* Program Editor */}
+          {showEditor && (
             <Card className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
               <CardHeader>
                 <CardTitle className="font-display text-xl tracking-tight">
-                  GENERATE WENDLER 5/3/1 PROGRESSION
+                  PROGRAM EDITOR
                 </CardTitle>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
-                  Generate upcoming workouts based on your training maxes
+                  Write or select a program template to generate upcoming workouts
                 </p>
               </CardHeader>
               <CardContent>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-                  {/* Cycles */}
-                  <div>
-                    <Label htmlFor="num-cycles" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                      Number of Cycles (4 weeks each)
-                    </Label>
-                    <Input
-                      id="num-cycles"
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={numCycles}
-                      onChange={(e) => setNumCycles(parseInt(e.target.value) || 4)}
-                      style={{ maxWidth: '120px' }}
-                    />
+                  {/* Preset and Cycles Row */}
+                  <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+                    <div>
+                      <Label style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                        Preset
+                      </Label>
+                      <PresetSelector
+                        value={selectedPreset}
+                        onChange={handlePresetChange}
+                        presets={presets || []}
+                      />
+                    </div>
+                    {currentPresetInfo?.requires_maxes && (
+                      <div>
+                        <Label htmlFor="num-cycles" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                          Cycles
+                        </Label>
+                        <Input
+                          id="num-cycles"
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={numCycles}
+                          onChange={(e) => setNumCycles(parseInt(e.target.value) || 4)}
+                          style={{ maxWidth: '80px' }}
+                        />
+                      </div>
+                    )}
                   </div>
 
-                  {/* 1RM Inputs */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-4)' }}>
-                    <div>
-                      <Label htmlFor="squat-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                        Squat 1RM (lbs)
-                      </Label>
-                      <Input
-                        id="squat-max"
-                        type="number"
-                        placeholder={wendlerMaxes?.squat ? `${Math.round(wendlerMaxes.squat)} (detected)` : 'Enter 1RM'}
-                        value={squatMax}
-                        onChange={(e) => setSquatMax(e.target.value)}
-                      />
+                  {/* 1RM Overrides - only show when preset requires maxes */}
+                  {currentPresetInfo?.requires_maxes && (
+                    <div
+                      style={{
+                        padding: 'var(--space-4)',
+                        background: 'var(--bg-tertiary)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: 'var(--text-muted)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          marginBottom: 'var(--space-3)',
+                        }}
+                      >
+                        1RM Overrides
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-4)' }}>
+                        <div>
+                          <Label htmlFor="squat-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                            Squat (lbs)
+                          </Label>
+                          <Input
+                            id="squat-max"
+                            type="number"
+                            placeholder={wendlerMaxes?.squat ? `${Math.round(wendlerMaxes.squat)}` : 'Enter'}
+                            value={squatMax}
+                            onChange={(e) => setSquatMax(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="bench-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                            Bench (lbs)
+                          </Label>
+                          <Input
+                            id="bench-max"
+                            type="number"
+                            placeholder={wendlerMaxes?.bench ? `${Math.round(wendlerMaxes.bench)}` : 'Enter'}
+                            value={benchMax}
+                            onChange={(e) => setBenchMax(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="deadlift-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                            Deadlift (lbs)
+                          </Label>
+                          <Input
+                            id="deadlift-max"
+                            type="number"
+                            placeholder={wendlerMaxes?.deadlift ? `${Math.round(wendlerMaxes.deadlift)}` : 'Enter'}
+                            value={deadliftMax}
+                            onChange={(e) => setDeadliftMax(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
+                        Auto-detected from workout history
+                      </p>
                     </div>
-                    <div>
-                      <Label htmlFor="bench-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                        Bench 1RM (lbs)
-                      </Label>
-                      <Input
-                        id="bench-max"
-                        type="number"
-                        placeholder={wendlerMaxes?.bench ? `${Math.round(wendlerMaxes.bench)} (detected)` : 'Enter 1RM'}
-                        value={benchMax}
-                        onChange={(e) => setBenchMax(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="deadlift-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                        Deadlift 1RM (lbs)
-                      </Label>
-                      <Input
-                        id="deadlift-max"
-                        type="number"
-                        placeholder={wendlerMaxes?.deadlift ? `${Math.round(wendlerMaxes.deadlift)} (detected)` : 'Enter 1RM'}
-                        value={deadliftMax}
-                        onChange={(e) => setDeadliftMax(e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  )}
 
-                  {/* Info */}
-                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                    1RM values are automatically detected from your recent workout history.
-                    Override above if needed.
-                  </p>
+                  {/* Editor */}
+                  <LiftoscriptEditor
+                    value={scriptContent}
+                    onChange={(value) => {
+                      setScriptContent(value);
+                      setEditorError('');
+                    }}
+                    error={editorError}
+                  />
 
                   {/* Actions */}
-                  <div className="flex" style={{ gap: 'var(--space-3)' }}>
+                  <div className="flex" style={{ gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                    <Button variant="secondary" onClick={() => setShowEditor(false)}>
+                      Cancel
+                    </Button>
                     <Button
-                      onClick={handleGenerateWendler}
-                      disabled={generateWendler.isPending || (!squatMax && !benchMax && !deadliftMax)}
+                      onClick={handleGenerateClick}
+                      disabled={generateLiftoscript.isPending || !scriptContent.trim()}
                     >
-                      {generateWendler.isPending ? (
+                      {generateLiftoscript.isPending ? (
                         <>
                           <Loader2 style={{ width: '18px', height: '18px' }} className="animate-spin" />
                           Generating...
                         </>
                       ) : (
-                        <>
-                          <Zap style={{ width: '18px', height: '18px' }} />
-                          Generate {numCycles * 12} Sessions
-                        </>
+                        'Generate'
                       )}
-                    </Button>
-                    <Button variant="secondary" onClick={() => setShowWendlerDialog(false)}>
-                      Cancel
                     </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Confirmation Dialog */}
+          {showConfirmDialog && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0, 0, 0, 0.7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: 'var(--space-4)',
+              }}
+              onClick={() => setShowConfirmDialog(false)}
+            >
+              <Card
+                className="animate-in"
+                style={{ maxWidth: '450px', width: '100%' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <CardHeader>
+                  <CardTitle className="font-display text-xl tracking-tight">
+                    Overwrite Upcoming Workouts?
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
+                    This will delete all {upcomingWorkouts?.length || 0} upcoming workouts and generate new ones from your program.
+                  </p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: 'var(--space-6)' }}>
+                    This action cannot be undone.
+                  </p>
+                  <div className="flex" style={{ gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                    <Button variant="secondary" onClick={() => setShowConfirmDialog(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={performGenerate}
+                      disabled={generateLiftoscript.isPending}
+                    >
+                      {generateLiftoscript.isPending ? (
+                        <>
+                          <Loader2 style={{ width: '18px', height: '18px' }} className="animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        'Confirm Generate'
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {isLoading ? (
@@ -478,7 +632,7 @@ const Upcoming = () => {
                 <h3 className="empty-state__title">NO UPCOMING WORKOUTS</h3>
                 <p className="empty-state__text">No upcoming workouts planned.</p>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-                  Use the Wendler 5/3/1 generator or bulk add workouts to plan your training.
+                  Use the program editor to generate workouts from a template.
                 </p>
               </CardContent>
             </Card>

@@ -82,3 +82,40 @@ class WendlerCurrentMaxes(BaseModel):
     squat: Optional[float] = None
     bench: Optional[float] = None
     deadlift: Optional[float] = None
+
+
+class LiftoscriptGenerateRequest(BaseModel):
+    """Request to generate workouts from Liftoscript program."""
+
+    script: str = Field(..., min_length=1, description="Liftoscript program text")
+    squat_max: Optional[float] = Field(None, description="1RM override for squat")
+    bench_max: Optional[float] = Field(None, description="1RM override for bench")
+    deadlift_max: Optional[float] = Field(None, description="1RM override for deadlift")
+    num_cycles: int = Field(1, ge=1, le=12, description="Number of cycles to generate")
+
+
+class LiftoscriptGenerateResponse(BaseModel):
+    """Response from generating Liftoscript workouts."""
+
+    success: bool
+    message: str
+    count: int
+    sessions: int
+    deleted_count: int
+
+
+class PresetInfo(BaseModel):
+    """Information about an available preset."""
+
+    name: str
+    display_name: str
+    description: str
+    requires_maxes: bool
+
+
+class PresetContent(BaseModel):
+    """Full preset content including script."""
+
+    name: str
+    display_name: str
+    script: str

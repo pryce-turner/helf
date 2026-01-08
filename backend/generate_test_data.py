@@ -118,17 +118,13 @@ def generate_database():
                     weight = base_stats["weight"] + progression if base_stats["weight"] > 0 else 0
                     reps = base_stats["reps"]
 
-                    if set_num == num_sets - 1 and reps <= 8:
-                        if day_idx % 2 == 0:
-                            reps = f"{reps}+"
-
                     workout_entry = Workout(
                         date=workout_date.strftime("%Y-%m-%d"),
                         exercise_id=exercise_map[exercise_name].id,
                         category_id=category_map[category_name].id,
                         weight=weight if weight > 0 else None,
                         weight_unit="lbs",
-                        reps=str(reps) if reps is not None else None,
+                        reps=reps,
                         distance=None,
                         distance_unit=None,
                         time=None,

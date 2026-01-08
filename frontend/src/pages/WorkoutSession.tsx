@@ -486,15 +486,11 @@ const SortableWorkoutCard = ({
                       type="button"
                       className="stepper__btn stepper__btn--start"
                       onClick={() => {
-                        const currentReps = formData.reps || "";
-                        const numericPart = parseInt(
-                          currentReps.toString().replace("+", "")
-                        );
-                        const hasPlus = currentReps.toString().includes("+");
-                        const newValue = Math.max(0, (numericPart || 0) - 1);
+                        const currentReps = formData.reps || 0;
+                        const newValue = Math.max(0, currentReps - 1);
                         setFormData({
                           ...formData,
-                          reps: newValue > 0 ? `${newValue}${hasPlus ? "+" : ""}` : null,
+                          reps: newValue > 0 ? newValue : null,
                         });
                       }}
                     >
@@ -502,31 +498,28 @@ const SortableWorkoutCard = ({
                     </button>
                     <input
                       id="reps-edit"
-                      type="text"
+                      type="number"
                       inputMode="numeric"
-                      placeholder="e.g., 5 or 5+"
+                      placeholder="e.g., 5"
                       className="input--stepper input--mono"
                       value={formData.reps || ""}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const value = e.target.value ? parseInt(e.target.value) : null;
                         setFormData({
                           ...formData,
-                          reps: e.target.value || null,
-                        })
-                      }
+                          reps: value,
+                        });
+                      }}
                     />
                     <button
                       type="button"
                       className="stepper__btn stepper__btn--end"
                       onClick={() => {
-                        const currentReps = formData.reps || "";
-                        const numericPart = parseInt(
-                          currentReps.toString().replace("+", "")
-                        );
-                        const hasPlus = currentReps.toString().includes("+");
-                        const newValue = (numericPart || 0) + 1;
+                        const currentReps = formData.reps || 0;
+                        const newValue = currentReps + 1;
                         setFormData({
                           ...formData,
-                          reps: `${newValue}${hasPlus ? "+" : ""}`,
+                          reps: newValue,
                         });
                       }}
                     >
@@ -1233,15 +1226,11 @@ const WorkoutSession = () => {
                         type="button"
                         className="stepper__btn stepper__btn--start"
                         onClick={() => {
-                          const currentReps = formData.reps || "";
-                          const numericPart = parseInt(
-                            currentReps.toString().replace("+", "")
-                          );
-                          const hasPlus = currentReps.toString().includes("+");
-                          const newValue = Math.max(0, (numericPart || 0) - 1);
+                          const currentReps = formData.reps || 0;
+                          const newValue = Math.max(0, currentReps - 1);
                           setFormData({
                             ...formData,
-                            reps: newValue > 0 ? `${newValue}${hasPlus ? "+" : ""}` : null,
+                            reps: newValue > 0 ? newValue : null,
                           });
                         }}
                       >
@@ -1249,31 +1238,28 @@ const WorkoutSession = () => {
                       </button>
                       <input
                         id="reps"
-                        type="text"
+                        type="number"
                         inputMode="numeric"
-                        placeholder="e.g., 5 or 5+"
+                        placeholder="e.g., 5"
                         className="input--stepper input--mono"
                         value={formData.reps || ""}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const value = e.target.value ? parseInt(e.target.value) : null;
                           setFormData({
                             ...formData,
-                            reps: e.target.value || null,
-                          })
-                        }
+                            reps: value,
+                          });
+                        }}
                       />
                       <button
                         type="button"
                         className="stepper__btn stepper__btn--end"
                         onClick={() => {
-                          const currentReps = formData.reps || "";
-                          const numericPart = parseInt(
-                            currentReps.toString().replace("+", "")
-                          );
-                          const hasPlus = currentReps.toString().includes("+");
-                          const newValue = (numericPart || 0) + 1;
+                          const currentReps = formData.reps || 0;
+                          const newValue = currentReps + 1;
                           setFormData({
                             ...formData,
-                            reps: `${newValue}${hasPlus ? "+" : ""}`,
+                            reps: newValue,
                           });
                         }}
                       >

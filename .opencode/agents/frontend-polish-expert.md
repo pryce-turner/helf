@@ -1,39 +1,7 @@
 ---
 name: frontend-polish-expert
-description:Use this agent when the user requests UI/UX refinements, visual polish, responsive design adjustments, or styling changes to the workout and body composition tracking app. This includes requests for layout tweaks, component styling, spacing adjustments, typography changes, color refinements, mobile/desktop responsive fixes, accessibility improvements, or any visual cohesion work.
-
-Examples:
-
-<example>
-Context: User wants to adjust the spacing on a card component
-user: "The workout cards feel too cramped on mobile"
-assistant: "I'll use the frontend-polish-expert agent to analyze the card spacing and implement mobile-first improvements that maintain visual cohesion."
-<Agent tool call to frontend-polish-expert>
-</example>
-
-<example>
-Context: User notices inconsistent button styles
-user: "Can you make sure all the buttons in the app look consistent?"
-assistant: "Let me launch the frontend-polish-expert agent to audit and unify the button styles across the application."
-<Agent tool call to frontend-polish-expert>
-</example>
-
-<example>
-Context: User completed a new feature and wants it reviewed for visual polish
-user: "I just added the body composition chart, can you review the styling?"
-assistant: "I'll use the frontend-polish-expert agent to review the new chart component and ensure it aligns with the app's design system."
-<Agent tool call to frontend-polish-expert>
-</example>
-
-<example>
-Context: User requests desktop layout improvements
-user: "The dashboard looks weird on wide screens"
-assistant: "I'll engage the frontend-polish-expert agent to optimize the dashboard layout for desktop viewports while maintaining mobile-first principles."
-<Agent tool call to frontend-polish-expert>
-</example>
-
+description: Use this agent when the user requests UI/UX refinements, visual polish, responsive design adjustments, or styling changes to the workout and body composition tracking app. This includes requests for layout tweaks, component styling, spacing adjustments, typography changes, color refinements, mobile/desktop responsive fixes, accessibility improvements, or any visual cohesion work.
 model: inherit
-color: blue
 skills: frontend-design
 ---
 

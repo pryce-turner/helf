@@ -16,35 +16,35 @@ class WendlerService:
 
     # Main lifts and their categories
     MAIN_LIFTS = {
-        'Barbell Squat': 'Legs',
-        'Flat Barbell Bench Press': 'Push',
-        'Deadlift': 'Pull',
+        "Barbell Squat": "Legs",
+        "Flat Barbell Bench Press": "Push",
+        "Deadlift": "Pull",
     }
 
     # Accessory exercises for each day
     ACCESSORIES = {
-        'squat_day': [
-            ('Pull Up', 'Pull', 'Bodyweight'),
-            ('Incline Dumbbell Press', 'Push', None),
-            ('Decline Crunch', 'Core', None),
+        "squat_day": [
+            ("Pull Up", "Pull", "Bodyweight"),
+            ("Incline Dumbbell Press", "Push", None),
+            ("Decline Crunch", "Core", None),
         ],
-        'bench_day': [
-            ('Front Squat', 'Legs', None),
-            ('Dumbbell Row', 'Pull', None),
-            ('Landmines', 'Core', None),
+        "bench_day": [
+            ("Front Squat", "Legs", None),
+            ("Dumbbell Row", "Pull", None),
+            ("Landmines", "Core", None),
         ],
-        'deadlift_day': [
-            ('Parallel Bar Triceps Dip', 'Push', 'Bodyweight'),
-            ('Bulgarian Split Squat', 'Legs', None),
-            ('Cable side bend', 'Core', None),
+        "deadlift_day": [
+            ("Parallel Bar Triceps Dip", "Push", "Bodyweight"),
+            ("Bulgarian Split Squat", "Legs", None),
+            ("Cable side bend", "Core", None),
         ],
     }
 
     # Wendler percentages by week: (percentage, reps)
     WEEK_PERCENTAGES = {
-        1: [(0.65, 5), (0.75, 5), (0.85, '5+')],
-        2: [(0.70, 3), (0.80, 3), (0.90, '3+')],
-        3: [(0.75, 5), (0.85, 3), (0.95, '1+')],
+        1: [(0.65, 5), (0.75, 5), (0.85, 5)],
+        2: [(0.70, 3), (0.80, 3), (0.90, 3)],
+        3: [(0.75, 5), (0.85, 3), (0.95, 1)],
         4: [(0.40, 5), (0.50, 5), (0.60, 5)],  # Deload
     }
 
@@ -63,7 +63,7 @@ class WendlerService:
             Estimated 1RM value or None if no data
         """
         workouts = self.workout_repo.get_by_exercise(exercise)
-        workouts = [w for w in workouts if w.get('weight') and w.get('reps')]
+        workouts = [w for w in workouts if w.get("weight") and w.get("reps")]
 
         if not workouts:
             return None
@@ -73,15 +73,15 @@ class WendlerService:
 
         best_1rm = 0
         for workout in recent_workouts:
-            weight = workout.get('weight', 0)
-            reps = workout.get('reps', 0)
+            weight = workout.get("weight", 0)
+            reps = workout.get("reps", 0)
             estimated = calculate_estimated_1rm(weight, reps)
             if estimated > best_1rm:
                 best_1rm = estimated
 
         return best_1rm if best_1rm > 0 else None
 
-    def calculate_weights(self, max_weight: float, week: int) -> list[tuple[int, int | str]]:
+    def calculate_weights(self, max_weight: float, week: int) -> list[tuple[int, int]]:
         """
         Calculate weights for a given 1RM and week in Wendler 5/3/1 program.
 
@@ -140,14 +140,14 @@ class WendlerService:
         # Get current maxes if not provided
         current_maxes = self.get_current_maxes()
 
-        starting_squat = squat_max or current_maxes.get('Barbell Squat', 225)
-        starting_bench = bench_max or current_maxes.get('Flat Barbell Bench Press', 185)
-        starting_deadlift = deadlift_max or current_maxes.get('Deadlift', 275)
+        starting_squat = squat_max or current_maxes.get("Barbell Squat", 225)
+        starting_bench = bench_max or current_maxes.get("Flat Barbell Bench Press", 185)
+        starting_deadlift = deadlift_max or current_maxes.get("Deadlift", 275)
 
         # Find the next session number
         existing = self.upcoming_repo.get_all()
         if existing:
-            max_session = max(w.get('session', 0) for w in existing)
+            max_session = max(w.get("session", 0) for w in existing)
             start_session = max_session + 1
         else:
             start_session = 1
@@ -167,77 +167,86 @@ class WendlerService:
                 # Day 1 - Squat
                 squat_weights = self.calculate_weights(squat_1rm, week)
                 for set_idx, (weight, reps) in enumerate(squat_weights, 1):
-                    amrap_note = " AMRAP" if '+' in str(reps) else ""
-                    workouts.append(UpcomingWorkoutCreate(
-                        session=session_num,
-                        exercise='Barbell Squat',
-                        category='Legs',
-                        weight=weight,
-                        weight_unit='lbs',
-                        reps=reps,
-                        comment=f"{week_label} - Set {set_idx}{amrap_note}",
-                    ))
+                    workouts.append(
+                        UpcomingWorkoutCreate(
+                            session=session_num,
+                            exercise="Barbell Squat",
+                            category="Legs",
+                            weight=weight,
+                            weight_unit="lbs",
+                            reps=reps,
+                            comment=f"{week_label} - Set {set_idx}",
+                        )
+                    )
 
                 # Squat day accessories
-                for exercise, category, comment in self.ACCESSORIES['squat_day']:
-                    workouts.append(UpcomingWorkoutCreate(
-                        session=session_num,
-                        exercise=exercise,
-                        category=category,
-                        weight=0 if comment == 'Bodyweight' else None,
-                        weight_unit='lbs',
-                        comment=comment,
-                    ))
+                for exercise, category, comment in self.ACCESSORIES["squat_day"]:
+                    workouts.append(
+                        UpcomingWorkoutCreate(
+                            session=session_num,
+                            exercise=exercise,
+                            category=category,
+                            weight=0 if comment == "Bodyweight" else None,
+                            weight_unit="lbs",
+                            comment=comment,
+                        )
+                    )
                 session_num += 1
 
                 # Day 2 - Bench
                 bench_weights = self.calculate_weights(bench_1rm, week)
                 for set_idx, (weight, reps) in enumerate(bench_weights, 1):
-                    amrap_note = " AMRAP" if '+' in str(reps) else ""
-                    workouts.append(UpcomingWorkoutCreate(
-                        session=session_num,
-                        exercise='Flat Barbell Bench Press',
-                        category='Push',
-                        weight=weight,
-                        weight_unit='lbs',
-                        reps=reps,
-                        comment=f"{week_label} - Set {set_idx}{amrap_note}",
-                    ))
+                    workouts.append(
+                        UpcomingWorkoutCreate(
+                            session=session_num,
+                            exercise="Flat Barbell Bench Press",
+                            category="Push",
+                            weight=weight,
+                            weight_unit="lbs",
+                            reps=reps,
+                            comment=f"{week_label} - Set {set_idx}",
+                        )
+                    )
 
                 # Bench day accessories
-                for exercise, category, comment in self.ACCESSORIES['bench_day']:
-                    workouts.append(UpcomingWorkoutCreate(
-                        session=session_num,
-                        exercise=exercise,
-                        category=category,
-                        comment=comment,
-                    ))
+                for exercise, category, comment in self.ACCESSORIES["bench_day"]:
+                    workouts.append(
+                        UpcomingWorkoutCreate(
+                            session=session_num,
+                            exercise=exercise,
+                            category=category,
+                            comment=comment,
+                        )
+                    )
                 session_num += 1
 
                 # Day 3 - Deadlift
                 deadlift_weights = self.calculate_weights(deadlift_1rm, week)
                 for set_idx, (weight, reps) in enumerate(deadlift_weights, 1):
-                    amrap_note = " AMRAP" if '+' in str(reps) else ""
-                    workouts.append(UpcomingWorkoutCreate(
-                        session=session_num,
-                        exercise='Deadlift',
-                        category='Pull',
-                        weight=weight,
-                        weight_unit='lbs',
-                        reps=reps,
-                        comment=f"{week_label} - Set {set_idx}{amrap_note}",
-                    ))
+                    workouts.append(
+                        UpcomingWorkoutCreate(
+                            session=session_num,
+                            exercise="Deadlift",
+                            category="Pull",
+                            weight=weight,
+                            weight_unit="lbs",
+                            reps=reps,
+                            comment=f"{week_label} - Set {set_idx}",
+                        )
+                    )
 
                 # Deadlift day accessories
-                for exercise, category, comment in self.ACCESSORIES['deadlift_day']:
-                    workouts.append(UpcomingWorkoutCreate(
-                        session=session_num,
-                        exercise=exercise,
-                        category=category,
-                        weight=0 if comment == 'Bodyweight' else None,
-                        weight_unit='lbs',
-                        comment=comment,
-                    ))
+                for exercise, category, comment in self.ACCESSORIES["deadlift_day"]:
+                    workouts.append(
+                        UpcomingWorkoutCreate(
+                            session=session_num,
+                            exercise=exercise,
+                            category=category,
+                            weight=0 if comment == "Bodyweight" else None,
+                            weight_unit="lbs",
+                            comment=comment,
+                        )
+                    )
                 session_num += 1
 
         return workouts
@@ -270,9 +279,9 @@ class WendlerService:
 
         if not workouts:
             return {
-                'success': False,
-                'message': 'No workouts generated',
-                'count': 0,
+                "success": False,
+                "message": "No workouts generated",
+                "count": 0,
             }
 
         # Save to database
@@ -284,10 +293,10 @@ class WendlerService:
         max_session = max(sessions)
 
         return {
-            'success': True,
-            'message': f'Generated {len(created)} workouts across {len(sessions)} sessions',
-            'count': len(created),
-            'sessions': len(sessions),
-            'session_range': [min_session, max_session],
-            'cycles': num_cycles,
+            "success": True,
+            "message": f"Generated {len(created)} workouts across {len(sessions)} sessions",
+            "count": len(created),
+            "sessions": len(sessions),
+            "session_range": [min_session, max_session],
+            "cycles": num_cycles,
         }

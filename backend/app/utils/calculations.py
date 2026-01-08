@@ -1,24 +1,19 @@
 """Utility functions for calculations."""
 
 
-def calculate_estimated_1rm(weight: float, reps: int | str) -> float:
+def calculate_estimated_1rm(weight: float, reps: int) -> float:
     """
     Calculate estimated 1RM using the formula: (0.033 × reps × weight) + weight
 
     Args:
         weight: Weight lifted
-        reps: Number of reps (can be string like "5+" or int)
+        reps: Number of reps
 
     Returns:
         Estimated 1RM value
     """
     try:
-        # Handle reps like "5+" by extracting the number
-        if isinstance(reps, str):
-            reps_num = int(reps.replace("+", ""))
-        else:
-            reps_num = int(reps)
-
+        reps_num = int(reps)
         weight_num = float(weight)
 
         # Formula: (0.033 × reps × weight) + weight
@@ -45,10 +40,7 @@ def calculate_moving_average(values: list[float | None], window: int = 7) -> lis
             ma.append(None)
         else:
             # Get window of valid values
-            window_values = [
-                v for v in values[max(0, i - window + 1):i + 1]
-                if v is not None
-            ]
+            window_values = [v for v in values[max(0, i - window + 1) : i + 1] if v is not None]
             if window_values:
                 ma.append(round(sum(window_values) / len(window_values), 2))
             else:

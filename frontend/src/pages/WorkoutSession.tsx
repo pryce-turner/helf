@@ -481,20 +481,58 @@ const SortableWorkoutCard = ({
                     <Hash style={{ width: "14px", height: "14px" }} />
                     Reps
                   </Label>
-                  <Input
-                    id="reps-edit"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="e.g., 5 or 5+"
-                    className="input--mono"
-                    value={formData.reps || ""}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({
-                        ...formData,
-                        reps: e.target.value || null,
-                      })
-                    }
-                  />
+                  <div className="stepper">
+                    <button
+                      type="button"
+                      className="stepper__btn stepper__btn--start"
+                      onClick={() => {
+                        const currentReps = formData.reps || "";
+                        const numericPart = parseInt(
+                          currentReps.toString().replace("+", "")
+                        );
+                        const hasPlus = currentReps.toString().includes("+");
+                        const newValue = Math.max(0, (numericPart || 0) - 1);
+                        setFormData({
+                          ...formData,
+                          reps: newValue > 0 ? `${newValue}${hasPlus ? "+" : ""}` : null,
+                        });
+                      }}
+                    >
+                      <Minus style={{ width: "18px", height: "18px" }} />
+                    </button>
+                    <input
+                      id="reps-edit"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="e.g., 5 or 5+"
+                      className="input--stepper input--mono"
+                      value={formData.reps || ""}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setFormData({
+                          ...formData,
+                          reps: e.target.value || null,
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="stepper__btn stepper__btn--end"
+                      onClick={() => {
+                        const currentReps = formData.reps || "";
+                        const numericPart = parseInt(
+                          currentReps.toString().replace("+", "")
+                        );
+                        const hasPlus = currentReps.toString().includes("+");
+                        const newValue = (numericPart || 0) + 1;
+                        setFormData({
+                          ...formData,
+                          reps: `${newValue}${hasPlus ? "+" : ""}`,
+                        });
+                      }}
+                    >
+                      <Plus style={{ width: "18px", height: "18px" }} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1190,20 +1228,58 @@ const WorkoutSession = () => {
                       <Hash style={{ width: "14px", height: "14px" }} />
                       Reps
                     </Label>
-                    <Input
-                      id="reps"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="e.g., 5 or 5+"
-                      className="input--mono"
-                      value={formData.reps || ""}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setFormData({
-                          ...formData,
-                          reps: e.target.value || null,
-                        })
-                      }
-                    />
+                    <div className="stepper">
+                      <button
+                        type="button"
+                        className="stepper__btn stepper__btn--start"
+                        onClick={() => {
+                          const currentReps = formData.reps || "";
+                          const numericPart = parseInt(
+                            currentReps.toString().replace("+", "")
+                          );
+                          const hasPlus = currentReps.toString().includes("+");
+                          const newValue = Math.max(0, (numericPart || 0) - 1);
+                          setFormData({
+                            ...formData,
+                            reps: newValue > 0 ? `${newValue}${hasPlus ? "+" : ""}` : null,
+                          });
+                        }}
+                      >
+                        <Minus style={{ width: "18px", height: "18px" }} />
+                      </button>
+                      <input
+                        id="reps"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="e.g., 5 or 5+"
+                        className="input--stepper input--mono"
+                        value={formData.reps || ""}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setFormData({
+                            ...formData,
+                            reps: e.target.value || null,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="stepper__btn stepper__btn--end"
+                        onClick={() => {
+                          const currentReps = formData.reps || "";
+                          const numericPart = parseInt(
+                            currentReps.toString().replace("+", "")
+                          );
+                          const hasPlus = currentReps.toString().includes("+");
+                          const newValue = (numericPart || 0) + 1;
+                          setFormData({
+                            ...formData,
+                            reps: `${newValue}${hasPlus ? "+" : ""}`,
+                          });
+                        }}
+                      >
+                        <Plus style={{ width: "18px", height: "18px" }} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="form-field" style={{ overflow: "hidden" }}>

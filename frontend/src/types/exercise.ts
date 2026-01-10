@@ -33,3 +33,9 @@ export interface CategoryCreate {
 export interface ExercisesByCategory {
   [category: string]: string[];
 }
+
+export interface SeedExercisesResponse {
+  categories_created: number;
+  exercises_created: number;
+  message: string;
+}

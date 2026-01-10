@@ -55,3 +55,10 @@ class ExercisesByCategoryResponse(BaseModel):
     """Response for exercises grouped by category."""
     category: str
     exercises: list[str]
+
+
+class SeedExercisesResponse(BaseModel):
+    """Response from seeding exercises."""
+    categories_created: int
+    exercises_created: int
+    message: str

@@ -10,6 +10,7 @@ import type {
     ExerciseUpdate,
     Category,
     CategoryCreate,
+    SeedExercisesResponse,
 } from "../types/exercise";
 import type {
     BodyComposition,
@@ -90,6 +91,8 @@ export const exercisesApi = {
         api.put<Exercise>(`/api/exercises/${id}`, exercise),
 
     delete: (id: number) => api.delete(`/api/exercises/${id}`),
+
+    seed: () => api.post<SeedExercisesResponse>("/api/exercises/seed"),
 };
 
 // Categories

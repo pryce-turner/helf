@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exercisesApi, categoriesApi } from '@/lib/api';
-import type { ExerciseCreate, ExerciseUpdate, CategoryCreate } from '@/types/exercise';
+import type { ExerciseCreate, ExerciseUpdate, CategoryCreate, SeedExercisesResponse } from '@/types/exercise';
 
 export function useExercises() {
   return useQuery({
@@ -70,6 +70,21 @@ export function useDeleteExercise() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exercises'] });
+    },
+  });
+}
+
+export function useSeedExercises() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (): Promise<SeedExercisesResponse> => {
+      const response = await exercisesApi.seed();
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exercises'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
   });
 }

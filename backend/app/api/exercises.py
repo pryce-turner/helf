@@ -9,8 +9,35 @@ from app.models.exercise import (
     Category,
     CategoryCreate,
     ExercisesByCategoryResponse,
+    SeedExercisesResponse,
 )
 from app.repositories.exercise_repo import ExerciseRepository, CategoryRepository
+
+# Exercises from workout presets (wendler_531, stronglifts_5x5)
+PRESET_EXERCISES = {
+    "Legs": [
+        "Barbell Squat",
+        "Front Squat",
+        "Bulgarian Split Squat",
+    ],
+    "Push": [
+        "Flat Barbell Bench Press",
+        "Incline Dumbbell Press",
+        "Overhead Press",
+        "Parallel Bar Triceps Dip",
+    ],
+    "Pull": [
+        "Deadlift",
+        "Pull-ups",
+        "Dumbbell Row",
+        "Barbell Row",
+    ],
+    "Core": [
+        "Decline Crunch",
+        "Landmines",
+        "Cable side bend",
+    ],
+}
 
 router = APIRouter()
 
@@ -67,6 +94,49 @@ def delete_exercise(exercise_id: int):
     repo = ExerciseRepository()
     if not repo.delete(exercise_id):
         raise HTTPException(status_code=404, detail="Exercise not found")
+
+
+@router.post("/seed", response_model=SeedExercisesResponse)
+def seed_exercises():
+    """Seed exercises from workout presets.
+
+    Creates all exercises needed for the built-in workout programs
+    (Wendler 5/3/1, StrongLifts 5x5). Only creates exercises that
+    don't already exist.
+    """
+    exercise_repo = ExerciseRepository()
+    category_repo = CategoryRepository()
+
+    created_categories = 0
+    created_exercises = 0
+
+    for category_name, exercises in PRESET_EXERCISES.items():
+        # Get or create category
+        category = category_repo.get_by_name(category_name)
+        if not category:
+            category = category_repo.create(CategoryCreate(name=category_name))
+            created_categories += 1
+
+        # Create exercises that don't exist
+        for exercise_name in exercises:
+            existing = exercise_repo.get_by_name(exercise_name)
+            if not existing:
+                exercise_repo.create(ExerciseCreate(
+                    name=exercise_name,
+                    category=category_name,
+                ))
+                created_exercises += 1
+
+    if created_exercises == 0 and created_categories == 0:
+        message = "All preset exercises already exist"
+    else:
+        message = f"Created {created_exercises} exercises in {created_categories} categories"
+
+    return SeedExercisesResponse(
+        categories_created=created_categories,
+        exercises_created=created_exercises,
+        message=message,
+    )
 
 
 # Category endpoints

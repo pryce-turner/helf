@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText } from 'lucide-react';
+import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Sparkles } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import {
   useCreateExercise,
   useUpdateExercise,
   useDeleteExercise,
+  useSeedExercises,
 } from '@/hooks/useExercises';
 import type { Exercise } from '@/types/exercise';
 
@@ -52,6 +53,7 @@ const Exercises = () => {
   const createExercise = useCreateExercise();
   const updateExercise = useUpdateExercise();
   const deleteExercise = useDeleteExercise();
+  const seedExercises = useSeedExercises();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -62,6 +64,20 @@ const Exercises = () => {
   const [editCategory, setEditCategory] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
+  const [seedMessage, setSeedMessage] = useState<string | null>(null);
+
+  // Auto-hide seed message after 4 seconds
+  useEffect(() => {
+    if (seedMessage) {
+      const timer = setTimeout(() => setSeedMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [seedMessage]);
+
+  const handleSeedExercises = async () => {
+    const result = await seedExercises.mutateAsync();
+    setSeedMessage(result.message);
+  };
 
   // Auto-cancel delete confirmation after 3 seconds
   useEffect(() => {
@@ -160,11 +176,37 @@ const Exercises = () => {
                 <h1 className="page__title">EXERCISES</h1>
                 <p className="page__subtitle">Manage your exercise library</p>
               </div>
-              <Button onClick={() => setShowAddForm(!showAddForm)}>
-                <Plus style={{ width: '18px', height: '18px' }} />
-                {showAddForm ? 'Cancel' : 'Add Exercise'}
-              </Button>
+              <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                <Button
+                  variant="secondary"
+                  onClick={handleSeedExercises}
+                  disabled={seedExercises.isPending}
+                >
+                  <Sparkles style={{ width: '18px', height: '18px' }} />
+                  {seedExercises.isPending ? 'Seeding...' : 'Seed Presets'}
+                </Button>
+                <Button onClick={() => setShowAddForm(!showAddForm)}>
+                  <Plus style={{ width: '18px', height: '18px' }} />
+                  {showAddForm ? 'Cancel' : 'Add Exercise'}
+                </Button>
+              </div>
             </div>
+            {seedMessage && (
+              <div
+                className="animate-in"
+                style={{
+                  marginTop: 'var(--space-4)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  background: 'var(--accent)15',
+                  border: '1px solid var(--accent)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--accent)',
+                  fontSize: '14px',
+                }}
+              >
+                {seedMessage}
+              </div>
+            )}
           </div>
 
           {/* Add Exercise Form */}

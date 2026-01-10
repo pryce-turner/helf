@@ -561,10 +561,10 @@
 
     .nav-mobile__inner {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         min-height: 68px;
         padding: 5px var(--space-3) 5px;
-        max-width: 320px;
+        max-width: 400px;
         margin: 0 auto;
     }
 

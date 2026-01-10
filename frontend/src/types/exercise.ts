@@ -12,6 +12,11 @@ export interface ExerciseCreate {
   category: string;
 }
 
+export interface ExerciseUpdate {
+  name?: string;
+  category?: string;
+}
+
 export interface Category {
   doc_id: number;
   name: string;

@@ -13,8 +13,9 @@ const Navigation = () => {
     const navItems = [
         { path: "/", label: "Calendar", icon: Calendar },
         { path: "/progression", label: "Progress", icon: TrendingUp },
-        { path: "/body-composition", label: "Composition", icon: Weight },
+        { path: "/body-composition", label: "Body", icon: Weight },
         { path: "/upcoming", label: "Upcoming", icon: ListTodo },
+        { path: "/exercises", label: "Exercises", icon: Dumbbell },
     ];
 
     return (

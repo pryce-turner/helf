@@ -7,6 +7,7 @@ import type {
 import type {
     Exercise,
     ExerciseCreate,
+    ExerciseUpdate,
     Category,
     CategoryCreate,
 } from "../types/exercise";
@@ -84,6 +85,11 @@ export const exercisesApi = {
 
     create: (exercise: ExerciseCreate) =>
         api.post<Exercise>("/api/exercises/", exercise),
+
+    update: (id: number, exercise: ExerciseUpdate) =>
+        api.put<Exercise>(`/api/exercises/${id}`, exercise),
+
+    delete: (id: number) => api.delete(`/api/exercises/${id}`),
 };
 
 // Categories

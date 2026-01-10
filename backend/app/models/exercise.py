@@ -33,6 +33,12 @@ class ExerciseCreate(ExerciseBase):
     pass
 
 
+class ExerciseUpdate(BaseModel):
+    """Model for updating an exercise."""
+    name: str | None = None
+    category: str | None = None
+
+
 class Exercise(ExerciseBase):
     """Full exercise model with metadata."""
     id: int = Field(..., alias="doc_id")

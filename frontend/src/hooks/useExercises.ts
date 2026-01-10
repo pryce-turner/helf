@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exercisesApi, categoriesApi } from '@/lib/api';
-import type { ExerciseCreate, CategoryCreate } from '@/types/exercise';
+import type { ExerciseCreate, ExerciseUpdate, CategoryCreate } from '@/types/exercise';
 
 export function useExercises() {
   return useQuery({
@@ -40,6 +40,33 @@ export function useCreateExercise() {
     mutationFn: async (exercise: ExerciseCreate) => {
       const response = await exercisesApi.create(exercise);
       return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exercises'] });
+    },
+  });
+}
+
+export function useUpdateExercise() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: ExerciseUpdate }) => {
+      const response = await exercisesApi.update(id, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exercises'] });
+    },
+  });
+}
+
+export function useDeleteExercise() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await exercisesApi.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exercises'] });

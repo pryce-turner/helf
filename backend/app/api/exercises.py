@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from app.models.exercise import (
     Exercise,
     ExerciseCreate,
+    ExerciseUpdate,
     Category,
     CategoryCreate,
     ExercisesByCategoryResponse,
@@ -46,6 +47,26 @@ def create_exercise(exercise: ExerciseCreate):
     """Create a new exercise."""
     repo = ExerciseRepository()
     return repo.create(exercise)
+
+
+@router.put("/{exercise_id}", response_model=Exercise)
+def update_exercise(exercise_id: int, exercise: ExerciseUpdate):
+    """Update an exercise."""
+    repo = ExerciseRepository()
+    updated = repo.update(exercise_id, exercise)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    return updated
+
+
+@router.delete("/{exercise_id}", status_code=204)
+def delete_exercise(exercise_id: int):
+    """Delete an exercise."""
+    repo = ExerciseRepository()
+    if not repo.delete(exercise_id):
+        raise HTTPException(status_code=404, detail="Exercise not found")
 
 
 # Category endpoints

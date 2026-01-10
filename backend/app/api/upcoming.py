@@ -28,6 +28,10 @@ PRESETS = {
         "display_name": "Wendler 5/3/1",
         "description": "Classic 4-week strength program with 3 training days per week. Includes squat, bench, and deadlift progression with accessories.",
     },
+    "stronglifts_5x5": {
+        "display_name": "StrongLifts 5x5",
+        "description": "Simple but effective strength program focusing on 5 sets of 5 reps on the big three lifts.",
+    },
 }
 
 router = APIRouter()

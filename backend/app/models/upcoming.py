@@ -68,10 +68,7 @@ class LiftoscriptGenerateRequest(BaseModel):
     """Request to generate workouts from Liftoscript program."""
 
     script: str = Field(..., min_length=1, description="Liftoscript program text")
-    squat_max: float | None = Field(None, description="1RM override for squat")
-    bench_max: float | None = Field(None, description="1RM override for bench")
-    deadlift_max: float | None = Field(None, description="1RM override for deadlift")
-    num_cycles: int = Field(1, ge=1, le=12, description="Number of cycles to generate")
+    num_cycles: int = Field(1, ge=1, le=52, description="Number of cycles to repeat the workouts")
 
 
 class LiftoscriptGenerateResponse(BaseModel):

@@ -1,62 +1,15 @@
-# StrongLifts 5x5 - 4 Week Cycle
-// Uses progression: Squat +5lb/session, Bench +5lb/session, Row +5lb/session, Press +2.5lb/session, Deadlift +10lb/session
+// Barbell Squat SW: 135lb
+// Flat Barbell Bench Press SW: 135lb
+// Barbell Row SW: 135lb
+// Overhead Press SW: 65lb
+// Deadlift SW: 185lb
 
 ## Workout A
-Barbell Squat / 5x5 @+5lbs
-Flat Barbell Bench Press / 5x5 @+5lbs
-Barbell Row / 5x5 @+5lbs
+Barbell Squat / 5x5 progress: lp(5lb)
+Flat Barbell Bench Press / 5x5 progress: lp(5lb)
+Barbell Row / 5x5 progress: lp(5lb)
 
 ## Workout B
-Barbell Squat / 5x5 @+5lbs
-Overhead Press / 5x5 @+2.5lbs
-Deadlift / 1x5 @+10lbs
-
-## Workout A
-Barbell Squat / 5x5 @+5lbs
-Flat Barbell Bench Press / 5x5 @+5lbs
-Barbell Row / 5x5 @+5lbs
-
-## Workout B
-Barbell Squat / 5x5 @+5lbs
-Overhead Press / 5x5 @+2.5lbs
-Deadlift / 1x5 @+10lbs
-
-## Workout A
-Barbell Squat / 5x5 @+5lbs
-Flat Barbell Bench Press / 5x5 @+5lbs
-Barbell Row / 5x5 @+5lbs
-
-## Workout B
-Barbell Squat / 5x5 @+5lbs
-Overhead Press / 5x5 @+2.5lbs
-Deadlift / 1x5 @+10lbs
-
-## Workout A
-Barbell Squat / 5x5 @+5lbs
-Flat Barbell Bench Press / 5x5 @+5lbs
-Barbell Row / 5x5 @+5lbs
-
-## Workout B
-Barbell Squat / 5x5 @+5lbs
-Overhead Press / 5x5 @+2.5lbs
-Deadlift / 1x5 @+10lbs
-
-## Workout A
-Barbell Squat / 5x5 @+5lbs
-Flat Barbell Bench Press / 5x5 @+5lbs
-Barbell Row / 5x5 @+5lbs
-
-## Workout B
-Barbell Squat / 5x5 @+5lbs
-Overhead Press / 5x5 @+2.5lbs
-Deadlift / 1x5 @+10lbs
-
-## Workout A
-Barbell Squat / 5x5 @+5lbs
-Flat Barbell Bench Press / 5x5 @+5lbs
-Barbell Row / 5x5 @+5lbs
-
-## Workout B
-Barbell Squat / 5x5 @+5lbs
-Overhead Press / 5x5 @+2.5lbs
-Deadlift / 1x5 @+10lbs
+Barbell Squat / 5x5 progress: lp(5lb)
+Overhead Press / 5x5 progress: lp(2.5lb)
+Deadlift / 1x5 progress: lp(10lb)

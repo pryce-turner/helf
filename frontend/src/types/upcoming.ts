@@ -35,9 +35,6 @@ export interface WendlerCurrentMaxes {
 // Liftoscript types
 export interface LiftoscriptGenerateRequest {
   script: string;
-  squat_max?: number | null;
-  bench_max?: number | null;
-  deadlift_max?: number | null;
   num_cycles: number;
 }
 

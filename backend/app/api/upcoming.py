@@ -131,25 +131,24 @@ def get_wendler_current_maxes():
 
 @router.post("/liftoscript/generate", response_model=LiftoscriptGenerateResponse)
 def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
-    """Generate upcoming workouts from Liftoscript program."""
+    """Generate upcoming workouts from Liftoscript program.
+
+    Supports simplified syntax:
+    - ## Day Name headers to separate sessions
+    - Exercise Name / sets x reps weight
+    - Comments via // (required for % and progress: lp())
+    - Weight formats: "135lb", "60kg", "65%", "progress: lp(5lb)"
+
+    Required comments for percentage/progression:
+    - For %: "// ExerciseName 1RM: Xlb"
+    - For progress: lp(): "// ExerciseName SW: Xlb" (SW = Starting Weight)
+    """
     repo = UpcomingWorkoutRepository()
-    service = WendlerService()
 
-    # Get current maxes if not provided
-    current_maxes = service.get_current_maxes()
-
-    squat_max = request.squat_max or current_maxes.get("Barbell Squat", 225)
-    bench_max = request.bench_max or current_maxes.get("Flat Barbell Bench Press", 185)
-    deadlift_max = request.deadlift_max or current_maxes.get("Deadlift", 275)
-
-    # Parse the script
     parser = LiftoscriptParser()
     try:
         workouts = parser.parse(
             script=request.script,
-            squat_max=squat_max,
-            bench_max=bench_max,
-            deadlift_max=deadlift_max,
             num_cycles=request.num_cycles,
         )
     except LiftoscriptParseError as e:
@@ -166,13 +165,8 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
             deleted_count=0,
         )
 
-    # Delete all existing upcoming workouts
     deleted_count = repo.delete_all()
-
-    # Create new workouts
     created = repo.create_bulk(workouts)
-
-    # Count unique sessions
     sessions = len(set(w.session for w in workouts))
 
     return LiftoscriptGenerateResponse(

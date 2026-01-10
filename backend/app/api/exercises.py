@@ -20,17 +20,23 @@ PRESET_EXERCISES = {
         "Front Squat",
         "Bulgarian Split Squat",
     ],
-    "Push": [
+    "Chest": [
         "Flat Barbell Bench Press",
         "Incline Dumbbell Press",
-        "Overhead Press",
-        "Parallel Bar Triceps Dip",
     ],
-    "Pull": [
+    "Back": [
         "Deadlift",
-        "Pull-ups",
+        "Pull Ups",
         "Dumbbell Row",
         "Barbell Row",
+    ],
+    "Biceps": [
+        "Barbell Curl",
+        "Dumbbell Curl",
+    ],
+    "Triceps": [
+        "Overhead Press",
+        "Parallel Bar Triceps Dip",
     ],
     "Core": [
         "Decline Crunch",

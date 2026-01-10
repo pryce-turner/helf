@@ -13,6 +13,26 @@ import re
 
 from app.models.upcoming import UpcomingWorkoutCreate
 
+# Exercise to category mapping (matches PRESET_EXERCISES in api/exercises.py)
+EXERCISE_CATEGORIES = {
+    "Barbell Squat": "Legs",
+    "Front Squat": "Legs",
+    "Bulgarian Split Squat": "Legs",
+    "Flat Barbell Bench Press": "Chest",
+    "Incline Dumbbell Press": "Chest",
+    "Deadlift": "Back",
+    "Pull Ups": "Back",
+    "Dumbbell Row": "Back",
+    "Barbell Row": "Back",
+    "Barbell Curl": "Biceps",
+    "Dumbbell Curl": "Biceps",
+    "Overhead Press": "Triceps",
+    "Parallel Bar Triceps Dip": "Triceps",
+    "Decline Crunch": "Core",
+    "Landmines": "Core",
+    "Cable side bend": "Core",
+}
+
 
 class LiftoscriptParseError(Exception):
     """Error raised when script parsing fails."""
@@ -61,6 +81,10 @@ class LiftoscriptParser:
 
     def _convert_kg_to_lbs(self, kg: float) -> float:
         return kg * 2.20462
+
+    def _round_to_nearest_5(self, weight: float) -> float:
+        """Round weight to nearest 5lb for easier barbell loading."""
+        return round(weight / 5) * 5
 
     def _parse_required_comments(self, script: str) -> None:
         """Parse required 1RM and SW comments from top of script."""
@@ -129,7 +153,8 @@ class LiftoscriptParser:
             if exercise_name not in self.required_1rms:
                 self._validate_required_comments(exercise_name, True, False)
             base_max = self.required_1rms.get(exercise_name, 0)
-            return round(base_max * (percent / 100)), "lbs"
+            weight = base_max * (percent / 100)
+            return self._round_to_nearest_5(weight), "lbs"
 
         progress_match = self.PROGRESS_LP_PATTERN.search(weight_str)
         if progress_match:
@@ -141,7 +166,8 @@ class LiftoscriptParser:
                 self._validate_required_comments(exercise_name, False, True)
             base_weight = self.required_sw.get(exercise_name, 0)
             total_increment = increment * cycle_num
-            return round(base_weight + total_increment), "lbs"
+            weight = base_weight + total_increment
+            return self._round_to_nearest_5(weight), "lbs"
 
         absolute_match = self.WEIGHT_ABSOLUTE_PATTERN.search(weight_str)
         if absolute_match:
@@ -201,26 +227,36 @@ class LiftoscriptParser:
                 i += 1
                 continue
 
-            sets, reps, is_amrap = self._parse_sets_reps(full_spec)
-            weight, unit = self._parse_weight(full_spec, exercise_name, cycle_num)
+            # Determine category from exercise name, default to "Other"
+            category = EXERCISE_CATEGORIES.get(exercise_name, "Other")
 
-            comment_parts = []
-            if is_amrap:
-                comment_parts.append("AMRAP")
+            # Split by comma to handle multiple set specifications (e.g., "1x5 65%, 1x5 75%, 1x5+ 85%")
+            set_specs = [spec.strip() for spec in full_spec.split(",")]
 
-            comment = ", ".join(comment_parts) if comment_parts else None
+            for set_spec in set_specs:
+                if not set_spec:
+                    continue
 
-            for _ in range(sets):
-                workout = UpcomingWorkoutCreate(
-                    session=session_offset + current_session,
-                    exercise=exercise_name,
-                    category="Other",
-                    weight=weight,
-                    weight_unit=unit,
-                    reps=reps,
-                    comment=comment,
-                )
-                workouts.append(workout)
+                sets, reps, is_amrap = self._parse_sets_reps(set_spec)
+                weight, unit = self._parse_weight(set_spec, exercise_name, cycle_num)
+
+                comment_parts = []
+                if is_amrap:
+                    comment_parts.append("AMRAP")
+
+                comment = ", ".join(comment_parts) if comment_parts else None
+
+                for _ in range(sets):
+                    workout = UpcomingWorkoutCreate(
+                        session=session_offset + current_session,
+                        exercise=exercise_name,
+                        category=category,
+                        weight=weight,
+                        weight_unit=unit,
+                        reps=reps,
+                        comment=comment,
+                    )
+                    workouts.append(workout)
 
             i += 1
 

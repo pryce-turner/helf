@@ -5,29 +5,28 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.models.upcoming import (
-    UpcomingWorkout,
-    UpcomingWorkoutCreate,
-    UpcomingWorkoutBulkCreate,
-    SessionTransferRequest,
-    SessionTransferResponse,
-    WendlerCurrentMaxes,
     LiftoscriptGenerateRequest,
     LiftoscriptGenerateResponse,
-    PresetInfo,
     PresetContent,
+    PresetInfo,
+    SessionTransferRequest,
+    SessionTransferResponse,
+    UpcomingWorkout,
+    UpcomingWorkoutBulkCreate,
+    UpcomingWorkoutCreate,
+    WendlerCurrentMaxes,
 )
 from app.models.workout import WorkoutCreate
 from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 from app.repositories.workout_repo import WorkoutRepository
+from app.services.liftoscript_service import LiftoscriptParseError, LiftoscriptParser
 from app.services.wendler_service import WendlerService
-from app.services.liftoscript_service import LiftoscriptParser
 
 # Available presets with metadata
 PRESETS = {
     "wendler_531": {
         "display_name": "Wendler 5/3/1",
         "description": "Classic 4-week strength program with 3 training days per week. Includes squat, bench, and deadlift progression with accessories.",
-        "requires_maxes": True,
     },
 }
 
@@ -153,6 +152,8 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
             deadlift_max=deadlift_max,
             num_cycles=request.num_cycles,
         )
+    except LiftoscriptParseError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse script: {str(e)}")
 
@@ -191,7 +192,6 @@ def get_presets():
             name=name,
             display_name=data["display_name"],
             description=data["description"],
-            requires_maxes=data["requires_maxes"],
         )
         for name, data in PRESETS.items()
     ]

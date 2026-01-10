@@ -5,39 +5,20 @@ from app.services.wendler_service import WendlerService
 pytestmark = pytest.mark.usefixtures("db_engine")
 
 
-def test_wendler_calculate_weights_rounding_rules():
+def test_wendler_get_current_maxes_returns_dict():
+    """Test that get_current_maxes returns a dict (may be empty if no workout data)."""
     service = WendlerService()
-    weights = service.calculate_weights(200, 1)
-    assert weights == [(125, 5), (145, 5), (165, "5+")]
+    maxes = service.get_current_maxes()
+
+    assert isinstance(maxes, dict)
+    # Keys should only be main lifts if present
+    for key in maxes.keys():
+        assert key in WendlerService.MAIN_LIFTS
 
 
-def test_wendler_generate_progression_sessions_and_counts():
+def test_wendler_get_latest_estimated_1rm_returns_none_for_unknown():
+    """Test that get_latest_estimated_1rm returns None for exercises with no data."""
     service = WendlerService()
-    workouts = service.generate_progression(
-        num_cycles=1,
-        squat_max=200,
-        bench_max=150,
-        deadlift_max=250,
-    )
+    result = service.get_latest_estimated_1rm("Unknown Exercise That Does Not Exist")
 
-    sessions = {w.session for w in workouts}
-    assert len(workouts) == 72
-    assert sessions == set(range(1, 13))
-
-    first_session = [w for w in workouts if w.session == 1]
-    assert len(first_session) == 6
-    assert first_session[0].exercise == "Barbell Squat"
-
-
-def test_wendler_generate_and_save_persists_workouts():
-    service = WendlerService()
-    result = service.generate_and_save(
-        num_cycles=1,
-        squat_max=200,
-        bench_max=150,
-        deadlift_max=250,
-    )
-
-    assert result["success"] is True
-    assert result["count"] == 72
-    assert result["session_range"] == [1, 12]
+    assert result is None

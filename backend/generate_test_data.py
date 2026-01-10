@@ -15,12 +15,25 @@ from app.db.models import Category, Exercise, Workout
 # Categories and exercises
 CATEGORIES = {
     "Chest": ["Bench Press", "Incline Bench Press", "Dumbbell Flyes", "Push-ups"],
-    "Back": ["Deadlift", "Bent Over Row", "Pull-ups", "Lat Pulldown"],
-    "Legs": ["Squat", "Romanian Deadlift", "Leg Press", "Lunges", "Leg Curl"],
+    "Back": ["Deadlift", "Bent Over Row", "Pull-ups", "Lat Pulldown", "Dumbbell Row"],
+    "Legs": [
+        "Squat",
+        "Romanian Deadlift",
+        "Leg Press",
+        "Lunges",
+        "Leg Curl",
+        # Wendler exercises
+        "Barbell Squat",
+        "Front Squat",
+        "Bulgarian Split Squat",
+    ],
     "Shoulders": ["Overhead Press", "Lateral Raise", "Face Pulls", "Arnold Press"],
-    "Arms": ["Barbell Curl", "Tricep Dips", "Hammer Curl", "Skull Crushers"],
-    "Core": ["Plank", "Ab Wheel", "Hanging Leg Raise", "Cable Crunch"],
+    "Arms": ["Barbell Curl", "Tricep Dips", "Hammer Curl", "Skull Crushers", "Parallel Bar Triceps Dip"],
+    "Core": ["Plank", "Ab Wheel", "Hanging Leg Raise", "Cable Crunch", "Decline Crunch", "Landmines", "Cable side bend"],
     "Cardio": ["Running", "Cycling", "Rowing"],
+    # Wendler Push/Pull categories
+    "Push": ["Flat Barbell Bench Press", "Incline Dumbbell Press"],
+    "Pull": ["Pull Up"],
 }
 
 # Workout templates for different days

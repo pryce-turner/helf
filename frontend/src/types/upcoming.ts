@@ -53,7 +53,6 @@ export interface PresetInfo {
   name: string;
   display_name: string;
   description: string;
-  requires_maxes: boolean;
 }
 
 export interface PresetContent {

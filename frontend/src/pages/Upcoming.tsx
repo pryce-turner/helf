@@ -18,7 +18,6 @@ import {
   usePreset,
   useLiftoscriptGenerate,
 } from '@/hooks/useUpcoming';
-import type { PresetInfo } from '@/types/upcoming';
 
 // Predefined colors for common categories (matching WorkoutSession)
 const getCategoryColor = (category: string) => {
@@ -69,7 +68,7 @@ const Upcoming = () => {
   const [showEditor, setShowEditor] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<string>('custom');
   const [scriptContent, setScriptContent] = useState<string>('');
-  const [numCycles, setNumCycles] = useState(4);
+  const [numCycles, setNumCycles] = useState('4');
   const [squatMax, setSquatMax] = useState<string>('');
   const [benchMax, setBenchMax] = useState<string>('');
   const [deadliftMax, setDeadliftMax] = useState<string>('');
@@ -79,11 +78,10 @@ const Upcoming = () => {
   // Fetch preset content when a preset is selected
   const { data: presetContent } = usePreset(selectedPreset !== 'custom' ? selectedPreset : '');
 
-  // Find the current preset info
-  const currentPresetInfo = useMemo<PresetInfo | null>(() => {
-    if (selectedPreset === 'custom' || !presets) return null;
-    return presets.find(p => p.name === selectedPreset) || null;
-  }, [selectedPreset, presets]);
+  // Detect if script contains percentage notation (requires 1RM inputs)
+  const scriptRequiresMaxes = useMemo(() => {
+    return /\d+%/.test(scriptContent);
+  }, [scriptContent]);
 
   // Update script content when preset content is loaded
   useEffect(() => {
@@ -152,7 +150,7 @@ const Upcoming = () => {
         squat_max: squatMax ? parseFloat(squatMax) : null,
         bench_max: benchMax ? parseFloat(benchMax) : null,
         deadlift_max: deadliftMax ? parseFloat(deadliftMax) : null,
-        num_cycles: numCycles,
+        num_cycles: parseInt(numCycles) || 4,
       });
       setShowEditor(false);
       setShowConfirmDialog(false);
@@ -240,26 +238,29 @@ const Upcoming = () => {
                         presets={presets || []}
                       />
                     </div>
-                    {currentPresetInfo?.requires_maxes && (
-                      <div>
-                        <Label htmlFor="num-cycles" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                          Cycles
-                        </Label>
-                        <Input
-                          id="num-cycles"
-                          type="number"
-                          min={1}
-                          max={12}
-                          value={numCycles}
-                          onChange={(e) => setNumCycles(parseInt(e.target.value) || 4)}
-                          style={{ maxWidth: '80px' }}
-                        />
-                      </div>
-                    )}
+                    <div>
+                      <Label htmlFor="num-cycles" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                        Cycles
+                      </Label>
+                      <Input
+                        id="num-cycles"
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={numCycles}
+                        onChange={(e) => setNumCycles(e.target.value)}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (isNaN(val) || val < 1) setNumCycles('1');
+                          else if (val > 12) setNumCycles('12');
+                        }}
+                        style={{ maxWidth: '80px' }}
+                      />
+                    </div>
                   </div>
 
-                  {/* 1RM Overrides - only show when preset requires maxes */}
-                  {currentPresetInfo?.requires_maxes && (
+                  {/* 1RM Overrides - only show when script contains % notation */}
+                  {scriptRequiresMaxes && (
                     <div
                       style={{
                         padding: 'var(--space-4)',

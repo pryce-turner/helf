@@ -163,7 +163,9 @@ class LiftoscriptParser:
         is_amrap = "+" in sets_reps_str
         return sets, reps, is_amrap
 
-    def _parse_script(self, lines: list[str], cycle_num: int) -> list[UpcomingWorkoutCreate]:
+    def _parse_script(
+        self, lines: list[str], cycle_num: int, session_offset: int
+    ) -> tuple[list[UpcomingWorkoutCreate], int]:
         """Parse the full script and return workouts."""
         workouts = []
         current_session = 0
@@ -210,7 +212,7 @@ class LiftoscriptParser:
 
             for _ in range(sets):
                 workout = UpcomingWorkoutCreate(
-                    session=current_session,
+                    session=session_offset + current_session,
                     exercise=exercise_name,
                     category="Other",
                     weight=weight,
@@ -222,7 +224,7 @@ class LiftoscriptParser:
 
             i += 1
 
-        return workouts
+        return workouts, current_session
 
     def parse(
         self,
@@ -245,9 +247,12 @@ class LiftoscriptParser:
 
         lines = script.strip().split("\n")
         all_workouts = []
+        sessions_per_cycle = 0
 
         for cycle in range(num_cycles):
-            cycle_workouts = self._parse_script(lines, cycle)
+            session_offset = cycle * sessions_per_cycle
+            cycle_workouts, sessions_in_cycle = self._parse_script(lines, cycle, session_offset)
+            sessions_per_cycle = max(sessions_in_cycle, sessions_per_cycle)
             all_workouts.extend(cycle_workouts)
 
         return all_workouts

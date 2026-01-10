@@ -13,7 +13,6 @@ import {
   useUpcomingWorkouts,
   useDeleteUpcomingSession,
   useTransferSession,
-  useWendlerMaxes,
   usePresets,
   usePreset,
   useLiftoscriptGenerate,
@@ -53,7 +52,6 @@ const getCategoryColor = (category: string) => {
 
 const Upcoming = () => {
   const { data: upcomingWorkouts, isLoading } = useUpcomingWorkouts();
-  const { data: wendlerMaxes } = useWendlerMaxes();
   const { data: presets } = usePresets();
   const deleteSession = useDeleteUpcomingSession();
   const transferSession = useTransferSession();
@@ -69,19 +67,10 @@ const Upcoming = () => {
   const [selectedPreset, setSelectedPreset] = useState<string>('custom');
   const [scriptContent, setScriptContent] = useState<string>('');
   const [numCycles, setNumCycles] = useState('4');
-  const [squatMax, setSquatMax] = useState<string>('');
-  const [benchMax, setBenchMax] = useState<string>('');
-  const [deadliftMax, setDeadliftMax] = useState<string>('');
   const [editorError, setEditorError] = useState<string>('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  // Fetch preset content when a preset is selected
   const { data: presetContent } = usePreset(selectedPreset !== 'custom' ? selectedPreset : '');
-
-  // Detect if script contains percentage notation (requires 1RM inputs)
-  const scriptRequiresMaxes = useMemo(() => {
-    return /\d+%/.test(scriptContent);
-  }, [scriptContent]);
 
   // Update script content when preset content is loaded
   useEffect(() => {
@@ -89,15 +78,6 @@ const Upcoming = () => {
       setScriptContent(presetContent.script);
     }
   }, [presetContent]);
-
-  // Update 1RM inputs when maxes are loaded
-  useEffect(() => {
-    if (wendlerMaxes) {
-      if (wendlerMaxes.squat) setSquatMax(String(Math.round(wendlerMaxes.squat)));
-      if (wendlerMaxes.bench) setBenchMax(String(Math.round(wendlerMaxes.bench)));
-      if (wendlerMaxes.deadlift) setDeadliftMax(String(Math.round(wendlerMaxes.deadlift)));
-    }
-  }, [wendlerMaxes]);
 
   // Auto-cancel delete confirmation after 3 seconds
   useEffect(() => {
@@ -147,9 +127,6 @@ const Upcoming = () => {
     try {
       await generateLiftoscript.mutateAsync({
         script: scriptContent,
-        squat_max: squatMax ? parseFloat(squatMax) : null,
-        bench_max: benchMax ? parseFloat(benchMax) : null,
-        deadlift_max: deadliftMax ? parseFloat(deadliftMax) : null,
         num_cycles: parseInt(numCycles) || 4,
       });
       setShowEditor(false);
@@ -258,72 +235,6 @@ const Upcoming = () => {
                       />
                     </div>
                   </div>
-
-                  {/* 1RM Overrides - only show when script contains % notation */}
-                  {scriptRequiresMaxes && (
-                    <div
-                      style={{
-                        padding: 'var(--space-4)',
-                        background: 'var(--bg-tertiary)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--border-subtle)',
-                      }}
-                    >
-                      <p
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: 'var(--text-muted)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.05em',
-                          marginBottom: 'var(--space-3)',
-                        }}
-                      >
-                        1RM Overrides
-                      </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-4)' }}>
-                        <div>
-                          <Label htmlFor="squat-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                            Squat (lbs)
-                          </Label>
-                          <Input
-                            id="squat-max"
-                            type="number"
-                            placeholder={wendlerMaxes?.squat ? `${Math.round(wendlerMaxes.squat)}` : 'Enter'}
-                            value={squatMax}
-                            onChange={(e) => setSquatMax(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="bench-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                            Bench (lbs)
-                          </Label>
-                          <Input
-                            id="bench-max"
-                            type="number"
-                            placeholder={wendlerMaxes?.bench ? `${Math.round(wendlerMaxes.bench)}` : 'Enter'}
-                            value={benchMax}
-                            onChange={(e) => setBenchMax(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="deadlift-max" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                            Deadlift (lbs)
-                          </Label>
-                          <Input
-                            id="deadlift-max"
-                            type="number"
-                            placeholder={wendlerMaxes?.deadlift ? `${Math.round(wendlerMaxes.deadlift)}` : 'Enter'}
-                            value={deadliftMax}
-                            onChange={(e) => setDeadliftMax(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-                        Auto-detected from workout history
-                      </p>
-                    </div>
-                  )}
 
                   {/* Editor */}
                   <LiftoscriptEditor

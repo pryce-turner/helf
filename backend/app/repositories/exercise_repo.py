@@ -19,6 +19,7 @@ class ExerciseRepository:
             "doc_id": exercise.id,
             "name": exercise.name,
             "category": exercise.category.name if exercise.category else None,
+            "notes": exercise.notes,
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
             "created_at": exercise.created_at,
@@ -86,6 +87,7 @@ class ExerciseRepository:
             new_exercise = Exercise(
                 name=exercise.name,
                 category_id=category.id,
+                notes=exercise.notes,
                 last_used=None,
                 use_count=0,
                 created_at=now,
@@ -137,6 +139,8 @@ class ExerciseRepository:
             if data.category is not None:
                 category = self._get_or_create_category(session, data.category)
                 exercise.category_id = category.id
+            if data.notes is not None:
+                exercise.notes = data.notes if data.notes else None
 
             session.commit()
             session.refresh(exercise)

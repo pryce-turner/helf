@@ -34,6 +34,7 @@ class Exercise(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_used: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

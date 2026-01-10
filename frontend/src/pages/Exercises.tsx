@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash } from 'lucide-react';
+import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -56,9 +56,11 @@ const Exercises = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('');
+  const [newNotes, setNewNotes] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('');
+  const [editNotes, setEditNotes] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   // Auto-cancel delete confirmation after 3 seconds
@@ -87,9 +89,11 @@ const Exercises = () => {
     await createExercise.mutateAsync({
       name: newName.trim(),
       category: newCategory.trim(),
+      notes: newNotes.trim() || undefined,
     });
     setNewName('');
     setNewCategory('');
+    setNewNotes('');
     setShowAddForm(false);
   };
 
@@ -97,19 +101,25 @@ const Exercises = () => {
     setEditingId(exercise.doc_id);
     setEditName(exercise.name);
     setEditCategory(exercise.category);
+    setEditNotes(exercise.notes || '');
   };
 
   const cancelEditing = () => {
     setEditingId(null);
     setEditName('');
     setEditCategory('');
+    setEditNotes('');
   };
 
   const saveEditing = async () => {
     if (editingId === null || !editName.trim() || !editCategory.trim()) return;
     await updateExercise.mutateAsync({
       id: editingId,
-      data: { name: editName.trim(), category: editCategory.trim() },
+      data: {
+        name: editName.trim(),
+        category: editCategory.trim(),
+        notes: editNotes.trim() || '',
+      },
     });
     cancelEditing();
   };
@@ -198,6 +208,20 @@ const Exercises = () => {
                         ))}
                       </datalist>
                     </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="new-notes" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                      Notes <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(form cues, tips)</span>
+                    </Label>
+                    <textarea
+                      id="new-notes"
+                      className="input"
+                      value={newNotes}
+                      onChange={(e) => setNewNotes(e.target.value)}
+                      placeholder="e.g., Keep elbows tucked, drive feet into floor"
+                      rows={2}
+                      style={{ resize: 'vertical', minHeight: '60px' }}
+                    />
                   </div>
                   <div className="flex" style={{ gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
                     <Button variant="secondary" onClick={() => setShowAddForm(false)}>
@@ -295,6 +319,14 @@ const Exercises = () => {
                                     ))}
                                   </datalist>
                                 </div>
+                                <textarea
+                                  className="input"
+                                  value={editNotes}
+                                  onChange={(e) => setEditNotes(e.target.value)}
+                                  placeholder="Form cues, tips..."
+                                  rows={2}
+                                  style={{ resize: 'vertical', minHeight: '60px' }}
+                                />
                                 <div className="flex" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                                   <Button
                                     variant="secondary"
@@ -330,7 +362,7 @@ const Exercises = () => {
                                   {exerciseIndex + 1}
                                 </div>
                                 <div className="flex-1">
-                                  <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: exercise.use_count > 0 ? 'var(--space-2)' : 0 }}>
+                                  <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: (exercise.use_count > 0 || exercise.notes) ? 'var(--space-2)' : 0 }}>
                                     <h3
                                       style={{
                                         fontFamily: 'var(--font-body)',
@@ -342,6 +374,24 @@ const Exercises = () => {
                                       {exercise.name}
                                     </h3>
                                   </div>
+                                  {exercise.notes && (
+                                    <div
+                                      className="flex items-start"
+                                      style={{
+                                        gap: 'var(--space-2)',
+                                        marginBottom: exercise.use_count > 0 ? 'var(--space-2)' : 0,
+                                        padding: 'var(--space-2) var(--space-3)',
+                                        background: 'var(--bg-secondary)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        borderLeft: `3px solid ${catColor.border}`,
+                                      }}
+                                    >
+                                      <FileText style={{ width: '14px', height: '14px', color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
+                                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                                        {exercise.notes}
+                                      </p>
+                                    </div>
+                                  )}
                                   {exercise.use_count > 0 && (
                                     <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
                                       <div className="workout-chip">

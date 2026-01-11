@@ -72,6 +72,14 @@ export const workoutsApi = {
             count: number;
             message: string;
         }>(`/api/workouts/date/${sourceDate}/move`, { target_date: targetDate }),
+
+    copyToDate: (sourceDate: string, targetDate: string) =>
+        api.post<{
+            source_date: string;
+            target_date: string;
+            count: number;
+            message: string;
+        }>(`/api/workouts/date/${sourceDate}/copy`, { target_date: targetDate }),
 };
 
 // Exercises

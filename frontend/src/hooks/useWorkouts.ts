@@ -141,3 +141,24 @@ export function useMoveToDate() {
         },
     });
 }
+
+export function useCopyToDate() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({
+            sourceDate,
+            targetDate,
+        }: {
+            sourceDate: string;
+            targetDate: string;
+        }) => {
+            const response = await workoutsApi.copyToDate(sourceDate, targetDate);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["workouts"] });
+            queryClient.invalidateQueries({ queryKey: ["calendar"] });
+        },
+    });
+}

@@ -77,6 +77,21 @@ class WorkoutMoveDateResponse(BaseModel):
     message: str
 
 
+class WorkoutCopyDate(BaseModel):
+    """Model for copying all workouts to a different date."""
+
+    target_date: str = Field(..., description="Target date in YYYY-MM-DD format")
+
+
+class WorkoutCopyDateResponse(BaseModel):
+    """Response for copying workouts to a different date."""
+
+    source_date: str
+    target_date: str
+    count: int
+    message: str
+
+
 class CalendarResponse(BaseModel):
     """Response for calendar workout counts."""
 

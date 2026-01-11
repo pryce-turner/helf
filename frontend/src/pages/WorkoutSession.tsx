@@ -59,6 +59,7 @@ import {
   useBulkReorderWorkouts,
   useToggleComplete,
   useMoveToDate,
+  useCopyToDate,
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
 import { useCategories, useExercises } from "@/hooks/useExercises";
@@ -704,6 +705,7 @@ const WorkoutSession = () => {
   const bulkReorderWorkouts = useBulkReorderWorkouts();
   const toggleComplete = useToggleComplete();
   const moveToDate = useMoveToDate();
+  const copyToDate = useCopyToDate();
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -724,6 +726,8 @@ const WorkoutSession = () => {
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [showMoveCalendar, setShowMoveCalendar] = useState(false);
   const [targetDate, setTargetDate] = useState<Date | undefined>(new Date());
+  const [showCopyCalendar, setShowCopyCalendar] = useState(false);
+  const [copyTargetDate, setCopyTargetDate] = useState<Date | undefined>(undefined);
   const [formData, setFormData] = useState<WorkoutCreate>({
     date: date || format(new Date(), "yyyy-MM-dd"),
     exercise: "",
@@ -900,6 +904,17 @@ const WorkoutSession = () => {
     navigate(`/workout/${targetDateStr}`);
   }, [date, targetDate, moveToDate, navigate]);
 
+  const handleCopyToDate = useCallback(async () => {
+    if (!date || !copyTargetDate) return;
+    const targetDateStr = format(copyTargetDate, "yyyy-MM-dd");
+    await copyToDate.mutateAsync({
+      sourceDate: date,
+      targetDate: targetDateStr,
+    });
+    setShowCopyCalendar(false);
+    // Stay on current page (unlike move which navigates)
+  }, [date, copyTargetDate, copyToDate]);
+
   const categoryExercises =
     exercises?.filter((e) => e.category === selectedCategory) || [];
   const formattedDate = date ? format(parseISO(date), "MMMM d, yyyy") : "";
@@ -981,6 +996,15 @@ const WorkoutSession = () => {
                   Move All
                 </Button>
               )}
+              {workouts && workouts.length > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowCopyCalendar(!showCopyCalendar)}
+                >
+                  <Copy style={{ width: "18px", height: "18px" }} />
+                  Copy All
+                </Button>
+              )}
               <Button
                 onClick={() => {
                   if (showForm) {
@@ -1042,6 +1066,63 @@ const WorkoutSession = () => {
                   >
                     <ArrowRight style={{ width: "18px", height: "18px" }} />
                     Move to {targetDate && format(targetDate, "MMM d, yyyy")}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Copy to Date Calendar */}
+          {showCopyCalendar && (
+            <Card
+              className="animate-in"
+              style={{
+                marginBottom: "var(--space-6)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <CardContent style={{ padding: "var(--space-5)" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontSize: "14px",
+                    color: "var(--text-secondary)",
+                    marginBottom: "var(--space-4)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Select target date
+                </p>
+                <Calendar
+                  mode="single"
+                  selected={copyTargetDate}
+                  onSelect={setCopyTargetDate}
+                  className="rounded-[var(--radius-md)] border border-[var(--border)]"
+                />
+                <div
+                  className="flex justify-end"
+                  style={{ marginTop: "var(--space-4)", gap: "var(--space-2)" }}
+                >
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowCopyCalendar(false);
+                      setCopyTargetDate(undefined);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCopyToDate}
+                    disabled={
+                      !copyTargetDate ||
+                      format(copyTargetDate, "yyyy-MM-dd") === date
+                    }
+                  >
+                    <Copy style={{ width: "18px", height: "18px" }} />
+                    Copy to{" "}
+                    {copyTargetDate && format(copyTargetDate, "MMM d, yyyy")}
                   </Button>
                 </div>
               </CardContent>

@@ -462,7 +462,7 @@
         top: 0;
         left: 0;
         right: 0;
-        height: 64px;
+        height: 56px;
         background: rgba(10, 10, 11, 0.85);
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
@@ -493,8 +493,8 @@
     }
 
     .nav-logo__icon {
-        width: 36px;
-        height: 36px;
+        width: 32px;
+        height: 32px;
         border-radius: var(--radius-md);
         background: var(--accent);
         display: flex;
@@ -504,7 +504,7 @@
 
     .nav-logo__text {
         font-family: var(--font-display);
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 700;
         color: var(--text-primary);
         letter-spacing: -0.01em;
@@ -519,11 +519,11 @@
     .nav-link {
         display: flex;
         align-items: center;
-        gap: var(--space-2);
-        padding: var(--space-2) var(--space-4);
+        gap: 6px;
+        padding: 6px var(--space-3);
         border-radius: var(--radius-md);
         color: var(--text-secondary);
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 500;
         text-decoration: none;
         transition: all var(--duration-normal);
@@ -562,9 +562,9 @@
     .nav-mobile__inner {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        min-height: 68px;
-        padding: 5px var(--space-3) 5px;
-        max-width: 400px;
+        min-height: 56px;
+        padding: 4px var(--space-2) 4px;
+        max-width: 380px;
         margin: 0 auto;
     }
 
@@ -585,8 +585,8 @@
     }
 
     .nav-mobile-link__icon {
-        width: 44px;
-        height: 44px;
+        width: 36px;
+        height: 36px;
         border-radius: var(--radius-md);
         display: flex;
         align-items: center;
@@ -599,7 +599,7 @@
     }
 
     .nav-mobile-link__label {
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 500;
     }
 
@@ -643,11 +643,11 @@
 
     /* Nav spacers */
     .nav-spacer-desktop {
-        height: 64px;
+        height: 56px;
     }
 
     .nav-spacer-mobile {
-        height: calc(68px + env(safe-area-inset-bottom, 0px));
+        height: calc(56px + env(safe-area-inset-bottom, 0px));
     }
 
     /* Interactive item styles */

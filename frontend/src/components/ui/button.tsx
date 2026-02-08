@@ -25,6 +25,7 @@ type ButtonVariant = keyof typeof variantStyles
 type ButtonSize = keyof typeof sizeStyles
 
 // Helper function for components that need to get button variant classes
+// eslint-disable-next-line react-refresh/only-export-components
 export function buttonVariants({ variant = "default", size = "default" }: { variant?: ButtonVariant; size?: ButtonSize } = {}) {
   return cn(
     "inline-flex items-center justify-center gap-2 whitespace-nowrap disabled:pointer-events-none disabled:opacity-50",

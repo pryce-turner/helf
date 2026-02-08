@@ -10,7 +10,17 @@ interface BeforeInstallPromptEvent extends Event {
 export function InstallPrompt() {
     const [deferredPrompt, setDeferredPrompt] =
         useState<BeforeInstallPromptEvent | null>(null);
-    const [showPrompt, setShowPrompt] = useState(false);
+    const [showPrompt, setShowPrompt] = useState(() => {
+        const dismissed = localStorage.getItem("pwa-prompt-dismissed");
+        if (dismissed) {
+            const dismissedTime = parseInt(dismissed);
+            const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+            if (Date.now() - dismissedTime < sevenDaysInMs) {
+                return false;
+            }
+        }
+        return false;
+    });
 
     useEffect(() => {
         const handler = (e: Event) => {
@@ -50,17 +60,6 @@ export function InstallPrompt() {
             Date.now().toString(),
         );
     };
-
-    useEffect(() => {
-        const dismissed = localStorage.getItem("pwa-prompt-dismissed");
-        if (dismissed) {
-            const dismissedTime = parseInt(dismissed);
-            const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-            if (Date.now() - dismissedTime < sevenDaysInMs) {
-                setShowPrompt(false);
-            }
-        }
-    }, []);
 
     if (!showPrompt || !deferredPrompt) return null;
 

@@ -781,7 +781,7 @@ const WorkoutSession = () => {
     setShowForm(false);
   };
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFormData({
       date: date || format(new Date(), "yyyy-MM-dd"),
       exercise: "",
@@ -798,7 +798,7 @@ const WorkoutSession = () => {
     setSelectedExercise("");
     setEditingWorkout(null);
     setShowForm(false);
-  };
+  }, [date]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -820,23 +820,20 @@ const WorkoutSession = () => {
   };
 
   // Sync exercise selection when editing and exercises data is available
-  useEffect(() => {
-    if (editingWorkout && exercises) {
-      // Look up the exercise's actual category
-      const exerciseData = exercises.find(
-        (e) => e.name === editingWorkout.exercise,
-      );
-      if (exerciseData) {
-        const actualCategory = exerciseData.category;
-        if (selectedCategory !== actualCategory) {
-          setSelectedCategory(actualCategory);
-        }
-        if (selectedExercise !== editingWorkout.exercise) {
-          setSelectedExercise(editingWorkout.exercise);
-        }
-      }
+  const [lastSyncedEdit, setLastSyncedEdit] = useState<number | null>(null);
+  if (editingWorkout && exercises && lastSyncedEdit !== editingWorkout.doc_id) {
+    const exerciseData = exercises.find(
+      (e) => e.name === editingWorkout.exercise,
+    );
+    if (exerciseData) {
+      setSelectedCategory(exerciseData.category);
+      setSelectedExercise(editingWorkout.exercise);
+      setLastSyncedEdit(editingWorkout.doc_id);
     }
-  }, [editingWorkout, exercises, selectedCategory, selectedExercise]);
+  }
+  if (!editingWorkout && lastSyncedEdit !== null) {
+    setLastSyncedEdit(null);
+  }
 
   // Auto-cancel delete confirmation after 3 seconds
   useEffect(() => {

@@ -69,15 +69,15 @@ const Upcoming = () => {
   const [numCycles, setNumCycles] = useState('4');
   const [editorError, setEditorError] = useState<string>('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [lastAppliedPreset, setLastAppliedPreset] = useState<string>('');
 
   const { data: presetContent } = usePreset(selectedPreset !== 'custom' ? selectedPreset : '');
 
   // Update script content when preset content is loaded
-  useEffect(() => {
-    if (presetContent?.script) {
-      setScriptContent(presetContent.script);
-    }
-  }, [presetContent]);
+  if (presetContent?.script && presetContent.name !== lastAppliedPreset) {
+    setScriptContent(presetContent.script);
+    setLastAppliedPreset(presetContent.name);
+  }
 
   // Auto-cancel delete confirmation after 3 seconds
   useEffect(() => {

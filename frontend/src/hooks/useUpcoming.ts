@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { upcomingApi } from '@/lib/api';
-import type { UpcomingWorkoutCreate, LiftoscriptGenerateRequest } from '@/types/upcoming';
+import type { UpcomingWorkout, UpcomingWorkoutCreate, LiftoscriptGenerateRequest } from '@/types/upcoming';
 
 export function useUpcomingWorkouts() {
   return useQuery({
@@ -31,7 +31,7 @@ export function useCreateUpcomingWorkout() {
       const response = await upcomingApi.create(workout);
       return response.data;
     },
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
     },
   });
@@ -45,7 +45,7 @@ export function useCreateBulkUpcoming() {
       const response = await upcomingApi.createBulk(workouts);
       return response.data;
     },
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
     },
   });
@@ -59,7 +59,24 @@ export function useDeleteUpcomingSession() {
       await upcomingApi.deleteSession(session);
       return session;
     },
-    onSuccess: () => {
+    onMutate: async (session) => {
+      await queryClient.cancelQueries({ queryKey: ['upcoming'] });
+
+      const previousUpcoming = queryClient.getQueriesData<UpcomingWorkout[]>({ queryKey: ['upcoming'] });
+
+      queryClient.setQueriesData<UpcomingWorkout[]>(
+        { queryKey: ['upcoming'] },
+        (old) => old?.filter((w) => w.session !== session)
+      );
+
+      return { previousUpcoming };
+    },
+    onError: (_err, _session, context) => {
+      context?.previousUpcoming.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
     },
   });
@@ -73,7 +90,27 @@ export function useTransferSession() {
       const response = await upcomingApi.transferSession(session, date);
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: async ({ session }) => {
+      await queryClient.cancelQueries({ queryKey: ['upcoming'] });
+      await queryClient.cancelQueries({ queryKey: ['workouts'] });
+      await queryClient.cancelQueries({ queryKey: ['calendar'] });
+
+      const previousUpcoming = queryClient.getQueriesData<UpcomingWorkout[]>({ queryKey: ['upcoming'] });
+
+      // Remove transferred session from upcoming cache
+      queryClient.setQueriesData<UpcomingWorkout[]>(
+        { queryKey: ['upcoming'] },
+        (old) => old?.filter((w) => w.session !== session)
+      );
+
+      return { previousUpcoming };
+    },
+    onError: (_err, _vars, context) => {
+      context?.previousUpcoming.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['workouts'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
@@ -121,7 +158,7 @@ export function useLiftoscriptGenerate() {
       const response = await upcomingApi.generateLiftoscript(request);
       return response.data;
     },
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['progression'] });
     },

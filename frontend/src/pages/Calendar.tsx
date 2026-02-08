@@ -11,7 +11,7 @@ import { useCalendar } from "@/hooks/useWorkouts";
 const calculateStreak = (workoutCounts: Record<string, number>): number => {
     // Get all dates with workouts, sorted descending (most recent first)
     const workoutDates = Object.entries(workoutCounts)
-        .filter(([_, count]) => count > 0)
+        .filter(([, count]) => count > 0)
         .map(([date]) => new Date(date + 'T00:00:00'))
         .sort((a, b) => b.getTime() - a.getTime());
 
@@ -109,7 +109,10 @@ const Calendar = () => {
         navigate(`/day/${date}`);
     };
 
-    const workoutCounts = calendarData?.counts || {};
+    const workoutCounts = useMemo(
+        () => calendarData?.counts || {},
+        [calendarData?.counts],
+    );
 
     // Calculate streak using combined data from current and previous month
     const streak = useMemo(() => {
@@ -122,7 +125,7 @@ const Calendar = () => {
         return calculateStreak(combinedCounts);
     }, [workoutCounts, prevMonthData?.counts, isViewingCurrentMonth]);
 
-    const getDayClasses = (_day: number, count: number, isToday: boolean) => {
+    const getDayClasses = (count: number, isToday: boolean) => {
         const classes = ['calendar-day'];
         if (count > 0) classes.push('calendar-day--has-workout');
         if (isToday) classes.push('calendar-day--today');
@@ -205,7 +208,7 @@ const Calendar = () => {
                                         <div
                                             key={day}
                                             onClick={() => handleDayClick(day)}
-                                            className={getDayClasses(day, count, isToday)}
+                                            className={getDayClasses(count, isToday)}
                                         >
                                             <div className="calendar-day__number">{day}</div>
                                             {count > 0 ? (

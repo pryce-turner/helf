@@ -55,7 +55,41 @@ export function useCreateBodyComposition() {
       const response = await bodyCompositionApi.create(measurement);
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: async (newMeasurement) => {
+      await queryClient.cancelQueries({ queryKey: ['body-composition'] });
+
+      const previousData = queryClient.getQueriesData<BodyComposition[]>({ queryKey: ['body-composition'] });
+
+      const optimistic: BodyComposition = {
+        doc_id: -Date.now(),
+        timestamp: new Date().toISOString(),
+        date: new Date().toISOString().split('T')[0],
+        weight: newMeasurement.weight ?? 0,
+        weight_unit: newMeasurement.weight_unit ?? 'lbs',
+        body_fat_pct: newMeasurement.body_fat_pct ?? null,
+        muscle_mass: newMeasurement.muscle_mass ?? null,
+        bmi: newMeasurement.bmi ?? null,
+        water_pct: newMeasurement.water_pct ?? null,
+        bone_mass: newMeasurement.bone_mass ?? null,
+        visceral_fat: newMeasurement.visceral_fat ?? null,
+        metabolic_age: newMeasurement.metabolic_age ?? null,
+        protein_pct: newMeasurement.protein_pct ?? null,
+        created_at: new Date().toISOString(),
+      };
+
+      queryClient.setQueriesData<BodyComposition[]>(
+        { queryKey: ['body-composition'] },
+        (old) => old ? [...old, optimistic] : [optimistic]
+      );
+
+      return { previousData };
+    },
+    onError: (_err, _newMeasurement, context) => {
+      context?.previousData.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['body-composition'] });
     },
   });
@@ -69,7 +103,24 @@ export function useDeleteBodyComposition() {
       await bodyCompositionApi.delete(id);
       return id;
     },
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['body-composition'] });
+
+      const previousData = queryClient.getQueriesData<BodyComposition[]>({ queryKey: ['body-composition'] });
+
+      queryClient.setQueriesData<BodyComposition[]>(
+        { queryKey: ['body-composition'] },
+        (old) => old?.filter((m) => m.doc_id !== id)
+      );
+
+      return { previousData };
+    },
+    onError: (_err, _id, context) => {
+      context?.previousData.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['body-composition'] });
     },
   });

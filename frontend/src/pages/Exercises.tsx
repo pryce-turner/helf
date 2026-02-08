@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Sparkles } from 'lucide-react';
+import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Sparkles, ChevronDown } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,19 @@ const Exercises = () => {
   const [editNotes, setEditNotes] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = useCallback((category: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  }, []);
 
   // Auto-hide seed message after 4 seconds
   useEffect(() => {
@@ -289,51 +302,92 @@ const Exercises = () => {
               </p>
             </div>
           ) : sortedCategories.length > 0 ? (
-            <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+            <div className="stagger-children" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               {sortedCategories.map((category, categoryIndex) => {
                 const catColor = getCategoryColor(category);
                 const categoryExercises = exercisesByCategory[category];
+                const isExpanded = expandedCategories.has(category);
 
                 return (
-                  <Card key={category} className="animate-in" style={{ animationDelay: `${categoryIndex * 50}ms` }}>
-                    <CardHeader>
-                      <div className="flex items-center justify-between flex-wrap" style={{ gap: 'var(--space-4)' }}>
-                        <div className="flex items-center" style={{ gap: 'var(--space-3)' }}>
-                          <div
-                            className="workout-order"
+                  <Card key={category} className="animate-in" style={{ animationDelay: `${categoryIndex * 50}ms`, overflow: 'hidden' }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(category)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                        padding: 'var(--space-4) var(--space-5)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'inherit',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div className="flex items-center" style={{ gap: 'var(--space-3)' }}>
+                        <div
+                          className="workout-order"
+                          style={{
+                            width: '40px',
+                            height: '40px',
+                            fontSize: '16px',
+                            flexShrink: 0,
+                            background: `${catColor.bg}15`,
+                            color: catColor.text,
+                          }}
+                        >
+                          <Dumbbell style={{ width: '18px', height: '18px' }} />
+                        </div>
+                        <div>
+                          <span
+                            className="font-display"
                             style={{
-                              width: '44px',
-                              height: '44px',
-                              fontSize: '18px',
-                              background: `${catColor.bg}15`,
-                              color: catColor.text,
+                              fontSize: '17px',
+                              fontWeight: 700,
+                              letterSpacing: '0.02em',
+                              color: 'var(--text-primary)',
                             }}
                           >
-                            <Dumbbell style={{ width: '20px', height: '20px' }} />
-                          </div>
-                          <div>
-                            <CardTitle className="font-display text-xl tracking-tight">
-                              {category.toUpperCase()}
-                            </CardTitle>
-                            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
-                              {categoryExercises.length} exercise{categoryExercises.length !== 1 ? 's' : ''}
-                            </p>
-                          </div>
+                            {category.toUpperCase()}
+                          </span>
+                          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            {categoryExercises.length} exercise{categoryExercises.length !== 1 ? 's' : ''}
+                          </p>
                         </div>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                      <ChevronDown
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          color: 'var(--text-muted)',
+                          flexShrink: 0,
+                          transition: 'transform var(--duration-normal) var(--ease-default)',
+                          transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        }}
+                      />
+                    </button>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateRows: isExpanded ? '1fr' : '0fr',
+                        transition: 'grid-template-rows var(--duration-normal) var(--ease-default)',
+                      }}
+                    >
+                      <div style={{ overflow: 'hidden' }}>
+                        <div style={{ padding: '0 var(--space-5) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                         {categoryExercises.map((exercise, exerciseIndex) => (
                           <div
                             key={exercise.doc_id}
                             className="interactive-item"
                             style={{
-                              padding: 'var(--space-4)',
+                              padding: 'var(--space-3) var(--space-4)',
                               background: 'var(--bg-tertiary)',
                               borderRadius: 'var(--radius-md)',
                               border: '1px solid var(--border-subtle)',
                               transition: 'all var(--duration-normal) var(--ease-default)',
+                              overflow: 'hidden',
                             }}
                           >
                             {editingId === exercise.doc_id ? (
@@ -390,65 +444,68 @@ const Exercises = () => {
                               </div>
                             ) : (
                               // Display state
-                              <div className="flex items-start" style={{ gap: 'var(--space-4)' }}>
-                                <div
-                                  className="workout-order"
-                                  style={{
-                                    width: '36px',
-                                    height: '36px',
-                                    fontSize: '14px',
-                                    background: `${catColor.bg}15`,
-                                    color: catColor.text,
-                                  }}
-                                >
-                                  {exerciseIndex + 1}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: (exercise.use_count > 0 || exercise.notes) ? 'var(--space-2)' : 0 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                                <div className="flex items-start" style={{ gap: 'var(--space-3)', minWidth: 0 }}>
+                                  <div
+                                    className="workout-order"
+                                    style={{
+                                      width: '36px',
+                                      height: '36px',
+                                      fontSize: '14px',
+                                      flexShrink: 0,
+                                      background: `${catColor.bg}15`,
+                                      color: catColor.text,
+                                    }}
+                                  >
+                                    {exerciseIndex + 1}
+                                  </div>
+                                  <div style={{ flex: '1 1 0', minWidth: 0 }}>
                                     <h3
                                       style={{
                                         fontFamily: 'var(--font-body)',
                                         fontSize: '16px',
                                         fontWeight: 600,
                                         color: 'var(--text-primary)',
+                                        marginBottom: (exercise.use_count > 0 || exercise.notes) ? 'var(--space-2)' : 0,
+                                        wordBreak: 'break-word',
                                       }}
                                     >
                                       {exercise.name}
                                     </h3>
-                                  </div>
-                                  {exercise.notes && (
-                                    <div
-                                      className="flex items-start"
-                                      style={{
-                                        gap: 'var(--space-2)',
-                                        marginBottom: exercise.use_count > 0 ? 'var(--space-2)' : 0,
-                                        padding: 'var(--space-2) var(--space-3)',
-                                        background: 'var(--bg-secondary)',
-                                        borderRadius: 'var(--radius-sm)',
-                                        borderLeft: `3px solid ${catColor.border}`,
-                                      }}
-                                    >
-                                      <FileText style={{ width: '14px', height: '14px', color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
-                                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-                                        {exercise.notes}
-                                      </p>
-                                    </div>
-                                  )}
-                                  {exercise.use_count > 0 && (
-                                    <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
-                                      <div className="workout-chip">
-                                        <Hash style={{ width: '14px', height: '14px', color: catColor.text }} />
-                                        <span className="workout-chip__value" style={{ fontSize: '13px' }}>
-                                          {exercise.use_count}
-                                        </span>
-                                        <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                                          use{exercise.use_count !== 1 ? 's' : ''}
-                                        </span>
+                                    {exercise.notes && (
+                                      <div
+                                        className="flex items-start"
+                                        style={{
+                                          gap: 'var(--space-2)',
+                                          marginBottom: exercise.use_count > 0 ? 'var(--space-2)' : 0,
+                                          padding: 'var(--space-2) var(--space-3)',
+                                          background: 'var(--bg-secondary)',
+                                          borderRadius: 'var(--radius-sm)',
+                                          borderLeft: `3px solid ${catColor.border}`,
+                                        }}
+                                      >
+                                        <FileText style={{ width: '14px', height: '14px', color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
+                                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                                          {exercise.notes}
+                                        </p>
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
+                                    {exercise.use_count > 0 && (
+                                      <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                                        <div className="workout-chip">
+                                          <Hash style={{ width: '14px', height: '14px', color: catColor.text }} />
+                                          <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                            {exercise.use_count}
+                                          </span>
+                                          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                                            use{exercise.use_count !== 1 ? 's' : ''}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                                   <Button
                                     variant="secondary"
                                     size="sm"
@@ -490,8 +547,9 @@ const Exercises = () => {
                             )}
                           </div>
                         ))}
+                        </div>
                       </div>
-                    </CardContent>
+                    </div>
                   </Card>
                 );
               })}

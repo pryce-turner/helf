@@ -529,9 +529,11 @@
         transition: all var(--duration-normal);
     }
 
-    .nav-link:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
+    @media (hover: hover) {
+        .nav-link:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
     }
 
     .nav-link--active {
@@ -540,9 +542,11 @@
         font-weight: 600;
     }
 
-    .nav-link--active:hover {
-        background: var(--accent-hover);
-        color: var(--text-inverse);
+    @media (hover: hover) {
+        .nav-link--active:hover {
+            background: var(--accent-hover);
+            color: var(--text-inverse);
+        }
     }
 
     .nav-mobile {
@@ -579,9 +583,14 @@
         transition: color var(--duration-normal);
     }
 
-    .nav-mobile-link:hover,
     .nav-mobile-link--active {
         color: var(--accent);
+    }
+
+    @media (hover: hover) {
+        .nav-mobile-link:hover {
+            color: var(--accent);
+        }
     }
 
     .nav-mobile-link__icon {

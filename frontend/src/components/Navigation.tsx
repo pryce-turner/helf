@@ -37,7 +37,7 @@ const Navigation = () => {
                                 to={path}
                                 className={`nav-link ${isActive(path) ? 'nav-link--active' : ''}`}
                             >
-                                <Icon className="w-[18px] h-[18px]" />
+                                <Icon className="w-4 h-4" />
                                 {label}
                             </Link>
                         ))}
@@ -57,7 +57,7 @@ const Navigation = () => {
                             className={`nav-mobile-link ${isActive(path) ? 'nav-mobile-link--active' : ''}`}
                         >
                             <div className="nav-mobile-link__icon">
-                                <Icon className="w-[22px] h-[22px]" />
+                                <Icon className="w-5 h-5" />
                             </div>
                             <span className="nav-mobile-link__label">{label}</span>
                         </Link>

@@ -64,24 +64,47 @@ export function InstallPrompt() {
     if (!showPrompt || !deferredPrompt) return null;
 
     return (
-        <div className="fixed bottom-24 left-4 right-4 md:bottom-4 md:left-auto md:right-4 md:max-w-md z-50 bg-card border border-border rounded-lg shadow-lg p-4">
-            <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                    <Download className="h-5 w-5 text-primary" />
+        <div
+            className="fixed z-50 animate-in"
+            style={{
+                bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+                left: 'var(--space-4)',
+                right: 'var(--space-4)',
+                maxWidth: '400px',
+                margin: '0 auto',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-lg)',
+                padding: 'var(--space-4)',
+            }}
+        >
+            <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
+                <div style={{ flexShrink: 0, marginTop: '2px' }}>
+                    <Download style={{ width: '20px', height: '20px', color: 'var(--accent)' }} />
                 </div>
-                <div className="flex-1">
-                    <h3 className="font-semibold text-sm mb-1">
+                <div style={{ flex: 1 }}>
+                    <h3 style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        marginBottom: 'var(--space-1)',
+                    }}>
                         Install Helf
                     </h3>
-                    <p className="text-xs text-muted-foreground mb-3">
-                        Install this app on your device for a better experience
-                        and offline access.
+                    <p style={{
+                        fontSize: '13px',
+                        color: 'var(--text-secondary)',
+                        marginBottom: 'var(--space-3)',
+                        lineHeight: 1.4,
+                    }}>
+                        Install for a better experience and offline access.
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex" style={{ gap: 'var(--space-2)' }}>
                         <Button
                             size="sm"
                             onClick={handleInstallClick}
-                            className="flex-1"
+                            style={{ flex: 1 }}
                         >
                             Install
                         </Button>
@@ -96,10 +119,11 @@ export function InstallPrompt() {
                 </div>
                 <button
                     onClick={handleDismiss}
-                    className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                    className="action-btn"
                     aria-label="Dismiss"
+                    style={{ flexShrink: 0, width: '28px', height: '28px' }}
                 >
-                    <X className="h-4 w-4" />
+                    <X style={{ width: '16px', height: '16px' }} />
                 </button>
             </div>
         </div>

@@ -202,7 +202,7 @@ const Progression = () => {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <ResponsiveContainer width="100%" height={400}>
+                                    <ResponsiveContainer width="100%" height={320}>
                                         <LineChart data={combinedData}>
                                             <CartesianGrid
                                                 strokeDasharray="3 3"
@@ -305,7 +305,7 @@ const Progression = () => {
                                 </CardContent>
                             </Card>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 'var(--space-6)' }}>
+                            <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 'var(--space-4)' }}>
                                 <Card className="animate-in">
                                     <CardHeader>
                                         <CardTitle className="font-display text-xl tracking-tight">

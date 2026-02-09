@@ -146,6 +146,7 @@ const SortableWorkoutCard = ({
         {isEditing && (
           <button
             type="button"
+            className="action-btn"
             onClick={(e) => {
               e.stopPropagation();
               resetForm();
@@ -156,15 +157,13 @@ const SortableWorkoutCard = ({
               position: "absolute",
               top: "var(--space-3)",
               right: "var(--space-3)",
-              width: "90px",
-              height: "90px",
-              background: "transparent",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
               zIndex: 2,
+              width: "36px",
+              height: "36px",
             }}
-          />
+          >
+            <X style={{ width: "20px", height: "20px" }} />
+          </button>
         )}
         {!isEditing && (
           <div
@@ -298,96 +297,52 @@ const SortableWorkoutCard = ({
             </span>
           </div>
 
-          {/* Data chips - keep row height consistent even when empty */}
+          {/* Data chips */}
           <div
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: "var(--space-3)",
-              minHeight: "70px",
+              gap: "var(--space-2)",
             }}
           >
             {workout.weight && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "var(--bg-tertiary)",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
+              <div className="workout-chip">
                 <Weight
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "14px",
+                    height: "14px",
                     color: "var(--accent)",
                   }}
                 />
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--text-primary)",
-                    fontSize: "15px",
-                  }}
-                >
+                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
                   {workout.weight} {workout.weight_unit}
                 </span>
               </div>
             )}
             {workout.reps && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "var(--bg-tertiary)",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
+              <div className="workout-chip">
                 <Hash
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "14px",
+                    height: "14px",
                     color: "var(--accent)",
                   }}
                 />
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--text-primary)",
-                    fontSize: "15px",
-                  }}
-                >
+                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
                   {workout.reps} reps
                 </span>
               </div>
             )}
             {workout.comment && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "var(--bg-tertiary)",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
+              <div className="workout-chip">
                 <MessageSquare
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "14px",
+                    height: "14px",
                     color: "var(--text-muted)",
                   }}
                 />
-                <span
-                  style={{ color: "var(--text-secondary)", fontSize: "14px" }}
-                >
+                <span className="workout-chip__comment">
                   {workout.comment}
                 </span>
               </div>
@@ -983,26 +938,29 @@ const WorkoutSession = () => {
               </div>
             </div>
 
-            <div className="flex" style={{ gap: "var(--space-2)" }}>
+            <div className="flex flex-wrap" style={{ gap: "var(--space-2)" }}>
               {workouts && workouts.length > 0 && (
                 <Button
                   variant="secondary"
+                  size="sm"
                   onClick={() => setShowMoveCalendar(!showMoveCalendar)}
                 >
-                  <CalendarIcon style={{ width: "18px", height: "18px" }} />
-                  Move All
+                  <CalendarIcon style={{ width: "16px", height: "16px" }} />
+                  Move
                 </Button>
               )}
               {workouts && workouts.length > 0 && (
                 <Button
                   variant="secondary"
+                  size="sm"
                   onClick={() => setShowCopyCalendar(!showCopyCalendar)}
                 >
-                  <Copy style={{ width: "18px", height: "18px" }} />
-                  Copy All
+                  <Copy style={{ width: "16px", height: "16px" }} />
+                  Copy
                 </Button>
               )}
               <Button
+                size="sm"
                 onClick={() => {
                   if (showForm) {
                     resetForm();
@@ -1011,8 +969,8 @@ const WorkoutSession = () => {
                   }
                 }}
               >
-                <Plus style={{ width: "20px", height: "20px" }} />
-                Add Exercise
+                <Plus style={{ width: "16px", height: "16px" }} />
+                Add
               </Button>
             </div>
           </div>

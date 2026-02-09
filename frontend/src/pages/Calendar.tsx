@@ -158,7 +158,7 @@ const Calendar = () => {
                         </div>
 
                         {/* Day Headers */}
-                        <div className="grid grid-cols-7 gap-1" style={{ marginBottom: 'var(--space-4)' }}>
+                        <div className="grid grid-cols-7" style={{ gap: 'var(--space-1)', marginBottom: 'var(--space-3)' }}>
                             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                                 (day, index) => (
                                     <div
@@ -189,7 +189,7 @@ const Calendar = () => {
                                 </p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-7 gap-1">
+                            <div className="grid grid-cols-7" style={{ gap: 'var(--space-1)' }}>
                                 {/* Empty cells for days before month starts */}
                                 {Array.from({ length: firstDay }).map((_, i) => (
                                     <div key={`empty-${i}`} className="calendar-day calendar-day--empty" />
@@ -229,10 +229,10 @@ const Calendar = () => {
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-32">
+                    <div className="grid grid-cols-3" style={{ gap: 'var(--space-3)' }}>
                         <div className="stat-card animate-in">
-                            <div className="stat-card__label" style={{ marginBottom: 'var(--space-2)' }}>
-                                THIS MONTH
+                            <div className="stat-card__header">
+                                This Month
                             </div>
                             <div className="stat-card__value">
                                 {Object.values(workoutCounts).reduce((a, b) => a + b, 0)}
@@ -241,20 +241,20 @@ const Calendar = () => {
                         </div>
 
                         <div className="stat-card animate-in">
-                            <div className="stat-card__label" style={{ marginBottom: 'var(--space-2)' }}>
-                                ACTIVE DAYS
+                            <div className="stat-card__header">
+                                Active Days
                             </div>
                             <div className="stat-card__value">
                                 {Object.values(workoutCounts).filter((c) => c > 0).length}
                             </div>
-                            <div className="stat-card__label">Days with workouts</div>
+                            <div className="stat-card__label">Days trained</div>
                         </div>
 
                         <div className="stat-card animate-in">
-                            <div className="stat-card__label" style={{ marginBottom: 'var(--space-2)' }}>
-                                STREAK
+                            <div className="stat-card__header">
+                                Streak
                             </div>
-                            <div className="stat-card__value flex items-center justify-center" style={{ gap: 'var(--space-2)' }}>
+                            <div className="stat-card__value flex items-center" style={{ gap: 'var(--space-2)' }}>
                                 {streak !== null ? (
                                     <>
                                         <span>{streak}</span>

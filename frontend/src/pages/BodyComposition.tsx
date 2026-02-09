@@ -5,6 +5,13 @@ import { Weight, TrendingDown, TrendingUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     useBodyCompositionStats,
     useBodyCompositionTrends,
 } from "@/hooks/useBodyComposition";
@@ -46,11 +53,9 @@ const StatCard = ({
 
     return (
         <div className="stat-card animate-in">
-            <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {title}
-                </div>
-                <Icon style={{ width: '20px', height: '20px', color: 'var(--text-muted)' }} />
+            <div className="flex items-center justify-between stat-card__header">
+                <span>{title}</span>
+                <Icon style={{ width: '18px', height: '18px', color: 'var(--text-muted)' }} />
             </div>
             <div className="stat-card__value">
                 {value !== null ? `${value.toFixed(1)} ${unit}` : "N/A"}
@@ -120,7 +125,7 @@ const BodyComposition = () => {
                         </div>
                     ) : stats ? (
                         <>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 section">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 section" style={{ gap: 'var(--space-3)' }}>
                                 <StatCard
                                     title="Current Weight"
                                     value={
@@ -162,7 +167,7 @@ const BodyComposition = () => {
                                     trendDirection="up-good"
                                 />
                                 <div className="stat-card animate-in">
-                                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-3)' }}>
+                                    <div className="stat-card__header">
                                         Total Measurements
                                     </div>
                                     <div className="stat-card__value">
@@ -189,34 +194,35 @@ const BodyComposition = () => {
                                     <CardTitle className="font-display text-xl tracking-tight">
                                         TRENDS
                                     </CardTitle>
-                                    <div className="flex items-center gap-2">
-                                        <label className="text-[13px] text-[var(--text-muted)]">
-                                            Period:
-                                        </label>
-                                        <select
-                                            value={trendDays}
-                                            onChange={(e) => setTrendDays(parseInt(e.target.value))}
-                                            className="input text-[13px] py-1.5 px-3"
+                                    <div style={{ width: '130px' }}>
+                                        <Select
+                                            value={String(trendDays)}
+                                            onValueChange={(v) => setTrendDays(Number(v))}
                                         >
-                                            <option value={7}>7 days</option>
-                                            <option value={30}>30 days</option>
-                                            <option value={60}>60 days</option>
-                                            <option value={90}>90 days</option>
-                                            <option value={180}>180 days</option>
-                                            <option value={365}>1 year</option>
-                                        </select>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="7">7 days</SelectItem>
+                                                <SelectItem value="30">30 days</SelectItem>
+                                                <SelectItem value="60">60 days</SelectItem>
+                                                <SelectItem value="90">90 days</SelectItem>
+                                                <SelectItem value="180">180 days</SelectItem>
+                                                <SelectItem value="365">1 year</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </CardHeader>
                                 <CardContent>
                                     {trendsLoading ? (
-                                        <div className="text-center py-12">
+                                        <div className="text-center" style={{ padding: 'var(--space-12) 0' }}>
                                             <div className="loading-spinner inline-block" style={{ width: '40px', height: '40px' }} />
-                                            <p className="mt-4 text-[var(--text-muted)]">Loading trends...</p>
+                                            <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>Loading trends...</p>
                                         </div>
                                     ) : chartData.length > 0 ? (
                                         <ResponsiveContainer
                                             width="100%"
-                                            height={400}
+                                            height={320}
                                         >
                                             <LineChart data={chartData}>
                                                 <CartesianGrid
@@ -332,7 +338,7 @@ const BodyComposition = () => {
                                             </LineChart>
                                         </ResponsiveContainer>
                                     ) : (
-                                        <div className="text-center py-12 text-[var(--text-secondary)]">
+                                        <div style={{ textAlign: 'center', padding: 'var(--space-12) 0', color: 'var(--text-secondary)' }}>
                                             No trend data available for this period
                                         </div>
                                     )}
@@ -340,12 +346,16 @@ const BodyComposition = () => {
                             </Card>
                         </>
                     ) : (
-                        <Card className="border-2 border-dashed border-[var(--border)] bg-transparent">
-                            <CardContent className="p-12 text-center">
-                                <p className="text-[var(--text-secondary)]">
+                        <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>
+                            <CardContent className="empty-state">
+                                <div className="empty-state__icon">
+                                    <Weight style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
+                                </div>
+                                <h3 className="empty-state__title">NO DATA YET</h3>
+                                <p className="empty-state__text">
                                     No body composition data available.
                                 </p>
-                                <p className="text-[13px] text-[var(--text-muted)] mt-2">
+                                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
                                     Connect your smart scale via MQTT to automatically track measurements.
                                 </p>
                             </CardContent>

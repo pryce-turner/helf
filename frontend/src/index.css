@@ -223,20 +223,34 @@
     }
 
     .card__header {
-        padding: var(--space-6) var(--space-6) var(--space-5);
+        padding: var(--space-4) var(--space-4) var(--space-3);
         display: flex;
         flex-direction: column;
         gap: var(--space-1);
     }
 
     .card__content {
-        padding: 0 var(--space-6) var(--space-6);
+        padding: 0 var(--space-4) var(--space-4);
     }
 
     .card__footer {
         display: flex;
         align-items: center;
-        padding: 0 var(--space-6) var(--space-6);
+        padding: 0 var(--space-4) var(--space-4);
+    }
+
+    @media (min-width: 768px) {
+        .card__header {
+            padding: var(--space-6) var(--space-6) var(--space-5);
+        }
+
+        .card__content {
+            padding: 0 var(--space-6) var(--space-6);
+        }
+
+        .card__footer {
+            padding: 0 var(--space-6) var(--space-6);
+        }
     }
 
     .card-hover {
@@ -384,13 +398,19 @@
         background: var(--bg-secondary);
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-lg);
-        padding: var(--space-5);
-        min-width: 150px;
+        padding: var(--space-4);
+        min-width: 0;
+    }
+
+    @media (min-width: 768px) {
+        .stat-card {
+            padding: var(--space-5);
+        }
     }
 
     .stat-card__value {
         font-family: var(--font-mono);
-        font-size: 32px;
+        font-size: 28px;
         font-weight: 700;
         color: var(--text-primary);
         line-height: 1;
@@ -400,6 +420,15 @@
         font-size: 13px;
         color: var(--text-muted);
         margin-top: var(--space-2);
+    }
+
+    .stat-card__header {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: var(--space-3);
     }
 
     /* Animations */
@@ -567,8 +596,8 @@
         display: grid;
         grid-template-columns: repeat(5, 1fr);
         min-height: 56px;
-        padding: 4px var(--space-2) 4px;
-        max-width: 380px;
+        padding: 4px 0;
+        max-width: 500px;
         margin: 0 auto;
     }
 
@@ -577,10 +606,12 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: var(--space-1);
+        gap: 2px;
         color: var(--text-muted);
         text-decoration: none;
         transition: color var(--duration-normal);
+        min-height: 48px;
+        padding: 4px 0;
     }
 
     .nav-mobile-link--active {
@@ -625,7 +656,13 @@
     .page__content {
         max-width: 1280px;
         margin: 0 auto;
-        padding: var(--space-6);
+        padding: var(--space-4);
+    }
+
+    @media (min-width: 768px) {
+        .page__content {
+            padding: var(--space-6);
+        }
     }
 
     .page__header {
@@ -656,7 +693,7 @@
     }
 
     .nav-spacer-mobile {
-        height: calc(56px + env(safe-area-inset-bottom, 0px));
+        height: calc(64px + env(safe-area-inset-bottom, 0px));
     }
 
     /* Interactive item styles */
@@ -1181,9 +1218,12 @@
 }
 
 /* Navigation spacing overrides - outside layer for proper specificity */
-/* Mobile: bottom nav needs bottom padding including safe area */
+/* Mobile: top safe area + bottom nav padding */
 @media (max-width: 767px) {
     .page__content {
+        padding-top: calc(
+            var(--space-4) + env(safe-area-inset-top, 0px)
+        ) !important;
         padding-bottom: calc(
             100px + env(safe-area-inset-bottom, 0px)
         ) !important;
@@ -1195,6 +1235,61 @@
     .page__content {
         padding-top: 88px !important;
         padding-bottom: 120px !important;
+    }
+}
+
+/* Responsive chart container - prevent overflow on mobile */
+@media (max-width: 767px) {
+    .recharts-responsive-container {
+        max-height: 280px !important;
+    }
+}
+
+/* Mobile touch feedback */
+@media (pointer: coarse) {
+    .calendar-day:active {
+        transform: scale(0.96);
+        transition: transform 80ms ease;
+    }
+
+    .card-hover:active {
+        transform: scale(0.98);
+        transition: transform 80ms ease;
+    }
+
+    .icon-btn:active,
+    .action-btn:active,
+    .stepper__btn:active {
+        transform: scale(0.92);
+        transition: transform 80ms ease;
+    }
+
+    .btn-primary:active,
+    .btn-secondary:active,
+    .btn-ghost:active,
+    .btn-danger:active {
+        transform: scale(0.96);
+        transition: transform 80ms ease;
+    }
+
+    /* Disable hover effects on touch - they stick on iOS */
+    .card-hover:hover {
+        transform: none;
+        box-shadow: none;
+    }
+
+    .interactive-item:hover {
+        transform: none;
+        box-shadow: none;
+    }
+
+    .calendar-day:hover {
+        transform: none;
+        box-shadow: none;
+    }
+
+    .calendar-day:hover .calendar-day__add-icon {
+        opacity: 0;
     }
 }
 

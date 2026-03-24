@@ -189,161 +189,253 @@ const BodyComposition = () => {
                                 </div>
                             </div>
 
-                            <Card className="animate-in">
-                                <CardHeader className="flex flex-row items-center justify-between">
-                                    <CardTitle className="font-display text-xl tracking-tight">
-                                        TRENDS
-                                    </CardTitle>
-                                    <div style={{ width: '130px' }}>
-                                        <Select
-                                            value={String(trendDays)}
-                                            onValueChange={(v) => setTrendDays(Number(v))}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="7">7 days</SelectItem>
-                                                <SelectItem value="30">30 days</SelectItem>
-                                                <SelectItem value="60">60 days</SelectItem>
-                                                <SelectItem value="90">90 days</SelectItem>
-                                                <SelectItem value="180">180 days</SelectItem>
-                                                <SelectItem value="365">1 year</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    {trendsLoading ? (
-                                        <div className="text-center" style={{ padding: 'var(--space-12) 0' }}>
-                                            <div className="loading-spinner inline-block" style={{ width: '40px', height: '40px' }} />
-                                            <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>Loading trends...</p>
-                                        </div>
-                                    ) : chartData.length > 0 ? (
-                                        <ResponsiveContainer
-                                            width="100%"
-                                            height={320}
-                                        >
-                                            <LineChart data={chartData}>
-                                                <CartesianGrid
-                                                    strokeDasharray="3 3"
-                                                    stroke="var(--border)"
-                                                />
-                                                <XAxis
-                                                    dataKey="date"
-                                                    stroke="var(--text-muted)"
-                                                    style={{ fontSize: '12px' }}
-                                                    tickFormatter={(date) =>
-                                                        format(
-                                                            parseISO(date),
-                                                            "MMM d",
-                                                        )
-                                                    }
-                                                />
-                                                <YAxis
-                                                    yAxisId="weight"
-                                                    stroke="var(--text-muted)"
-                                                    style={{ fontSize: '12px' }}
-                                                    label={{
-                                                        value: "Weight (lbs)",
-                                                        angle: -90,
-                                                        position: "insideLeft",
-                                                        style: { fill: 'var(--text-muted)' },
-                                                    }}
-                                                />
-                                                <YAxis
-                                                    yAxisId="percentage"
-                                                    orientation="right"
-                                                    stroke="var(--text-muted)"
-                                                    style={{ fontSize: '12px' }}
-                                                    label={{
-                                                        value: "Percentage (%)",
-                                                        angle: 90,
-                                                        position: "insideRight",
-                                                        style: { fill: 'var(--text-muted)' },
-                                                    }}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{
-                                                        backgroundColor: "var(--bg-tertiary)",
-                                                        border: "1px solid var(--border)",
-                                                        borderRadius: 'var(--radius-md)',
-                                                        color: 'var(--text-primary)',
-                                                    }}
-                                                    labelFormatter={(date) =>
-                                                        format(
-                                                            parseISO(date),
-                                                            "MMM d, yyyy",
-                                                        )
-                                                    }
-                                                    formatter={(
-                                                        value: number | undefined,
-                                                        name?: string,
-                                                    ) => {
-                                                        if (value == null)
-                                                            return ["N/A", name];
-                                                        if (name === "Weight")
-                                                            return [
-                                                                kgToLbs(
-                                                                    value,
-                                                                )?.toFixed(1) +
-                                                                    " lbs",
-                                                                name,
-                                                            ];
-                                                        if (name === "Muscle Mass")
-                                                            return [
-                                                                kgToLbs(
-                                                                    value,
-                                                                )?.toFixed(1) +
-                                                                    " lbs",
-                                                                name,
-                                                            ];
-                                                        return [
-                                                            value.toFixed(1) + "%",
-                                                            name,
-                                                        ];
-                                                    }}
-                                                />
-                                                <Legend />
-                                                <Line
-                                                    yAxisId="weight"
-                                                    type="monotone"
-                                                    dataKey="weight"
-                                                    stroke="var(--chart-2)"
-                                                    name="Weight"
-                                                    strokeWidth={2}
-                                                    dot={{ r: 3 }}
-                                                    connectNulls
-                                                />
-                                                <Line
-                                                    yAxisId="percentage"
-                                                    type="monotone"
-                                                    dataKey="bodyFat"
-                                                    stroke="var(--error)"
-                                                    name="Body Fat %"
-                                                    strokeWidth={2}
-                                                    dot={{ r: 3 }}
-                                                    connectNulls
-                                                />
-                                                <Line
-                                                    yAxisId="weight"
-                                                    type="monotone"
-                                                    dataKey="muscleMass"
-                                                    stroke="var(--accent)"
-                                                    name="Muscle Mass"
-                                                    strokeWidth={2}
-                                                    dot={{ r: 3 }}
-                                                    connectNulls
-                                                />
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                    ) : (
-                                        <div style={{ textAlign: 'center', padding: 'var(--space-12) 0', color: 'var(--text-secondary)' }}>
-                                            No trend data available for this period
-                                        </div>
+                            {/* Period selector */}
+                            <div className="flex items-center justify-between animate-in" style={{ marginBottom: 'var(--space-4)' }}>
+                                <h2 className="page__title page__title--compact" style={{ fontSize: '20px' }}>TRENDS</h2>
+                                <div style={{ width: '130px' }}>
+                                    <Select
+                                        value={String(trendDays)}
+                                        onValueChange={(v) => setTrendDays(Number(v))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="7">7 days</SelectItem>
+                                            <SelectItem value="30">30 days</SelectItem>
+                                            <SelectItem value="60">60 days</SelectItem>
+                                            <SelectItem value="90">90 days</SelectItem>
+                                            <SelectItem value="180">180 days</SelectItem>
+                                            <SelectItem value="365">1 year</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {trendsLoading ? (
+                                <div className="text-center" style={{ padding: 'var(--space-12) 0' }}>
+                                    <div className="loading-spinner inline-block" style={{ width: '40px', height: '40px' }} />
+                                    <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>Loading trends...</p>
+                                </div>
+                            ) : chartData.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                                    {/* Weight Chart */}
+                                    {chartData.some(d => d.weight != null) && (
+                                        <Card className="animate-in">
+                                            <CardHeader style={{ paddingBottom: 0 }}>
+                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--chart-2)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                    Weight
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <ResponsiveContainer width="100%" height={220}>
+                                                    <LineChart data={chartData}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <XAxis
+                                                            dataKey="date"
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                        />
+                                                        <YAxis
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            domain={['auto', 'auto']}
+                                                            tickFormatter={(v) => (v * 2.20462).toFixed(0)}
+                                                            padding={{ top: 10, bottom: 10 }}
+                                                        />
+                                                        <Tooltip
+                                                            contentStyle={{
+                                                                backgroundColor: "var(--bg-tertiary)",
+                                                                border: "1px solid var(--border)",
+                                                                borderRadius: 'var(--radius-md)',
+                                                                color: 'var(--text-primary)',
+                                                            }}
+                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
+                                                            formatter={(value: number | undefined) => {
+                                                                if (value == null) return ["N/A", "Weight"];
+                                                                return [kgToLbs(value)?.toFixed(1) + " lbs", "Weight"];
+                                                            }}
+                                                        />
+                                                        <Line
+                                                            type="monotone"
+                                                            dataKey="weight"
+                                                            stroke="var(--chart-2)"
+                                                            name="Weight"
+                                                            strokeWidth={2}
+                                                            dot={{ r: 3 }}
+                                                            connectNulls
+                                                        />
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            </CardContent>
+                                        </Card>
                                     )}
-                                </CardContent>
-                            </Card>
+
+                                    {/* Body Fat % Chart */}
+                                    {chartData.some(d => d.bodyFat != null) && (
+                                        <Card className="animate-in">
+                                            <CardHeader style={{ paddingBottom: 0 }}>
+                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--error)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                    Body Fat %
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <ResponsiveContainer width="100%" height={220}>
+                                                    <LineChart data={chartData}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <XAxis
+                                                            dataKey="date"
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                        />
+                                                        <YAxis
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            domain={['auto', 'auto']}
+                                                            tickFormatter={(v) => v.toFixed(1) + "%"}
+                                                            padding={{ top: 10, bottom: 10 }}
+                                                        />
+                                                        <Tooltip
+                                                            contentStyle={{
+                                                                backgroundColor: "var(--bg-tertiary)",
+                                                                border: "1px solid var(--border)",
+                                                                borderRadius: 'var(--radius-md)',
+                                                                color: 'var(--text-primary)',
+                                                            }}
+                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
+                                                            formatter={(value: number | undefined) => {
+                                                                if (value == null) return ["N/A", "Body Fat"];
+                                                                return [value.toFixed(1) + "%", "Body Fat"];
+                                                            }}
+                                                        />
+                                                        <Line
+                                                            type="monotone"
+                                                            dataKey="bodyFat"
+                                                            stroke="var(--error)"
+                                                            name="Body Fat %"
+                                                            strokeWidth={2}
+                                                            dot={{ r: 3 }}
+                                                            connectNulls
+                                                        />
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Muscle Mass Chart */}
+                                    {chartData.some(d => d.muscleMass != null) && (
+                                        <Card className="animate-in">
+                                            <CardHeader style={{ paddingBottom: 0 }}>
+                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                    Muscle Mass
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <ResponsiveContainer width="100%" height={220}>
+                                                    <LineChart data={chartData}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <XAxis
+                                                            dataKey="date"
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                        />
+                                                        <YAxis
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            domain={['auto', 'auto']}
+                                                            tickFormatter={(v) => (v * 2.20462).toFixed(0)}
+                                                            padding={{ top: 10, bottom: 10 }}
+                                                        />
+                                                        <Tooltip
+                                                            contentStyle={{
+                                                                backgroundColor: "var(--bg-tertiary)",
+                                                                border: "1px solid var(--border)",
+                                                                borderRadius: 'var(--radius-md)',
+                                                                color: 'var(--text-primary)',
+                                                            }}
+                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
+                                                            formatter={(value: number | undefined) => {
+                                                                if (value == null) return ["N/A", "Muscle Mass"];
+                                                                return [kgToLbs(value)?.toFixed(1) + " lbs", "Muscle Mass"];
+                                                            }}
+                                                        />
+                                                        <Line
+                                                            type="monotone"
+                                                            dataKey="muscleMass"
+                                                            stroke="var(--accent)"
+                                                            name="Muscle Mass"
+                                                            strokeWidth={2}
+                                                            dot={{ r: 3 }}
+                                                            connectNulls
+                                                        />
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {/* Water % Chart */}
+                                    {chartData.some(d => d.water != null) && (
+                                        <Card className="animate-in">
+                                            <CardHeader style={{ paddingBottom: 0 }}>
+                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--info)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                    Water %
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <ResponsiveContainer width="100%" height={220}>
+                                                    <LineChart data={chartData}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <XAxis
+                                                            dataKey="date"
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                        />
+                                                        <YAxis
+                                                            stroke="var(--text-muted)"
+                                                            style={{ fontSize: '11px' }}
+                                                            domain={['auto', 'auto']}
+                                                            tickFormatter={(v) => v.toFixed(1) + "%"}
+                                                            padding={{ top: 10, bottom: 10 }}
+                                                        />
+                                                        <Tooltip
+                                                            contentStyle={{
+                                                                backgroundColor: "var(--bg-tertiary)",
+                                                                border: "1px solid var(--border)",
+                                                                borderRadius: 'var(--radius-md)',
+                                                                color: 'var(--text-primary)',
+                                                            }}
+                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
+                                                            formatter={(value: number | undefined) => {
+                                                                if (value == null) return ["N/A", "Water"];
+                                                                return [value.toFixed(1) + "%", "Water"];
+                                                            }}
+                                                        />
+                                                        <Line
+                                                            type="monotone"
+                                                            dataKey="water"
+                                                            stroke="var(--info)"
+                                                            name="Water %"
+                                                            strokeWidth={2}
+                                                            dot={{ r: 3 }}
+                                                            connectNulls
+                                                        />
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: 'var(--space-12) 0', color: 'var(--text-secondary)' }}>
+                                    No trend data available for this period
+                                </div>
+                            )}
                         </>
                     ) : (
                         <Card style={{ border: '2px dashed var(--border)', background: 'transparent' }}>

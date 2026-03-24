@@ -32,6 +32,10 @@ PRESETS = {
         "display_name": "StrongLifts 5x5",
         "description": "Simple but effective strength program focusing on 5 sets of 5 reps on the big three lifts.",
     },
+    "cutting_rotation": {
+        "display_name": "Cutting Rotation",
+        "description": "Minimalist 3-workout rotation (Squat/Bench/Deadlift) for cutting. One main lift per session with light accessories. Rotate A→B→C regardless of schedule.",
+    },
 }
 
 router = APIRouter()

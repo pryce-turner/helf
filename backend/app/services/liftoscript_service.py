@@ -18,6 +18,8 @@ EXERCISE_CATEGORIES = {
     "Barbell Squat": "Legs",
     "Front Squat": "Legs",
     "Bulgarian Split Squat": "Legs",
+    "Leg Press": "Legs",
+    "Leg Curl": "Legs",
     "Flat Barbell Bench Press": "Chest",
     "Incline Dumbbell Press": "Chest",
     "Deadlift": "Back",

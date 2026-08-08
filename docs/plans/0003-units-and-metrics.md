@@ -1,6 +1,6 @@
 # Plan 0003: Units and metrics
 
-**Status:** **`a1`–`a4` done** (2026-08-08) — only `a5` outstanding
+**Status:** **`a1`–`a4` done, read path moved** (2026-08-08) — only `a5` outstanding
 **Prerequisites:** Plan 0002 (Alembic + pragmas) — satisfied
 **Related:** ADR-0003
 
@@ -10,7 +10,10 @@
 | `a2` | `4de188592eb5` | Done — `metric` + `metric_def`, seeded |
 | `a3` | `de63ed0bc62d` | Done — 600 rows backfilled |
 | `a4` | `f5abbd14fa00` | Done — four views |
-| `a5` | — | **Outstanding** — drop `weight_unit`; do last, after the read path moves |
+| — | `7bba3fe3ee35` | Done — `observation` table; **unplanned**, see §9 |
+| `a5` | — | **Outstanding** — drop `weight_unit` |
+
+Reads are served from the views as of §9. `body_composition` is write-only.
 
 > ## `a2`–`a4` implementation notes
 >
@@ -118,7 +121,7 @@
 > would show gaps in the chart while the list below it showed the row. One
 > consistent source beats a half-migrated one.
 >
-> **Nothing reads the views yet.** `body_composition` remains the live read path.
+> **Resolved by the `observation` refactor (`7bba3fe3ee35`).** See below.
 >
 > ## Mirror reconciliation (2026-08-08)
 >
@@ -773,3 +776,60 @@ sqlite3 "$HELF_DATA_PATH/helf.db" ".backup '$HELF_DATA_PATH/helf.db.pre-units'"
 
 Use `.backup`, not `cp` — WAL is on after Plan 0002 and `cp` may miss
 uncommitted pages.
+
+---
+
+## 9. Read path moved onto the views (2026-08-08)
+
+**Status: done.** Every read in `BodyCompositionRepository` — `get_all`,
+`get_by_id`, `get_latest`, `get_by_date_range`, `get_recent` and `get_stats` —
+now queries `v_body_comp_measurements`. `body_composition` is written but no
+longer read, except by `reconcile_mirror` and the duplicate-timestamp check.
+
+### The blocker in §4 was resolved by `observation`, not worked around
+
+Revision `7bba3fe3ee35` extracts an `observation` table (`id`, `observed_at`,
+`date`, `source`, `created_at`) that `metric` rows reference with
+`ON DELETE CASCADE`. That gives a measurement a real identity, which is what the
+views were missing. `v_body_comp_measurements` now carries `doc_id`,
+`created_at` and a literal `weight_unit`, so the response shape is unchanged.
+
+### `doc_id` changed meaning — and the ids do not line up
+
+**This is the sharp edge.** Reads now return `observation.id`.
+`body_composition.id` is a different sequence: **77 of the 150 production rows
+disagree.** `delete()` previously looked up `body_composition.id`, so leaving it
+alone would have deleted a *different measurement* than the user asked for, in
+roughly half of all cases, silently.
+
+`delete()` now resolves an `Observation` by id and removes the legacy row by
+matching the instant. Regression test
+(`test_doc_id_round_trips_through_delete`) deliberately forces the two
+sequences apart so a coincidental match cannot make it pass.
+
+### Tests now run the migrations
+
+`conftest.py` built its schema with `Base.metadata.create_all()`. That is no
+longer viable: the read path queries views and `metric_def` carries a seeded
+vocabulary, and neither exists in `Base.metadata` — `create_all()` produces a
+database the application cannot run against. Fixtures now run `upgrade head`,
+which costs about 2s across the suite and means tests exercise the same startup
+path the container does.
+
+### Verification
+
+- 177 tests pass; `ruff` clean; `alembic check` reports no drift.
+- Against a copy of production, served entirely from the views: the list returns
+  **150 measurements, not 107 days** — the grain is preserved; `/stats` returns
+  figures identical to the `body_composition`-backed implementation; and a
+  `DELETE` round-trip returns 204 and removes the right row.
+- `test_reads_are_served_from_the_view` empties `body_composition` and asserts
+  reads still work, which is the strongest available proof of where they come
+  from.
+
+### What remains
+
+- `a5`: drop the `weight_unit` columns.
+- Retire `body_composition` entirely. It is now write-only; once the mirror has
+  been trusted for a while, the dual write, `_serialize`, `reconcile_mirror` and
+  the table all go. That is a separate plan.

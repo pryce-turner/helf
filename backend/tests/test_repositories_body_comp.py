@@ -453,9 +453,8 @@ class TestMirrorReconciliation:
         """
         repo = BodyCompositionRepository()
         self._measure(repo, 6)
-        db_session.execute(
-            text("INSERT INTO metric_def (name, canonical_unit) VALUES ('mood', '1-10')")
-        )
+        # `mood` is already defined - the migration seeds it as a reserved
+        # metric awaiting the journal work.
         db_session.execute(
             text(
                 "INSERT INTO observation (observed_at, source, created_at) "
@@ -471,3 +470,89 @@ class TestMirrorReconciliation:
         db_session.commit()
 
         assert repo.reconcile_mirror()["in_sync"] is True
+
+
+class TestReadPathUsesTheViews:
+    """Reads come from `v_body_comp_measurements`, not `body_composition`."""
+
+    @staticmethod
+    def _create(repo, day, **fields):
+        ts = datetime(2026, 9, day, 7, 0, tzinfo=PACIFIC_TZ)
+        return repo.create(
+            BodyCompositionCreate(
+                timestamp=ts,
+                date=ts.date().isoformat(),
+                weight=190.0 + day,
+                body_fat_pct=23.0,
+                **fields,
+            )
+        )
+
+    def test_reads_are_served_from_the_view(self, db_session):
+        """Emptying the legacy table must not change what reads return.
+
+        The sharpest available proof that the view is the source: nothing else
+        would survive body_composition being gone.
+        """
+        repo = BodyCompositionRepository()
+        self._create(repo, 1)
+        self._create(repo, 2)
+
+        db_session.execute(text("DELETE FROM body_composition"))
+        db_session.commit()
+
+        assert len(repo.get_all()) == 2
+        assert repo.get_latest()["weight"] == pytest.approx(192.0)
+        assert repo.get_stats()["total_measurements"] == 2
+
+    def test_doc_id_round_trips_through_delete(self, db_session):
+        """The id a read hands out must be the id delete accepts.
+
+        Reads return `observation.id`; `body_composition.id` is a different
+        sequence that disagreed on 77 of the 150 production rows. Treating one
+        as the other deletes a different measurement than the user asked for.
+        """
+        repo = BodyCompositionRepository()
+        self._create(repo, 3)
+        self._create(repo, 4)
+
+        # Force the two sequences apart so a coincidental match cannot pass.
+        db_session.execute(text("UPDATE body_composition SET id = id + 500"))
+        db_session.commit()
+
+        target = repo.get_latest()
+        assert repo.delete(target["doc_id"]) is True
+
+        remaining = repo.get_all()
+        assert [m["doc_id"] for m in remaining] != [target["doc_id"]]
+        assert len(remaining) == 1
+        assert remaining[0]["weight"] == pytest.approx(193.0)
+
+    def test_delete_of_unknown_id_reports_false(self):
+        assert BodyCompositionRepository().delete(999999) is False
+
+    def test_pagination_and_ordering_survive_the_move(self):
+        repo = BodyCompositionRepository()
+        for day in (5, 6, 7):
+            self._create(repo, day)
+
+        newest_first = repo.get_all(limit=2)
+        assert [m["date"] for m in newest_first] == ["2026-09-07", "2026-09-06"]
+        assert [m["date"] for m in repo.get_all(skip=2, limit=2)] == ["2026-09-05"]
+
+    def test_date_range_is_inclusive_and_ascending(self):
+        repo = BodyCompositionRepository()
+        for day in (8, 9, 10):
+            self._create(repo, day)
+
+        found = repo.get_by_date_range("2026-09-08", "2026-09-09")
+        assert [m["date"] for m in found] == ["2026-09-08", "2026-09-09"]
+
+    def test_timestamps_come_back_as_datetimes(self):
+        """The view stores TEXT; the response model needs datetimes."""
+        repo = BodyCompositionRepository()
+        self._create(repo, 11)
+
+        latest = repo.get_latest()
+        assert isinstance(latest["timestamp"], datetime)
+        assert isinstance(latest["created_at"], datetime)

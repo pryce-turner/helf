@@ -1,21 +1,13 @@
-"""Tests for the tall `metric` table and the views over it.
-
-The views are defined only in migrations - `Base.metadata.create_all()`, which
-the ordinary fixtures use, does not create them. `TestViews` therefore migrates
-a real database rather than using those fixtures, which also means it exercises
-the migration path the container runs at startup.
-"""
+"""Tests for `observation`, the tall `metric` table, and the views over them."""
 
 import sqlite3
-
-import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
-
 from datetime import datetime
 
+import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
 import app.database as database
-from app.database import apply_sqlite_pragmas
 from app.db.models import Metric, Observation
 
 
@@ -113,24 +105,9 @@ class TestMetricConstraints:
 
 
 class TestViews:
-    """Views exist only in migrations, so migrate a real database."""
-
     @pytest.fixture()
-    def migrated(self, tmp_path, monkeypatch):
-        db_path = tmp_path / "views.db"
-        monkeypatch.setattr(database.settings, "db_path", db_path)
-
-        from alembic import command
-        from alembic.config import Config
-
-        command.upgrade(Config(str(database.ALEMBIC_INI)), "head")
-
-        engine = create_engine(f"sqlite:///{db_path}")
-        apply_sqlite_pragmas(engine)
-        try:
-            yield engine
-        finally:
-            engine.dispose()
+    def migrated(self, db_engine):
+        return db_engine
 
     @staticmethod
     def _insert(engine, rows):

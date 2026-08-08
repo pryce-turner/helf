@@ -3,13 +3,16 @@
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.database import SessionLocal
 from app.db.models import BodyComposition, Metric, Observation
 from app.models.body_composition import BodyCompositionCreate
-from app.utils.date_helpers import PACIFIC_TZ, get_current_datetime
+from app.utils.date_helpers import (
+    PACIFIC_TZ,
+    get_current_datetime,
+    parse_iso_timestamp,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,55 +66,81 @@ class BodyCompositionRepository:
             "created_at": measurement.created_at,
         }
 
+    @staticmethod
+    def _from_view(row) -> dict:
+        """Shape a `v_body_comp_measurements` row like `_serialize` does.
+
+        `observed_at` and `created_at` come back as TEXT because the view is
+        over `observation`, whose columns are strings; the response model needs
+        datetimes.
+        """
+        return {
+            "doc_id": row.doc_id,
+            "timestamp": parse_iso_timestamp(row.observed_at),
+            "date": row.date,
+            "weight": row.weight,
+            "weight_unit": row.weight_unit,
+            "body_fat_pct": row.body_fat_pct,
+            "muscle_mass": row.muscle_mass,
+            "bmi": row.bmi,
+            "water_pct": row.water_pct,
+            "bone_mass": row.bone_mass,
+            "visceral_fat": row.visceral_fat,
+            "metabolic_age": row.metabolic_age,
+            "protein_pct": row.protein_pct,
+            "created_at": parse_iso_timestamp(row.created_at),
+        }
+
+    def _read_measurements(self, where: str = "", order: str = "DESC", **params):
+        """Query the per-measurement view.
+
+        Deliberately `v_body_comp_measurements` and never `v_body_comp_daily`:
+        the daily view collapses to one row per day, which for this history
+        would silently drop 43 of 150 measurements.
+        """
+        clause = f"WHERE {where}" if where else ""
+        with SessionLocal() as session:
+            rows = session.execute(
+                text(
+                    f"SELECT * FROM v_body_comp_measurements {clause} "  # noqa: S608
+                    f"ORDER BY observed_at {order}"
+                    + (" LIMIT :limit OFFSET :skip" if "limit" in params else "")
+                ),
+                params,
+            ).all()
+        return [self._from_view(row) for row in rows]
+
     def get_all(self, skip: int = 0, limit: int = 100) -> list[dict]:
         """Get all measurements with pagination."""
-        with SessionLocal() as session:
-            measurements = session.execute(
-                select(BodyComposition)
-                .order_by(BodyComposition.timestamp.desc())
-                .offset(skip)
-                .limit(limit)
-            ).scalars().all()
-            return [self._serialize(m) for m in measurements]
+        return self._read_measurements(order="DESC", limit=limit, skip=skip)
 
     def get_by_id(self, doc_id: int) -> dict | None:
         """Get a measurement by ID."""
-        with SessionLocal() as session:
-            measurement = session.get(BodyComposition, doc_id)
-            return self._serialize(measurement) if measurement else None
+        found = self._read_measurements(where="doc_id = :doc_id", doc_id=doc_id)
+        return found[0] if found else None
 
     def get_latest(self) -> dict | None:
         """Get the most recent measurement."""
-        with SessionLocal() as session:
-            measurement = session.execute(
-                select(BodyComposition).order_by(BodyComposition.timestamp.desc()).limit(1)
-            ).scalar_one_or_none()
-            return self._serialize(measurement) if measurement else None
+        found = self._read_measurements(order="DESC", limit=1, skip=0)
+        return found[0] if found else None
 
     def get_by_date_range(self, start_date: str, end_date: str) -> list[dict]:
         """Get measurements within a date range."""
-        with SessionLocal() as session:
-            measurements = session.execute(
-                select(BodyComposition)
-                .where(BodyComposition.date >= start_date)
-                .where(BodyComposition.date <= end_date)
-                .order_by(BodyComposition.timestamp.asc())
-            ).scalars().all()
-            return [self._serialize(m) for m in measurements]
+        return self._read_measurements(
+            where="date >= :start AND date <= :end",
+            order="ASC",
+            start=start_date,
+            end=end_date,
+        )
 
     def get_recent(self, days: int = 30) -> list[dict]:
         """Get measurements from the last N days."""
         cutoff_date = (
             datetime.now(PACIFIC_TZ).date() - timedelta(days=days)
         ).isoformat()
-
-        with SessionLocal() as session:
-            measurements = session.execute(
-                select(BodyComposition)
-                .where(BodyComposition.date >= cutoff_date)
-                .order_by(BodyComposition.timestamp.asc())
-            ).scalars().all()
-            return [self._serialize(m) for m in measurements]
+        return self._read_measurements(
+            where="date >= :cutoff", order="ASC", cutoff=cutoff_date
+        )
 
     def create(
         self, measurement: BodyCompositionCreate, source: str = "manual"
@@ -260,21 +289,28 @@ class BodyCompositionRepository:
         }
 
     def delete(self, doc_id: int) -> bool:
-        """Delete a measurement and its mirrored metric rows."""
+        """Delete a measurement and its legacy `body_composition` row.
+
+        `doc_id` is an **`observation.id`**, because that is what the read path
+        returns. It is emphatically not a `body_composition.id`: the two
+        sequences disagree for 77 of the 150 existing rows, so treating one as
+        the other deletes a different measurement than the user asked for.
+
+        Metrics go with the observation via ON DELETE CASCADE.
+        """
         with SessionLocal() as session:
-            measurement = session.get(BodyComposition, doc_id)
-            if not measurement:
+            observation = session.get(Observation, doc_id)
+            if observation is None:
                 return False
 
-            # One transaction here: unlike create, a failure loses nothing.
-            # Metrics go with the observation via ON DELETE CASCADE.
+            # One transaction: unlike create, a failure here loses nothing.
+            # Matched on the instant, since body_composition has no observation
+            # reference and is on its way out anyway.
             session.execute(
-                sa_delete(Observation).where(
-                    Observation.observed_at == _observed_at(measurement.timestamp),
-                    Observation.source.in_(MIRROR_SOURCES),
-                )
+                text("DELETE FROM body_composition WHERE timestamp = :observed_at"),
+                {"observed_at": observation.observed_at},
             )
-            session.delete(measurement)
+            session.delete(observation)
             session.commit()
             return True
 
@@ -290,61 +326,61 @@ class BodyCompositionRepository:
         read `None` whenever the most recent measurement was over 30 days old,
         which is a common state for a scale that isn't used daily.
         """
-        with SessionLocal() as session:
-            measurements = session.execute(
-                select(BodyComposition).order_by(BodyComposition.timestamp.asc())
-            ).scalars().all()
-            if not measurements:
-                return {
-                    "total_measurements": 0,
-                    "latest_weight": None,
-                    "latest_body_fat": None,
-                    "latest_muscle_mass": None,
-                    "weight_change": None,
-                    "body_fat_change": None,
-                    "muscle_mass_change": None,
-                    "first_date": None,
-                    "latest_date": None,
-                }
-
-            first = measurements[0]
-            latest = measurements[-1]
-
-            def safe_float(value):
-                try:
-                    return float(value) if value is not None else None
-                except (ValueError, TypeError):
-                    return None
-
-            def change(attr: str) -> float | None:
-                """Earliest-to-latest delta for one metric.
-
-                Scoped per metric rather than to the first and last rows
-                overall: a single missing value in the earliest row would
-                otherwise suppress a change that months of data support. That
-                matters increasingly as sources with different column coverage
-                are added - BodySpec populates fields openScale never does.
-
-                Returns None below two data points, where a change is undefined
-                rather than zero.
-                """
-                values = [
-                    v
-                    for v in (safe_float(getattr(m, attr)) for m in measurements)
-                    if v is not None
-                ]
-                if len(values) < 2:
-                    return None
-                return values[-1] - values[0]
-
+        # Reads the per-measurement view like every other read, so the page
+        # cannot show a summary computed from one table beside a list from
+        # another.
+        measurements = self._read_measurements(order="ASC")
+        if not measurements:
             return {
-                "total_measurements": len(measurements),
-                "latest_weight": safe_float(latest.weight),
-                "latest_body_fat": safe_float(latest.body_fat_pct),
-                "latest_muscle_mass": safe_float(latest.muscle_mass),
-                "weight_change": change("weight"),
-                "body_fat_change": change("body_fat_pct"),
-                "muscle_mass_change": change("muscle_mass"),
-                "first_date": first.date,
-                "latest_date": latest.date,
+                "total_measurements": 0,
+                "latest_weight": None,
+                "latest_body_fat": None,
+                "latest_muscle_mass": None,
+                "weight_change": None,
+                "body_fat_change": None,
+                "muscle_mass_change": None,
+                "first_date": None,
+                "latest_date": None,
             }
+
+        first = measurements[0]
+        latest = measurements[-1]
+
+        def safe_float(value):
+            try:
+                return float(value) if value is not None else None
+            except (ValueError, TypeError):
+                return None
+
+        def change(field: str) -> float | None:
+            """Earliest-to-latest delta for one metric.
+
+            Scoped per metric rather than to the first and last rows overall: a
+            single missing value in the earliest row would otherwise suppress a
+            change that months of data support. That matters increasingly as
+            sources with different column coverage are added - BodySpec
+            populates fields openScale never does.
+
+            Returns None below two data points, where a change is undefined
+            rather than zero.
+            """
+            values = [
+                v
+                for v in (safe_float(m[field]) for m in measurements)
+                if v is not None
+            ]
+            if len(values) < 2:
+                return None
+            return values[-1] - values[0]
+
+        return {
+            "total_measurements": len(measurements),
+            "latest_weight": safe_float(latest["weight"]),
+            "latest_body_fat": safe_float(latest["body_fat_pct"]),
+            "latest_muscle_mass": safe_float(latest["muscle_mass"]),
+            "weight_change": change("weight"),
+            "body_fat_change": change("body_fat_pct"),
+            "muscle_mass_change": change("muscle_mass"),
+            "first_date": first["date"],
+            "latest_date": latest["date"],
+        }

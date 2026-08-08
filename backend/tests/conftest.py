@@ -1,4 +1,6 @@
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -10,13 +12,22 @@ import app.repositories.exercise_repo as exercise_repo
 import app.repositories.upcoming_repo as upcoming_repo
 import app.repositories.workout_repo as workout_repo
 from app.api import body_comp, exercises, progression, upcoming, workouts
-from app.database import Base, apply_sqlite_pragmas
-from app.db.models import MetricDef
-from app.repositories.body_comp_repo import METRIC_COLUMNS
+from app.database import apply_sqlite_pragmas
 
 
 @pytest.fixture()
 def db_engine(tmp_path, monkeypatch):
+    """A database built the way production is: by running the migrations.
+
+    This used to call `Base.metadata.create_all()`, which was cheaper and was
+    fine while the schema was only tables. It is no longer viable - the read
+    path queries views, and `metric_def` carries a seeded vocabulary, and
+    neither exists in metadata. `create_all()` would produce a database the
+    application cannot actually run against.
+
+    Migrating an empty SQLite file costs a few milliseconds, and it means the
+    suite exercises the same startup path the container does.
+    """
     db_path = tmp_path / "test.db"
     engine = create_engine(
         f"sqlite:///{db_path}",
@@ -42,22 +53,11 @@ def db_engine(tmp_path, monkeypatch):
     for module in (exercise_repo, workout_repo, upcoming_repo, body_comp_repo):
         monkeypatch.setattr(module, "SessionLocal", SessionLocal)
 
-    Base.metadata.create_all(bind=engine)
-
-    # In production `metric_def` is seeded by migration, but these fixtures
-    # build schema with create_all(), which creates the table empty. Without
-    # this, every mirrored metric write fails its foreign key - and because the
-    # mirror is deliberately non-fatal, the tests would pass while the dual
-    # write silently did nothing.
-    with SessionLocal() as session:
-        for _column, name, unit in METRIC_COLUMNS:
-            session.add(MetricDef(name=name, canonical_unit=unit))
-        session.commit()
+    command.upgrade(Config(str(database.ALEMBIC_INI)), "head")
 
     try:
         yield engine
     finally:
-        Base.metadata.drop_all(bind=engine)
         engine.dispose()
 
 

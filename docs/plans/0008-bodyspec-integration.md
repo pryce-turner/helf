@@ -1,10 +1,18 @@
 # Plan 0008: BodySpec DEXA integration
 
-**Status:** Proposed
+**Status:** In progress
 **Auth:** interactive paste-a-token, never persisted (§3)
-**Prerequisites:** Plan 0002 (Alembic), Plan 0003 (`metric`), Plan 0005 (`document`)
+**Prerequisites:** Plan 0002 (Alembic) ✓, Plan 0003 (`metric`) ✓, `document` — **created by this plan**, see §12
 **Related:** ADR-0003
 **Spec:** `https://app.bodyspec.com/openapi.json` — BodySpec API 0.15.0, **early access**
+
+> **§12 reconciles this plan against the schema as built (2026-08-08).** Plan
+> 0003 landed a different shape than this document assumed — `source` and
+> `observed_at` moved off `metric` onto a new `observation` table, and the
+> `UNIQUE (observed_at, name, source)` constraint this plan's idempotency design
+> is built on no longer exists. Sections below have been corrected in place;
+> §12 records what was wrong and why, because the corrections are not obvious
+> from the corrected text.
 
 Replaces "no data source yet for DEXA" (previously Plan 0001 §5, parked) with a
 real integration. This is the design doc §2 `document` → `metric` promotion
@@ -237,12 +245,22 @@ unlimited: back off on errors, and don't poll more than once an hour.
 
 ### Idempotency
 
-`result_id` is the natural key. `document` gains an external identity so a
-re-poll can't double-import:
+`result_id` is the natural key. `document` carries an external identity so a
+re-poll can't double-import. This plan creates the table (Plan 0005's schema,
+with `external_id` present from the start rather than bolted on):
 
 ```sql
-ALTER TABLE document ADD COLUMN external_id TEXT;
+CREATE TABLE document (
+    id           INTEGER PRIMARY KEY,
+    imported_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    kind         TEXT NOT NULL,
+    source       TEXT,
+    external_id  TEXT,
+    raw          TEXT NOT NULL CHECK (json_valid(raw))
+);
 CREATE UNIQUE INDEX ux_document_kind_external ON document(kind, external_id);
+
+ALTER TABLE metric ADD COLUMN document_id INTEGER REFERENCES document(id);
 ```
 
 Sync algorithm:
@@ -251,10 +269,36 @@ Sync algorithm:
 2. For each `result_id` not already in `document`, fetch all six sub-resources.
 3. Store the combined payload as one `document` row, `kind = 'dexa_bodyspec'`,
    `external_id = result_id`, `raw` = the merged JSON.
-4. Promote the curated scalars into `metric` with `document_id` set.
+4. Upsert an `observation` for the scan, then promote the curated scalars into
+   its `metric` rows with `document_id` set.
 
 Steps 3 and 4 in one transaction — a document without its metrics is a silent
 gap, and the FK is what keeps provenance intact.
+
+> **The uniqueness this rests on is on `observation`, not `metric`.** An earlier
+> draft specified `ON CONFLICT (observed_at, name, source)` against `metric`.
+> That constraint was never built: Plan 0003 §9 moved `observed_at` and `source`
+> onto `observation` (`UNIQUE (observed_at, source)`) and left `metric` unique on
+> `(observation_id, name)`. The import therefore upserts
+> `observation(observed_at = acquire_time, source = 'bodyspec')` **first**, and
+> keys its metrics on `(observation_id, name)`. The property is unchanged — a
+> DEXA and a scale reading of the same quantity on the same day remain two rows —
+> but it now comes from the observation's identity rather than the metric's.
+
+### `observed_at` must match the existing convention exactly
+
+Two things depend on the format, and neither is obvious:
+
+- **`observation.date` is `substr(observed_at, 1, 10)`**, a stored generated
+  column, and it is the app's universal join key. `acquire_time` arrives as
+  UTC ISO-8601, so storing it verbatim files a scan taken at 18:00 Pacific under
+  the *following* day. Every existing row is Pacific-local and naive.
+- **Idempotency keys on byte-identical `observed_at`.** A format that varies
+  between runs re-imports the same scan under a second observation.
+
+So `acquire_time` is converted to Pacific and formatted
+`%Y-%m-%d %H:%M:%S.%f`, matching `body_comp_repo._observed_at`. Pinned, not
+incidental.
 
 ### What to promote
 
@@ -274,12 +318,23 @@ Promote what you'd chart over time:
 | `body_fat_pct` | `composition.total.tissue_fat_pct` — canonical, see below | % |
 | `android_gynoid_ratio` | `composition.android_gynoid_ratio` | — |
 | `vat_mass_kg` | `visceral_fat.vat_mass_kg` | kg |
-| `bone_mineral_density` | `bone_density.total.bone_mineral_density` | g/cm² |
+| `bone_mineral_density_g_cm2` | `bone_density.total.bone_mineral_density` | g/cm² |
 | `rmr_kcal_per_day` | **Derived** — Katch-McArdle from FFM, see §8 | kcal/day |
 | `ffm_kg` | `total_mass_kg − fat_mass_kg` (fat-free mass) | kg |
 | `total_lmi_kg_m2` | `percentiles.metrics.total_lmi_kg_m2.value` | kg/m² |
 | `limb_lmi_kg_m2` | `percentiles.metrics.limb_lmi_kg_m2.value` | kg/m² |
 | `height_cm` | `scan_info.patient_intake.height_cm` | cm |
+
+`bone_mineral_density` was renamed `bone_mineral_density_g_cm2` — ADR-0003 point
+4 and §2 above both require the unit in the name, and an earlier draft of this
+table was the one place that didn't follow it.
+
+**Every one of these names must be seeded into `metric_def` by the migration.**
+`metric.name` is a foreign key to `metric_def.name`, so an unseeded name is not
+a warning, it is a failed insert. Eleven of the thirteen are new;
+`body_weight_lb` and `body_fat_pct` already exist from Plan 0003 and must be
+`UPDATE`d rather than `INSERT`ed — see the `body_fat_pct` note below, whose
+earlier `INSERT` would have been a primary-key conflict.
 
 The two lean mass indices come from the `percentiles` endpoint, which turns out
 to be richer than the spec example suggested — it returns both a `value` and a
@@ -291,10 +346,10 @@ value *and* the reference cohort, and the cohort shifts as you age out of a
 band — so a stored percentile silently means something different over time.
 Percentiles stay in `document.raw`, queryable and correctly frozen alongside the
 `params` that produced them.
-| `height_cm` | `scan_info.patient_intake.height_cm` | cm |
 
-`observed_at` = `scan_info.acquire_time` (when the scan happened), **not**
-`create_time` or `update_time`. `source = 'bodyspec'`.
+`observation.observed_at` = `scan_info.acquire_time` (when the scan happened),
+**not** `create_time` or `update_time`, normalized as described above.
+`observation.source = 'bodyspec'`.
 
 Everything unpromoted stays queryable — the raw JSON is intact in `document`,
 reachable via `json_extract`, and the agent's `query` tool can reach it. Nothing
@@ -302,10 +357,19 @@ is lost by promoting conservatively; a scalar can be promoted later by
 re-running the promotion step over stored documents.
 
 **`body_fat_pct` now has two sources** — the scale and DEXA — with DEXA being
-the accurate one. The `UNIQUE (observed_at, name, source)` constraint from Plan
-0003 keeps them as distinct rows rather than overwriting. Any view or chart
-showing body fat must either pick a source or plot both; silently mixing a
-bioimpedance estimate with a DEXA measurement would be misleading.
+the accurate one. `UNIQUE (observed_at, source)` on `observation` keeps them as
+distinct measurements rather than overwriting. Any view or chart showing body
+fat must either pick a source or plot both; silently mixing a bioimpedance
+estimate with a DEXA measurement would be misleading.
+
+> **This is not hypothetical, and the read path does not currently do it.**
+> Plan 0003 §9 moved every body-composition read onto
+> `v_body_comp_measurements`, which has no filter on `source`. The first
+> imported scan therefore joins the measurement list, can become
+> `get_latest()`, and enters both `get_stats()`'s earliest-to-latest deltas and
+> `/trends` → `calculate_moving_average` — which Plan 0003 §4a names explicitly
+> as source-blind and requiring a single-source series. Making the read path
+> source-aware is a prerequisite of the first import, not a follow-up. See §12.
 
 ### `tissue_fat_pct` is canonical — decided, with one caveat worth reading
 
@@ -332,13 +396,18 @@ From the 2026-03-10 scan: `tissue_fat_pct` **17.25**, `region_fat_pct` **16.55**
 Record the choice where it's visible to anyone — including the agent — writing a
 query:
 
+`body_fat_pct` is already seeded by Plan 0003, so this is an `UPDATE` — an
+`INSERT` is a primary-key conflict and would abort the migration:
+
 ```sql
-INSERT INTO metric_def (name, canonical_unit, description) VALUES
-  ('body_fat_pct', '%',
-   'Body fat percentage. DEXA source = BodySpec tissue_fat_pct (soft tissue, '
-   'excludes bone) — NOT region_fat_pct. Scale source = openScale bioimpedance. '
-   'Distinguish by metric.source; do not mix in one series.');
+UPDATE metric_def SET description =
+  'Body fat percentage. DEXA source = BodySpec tissue_fat_pct (soft tissue, '
+  'excludes bone) — NOT region_fat_pct. Scale source = openScale bioimpedance. '
+  'Distinguish by observation.source; do not mix in one series.'
+WHERE name = 'body_fat_pct';
 ```
+
+Note `observation.source`, not `metric.source`. `metric` has no source column.
 
 **Never switch to `region_fat_pct` later.** The two differ by roughly a
 percentage point, so a switch mid-history manufactures a step change that reads
@@ -360,8 +429,9 @@ of why they're retained.
 **No config entries.** Nothing to add to `backend/app/config.py` and nothing to
 `docker-compose.yml` — a consequence of §3 not persisting the token.
 
-Add `httpx` — already in `pyproject.toml` but currently only a test dependency,
-so promote it to a runtime one.
+`httpx` needs no work: it is already a runtime dependency
+(`backend/pyproject.toml:17`, under `[project] dependencies`). An earlier draft
+called it test-only.
 
 ### Endpoint shape
 
@@ -401,9 +471,9 @@ strengths:
 | Accuracy | Low (bioimpedance) | Reference standard |
 | Good for | Trend, direction, velocity | Absolute values, composition detail |
 
-`metric.source` keeps them categorically separate at the storage layer; the
-`UNIQUE (observed_at, name, source)` constraint means they coexist rather than
-overwrite.
+`observation.source` keeps them categorically separate at the storage layer; the
+`UNIQUE (observed_at, source)` constraint on `observation` means they coexist
+rather than overwrite.
 
 **The design work this requires lives in `plans/0003-units-and-metrics.md` §4a** —
 source-aware views, the two-series chart encoding, and the rule against
@@ -457,9 +527,32 @@ different formula:
 RMR = 370 + (21.6 × LBM_kg)
 ```
 
-Stored as `rmr_kcal_per_day` with `source = 'derived'`, distinguishing it from
-BodySpec's own numbers. Their full estimate array stays in `document.raw`, so
-every offered formula remains queryable for comparison without being promoted.
+Stored as `rmr_kcal_per_day` **on the scan's own observation**, alongside the
+measurements it derives from. Their full estimate array stays in `document.raw`,
+so every offered formula remains queryable for comparison without being promoted.
+
+> **Not `source = 'derived'` — that would 500 the body-composition page.** An
+> earlier draft asked for a distinct source, which was expressible when `source`
+> lived on `metric`. It no longer does: `source` is a property of the
+> *observation*, so a derived source means a **second observation at the same
+> instant**, carrying only `rmr_kcal_per_day`. Provoked against a copy of
+> production, that observation becomes a 151st row in
+> `v_body_comp_measurements` with `weight` NULL, and `BodyComposition.weight` is
+> a required `float`:
+>
+> ```
+> doc_id 151 | source derived | weight (null)
+> ValidationError: weight — Input should be a valid number, input_value=None
+> ```
+>
+> An RMR is not a separate act of measuring; it is a number computed from one.
+> It belongs to the scan's observation. The provenance that `source = 'derived'`
+> was meant to carry goes in `metric_def.description`, which §8 already writes —
+> and that is where a reader or an agent will actually look for it.
+>
+> This also removes an inconsistency the old shape hid: `ffm_kg` is equally
+> derived (`total − fat`) and §5 already files it under `bodyspec`. Both are now
+> treated the same way.
 
 ### LBM means fat-free mass — not `lean_mass_kg`
 
@@ -567,21 +660,39 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 docker logs helf-app 2>&1 | grep -c "$TOKEN"                     # -> 0
 ```
 
+These queries go through `observation` — `metric` has no `source`, no
+`observed_at` and (before this plan) no `document_id`. An earlier draft's
+versions referenced all three and could not have run.
+
 ```sql
 -- one document per scan, no duplicates on re-sync
 SELECT kind, external_id, count(*) FROM document GROUP BY 1,2 HAVING count(*) > 1;  -- empty
 
+-- one observation per scan, and it is the only thing 'bodyspec' writes
+SELECT o.id, o.observed_at, o.date, count(m.id) AS n_metrics
+FROM observation o JOIN metric m ON m.observation_id = o.id
+WHERE o.source = 'bodyspec' GROUP BY o.id ORDER BY o.observed_at DESC;
+
 -- promoted metrics carry provenance
-SELECT m.name, m.value, m.unit, m.source, d.external_id
-FROM metric m JOIN document d ON d.id = m.document_id
-WHERE m.source = 'bodyspec' ORDER BY m.observed_at DESC;
+SELECT m.name, m.value, m.unit, d.external_id
+FROM metric m
+JOIN observation o ON o.id = m.observation_id
+JOIN document d ON d.id = m.document_id
+WHERE o.source = 'bodyspec' ORDER BY o.observed_at DESC, m.name;
 
 -- DEXA weight is lb and agrees with the raw kg in the document
-SELECT value AS lb,
+-- 2.20462262184878 is app.utils.units.KG_TO_LB; an earlier draft used a
+-- truncated 2.2046226218 here, which disagrees with what the importer used.
+SELECT m.value AS lb,
        json_extract(d.raw, '$.composition.total.total_mass_kg') AS raw_kg,
-       value / 2.2046226218 AS implied_kg
-FROM metric m JOIN document d ON d.id = m.document_id
-WHERE m.name = 'body_weight_lb' AND m.source = 'bodyspec';
+       m.value / 2.20462262184878 AS implied_kg
+FROM metric m
+JOIN observation o ON o.id = m.observation_id
+JOIN document d ON d.id = m.document_id
+WHERE m.name = 'body_weight_lb' AND o.source = 'bodyspec';
+
+-- the derived RMR lives on the scan's observation, not one of its own
+SELECT count(*) FROM observation WHERE source = 'derived';   -- 0
 ```
 
 Run the sync twice and confirm the second is a no-op — idempotency is the
@@ -589,11 +700,19 @@ property most likely to break, and the failure is silent duplicate history.
 
 ## 10. Rollback
 
-`DELETE FROM metric WHERE source = 'bodyspec'` then
-`DELETE FROM document WHERE kind = 'dexa_bodyspec'` (order matters — the FK).
-Remove the config. No other data is touched. Because raw payloads are retained,
-a botched promotion is re-runnable from stored documents without re-fetching
-anything from the API.
+```sql
+DELETE FROM observation WHERE source = 'bodyspec';   -- metrics cascade
+DELETE FROM document   WHERE kind   = 'dexa_bodyspec';
+```
+
+Order still matters, but for a different reason than the earlier draft gave:
+`metric` rows go with their observation via `ON DELETE CASCADE`, so they are
+never deleted directly, and `metric.document_id` is what requires the document
+to go second. There is no config to remove — §6 adds none.
+
+No other data is touched. Because raw payloads are retained, a botched
+promotion is re-runnable from stored documents without re-fetching anything from
+the API.
 
 ## 11. Open questions
 
@@ -609,3 +728,69 @@ anything from the API.
 *Resolved: BodySpec supplements openScale; both retained (§7).*
 *Resolved: RMR is Katch-McArdle, computed locally from FFM; activity multiplier
 fixed at 1.4 in the view (§8).*
+
+---
+
+## 12. Reconciliation against the schema as built (2026-08-08)
+
+This plan was written before Plan 0003 was implemented, and 0003 landed a
+different shape than it assumed. Recorded here rather than silently corrected
+above, because the corrections only make sense against what they replaced —
+ADR-0001's premise.
+
+### The shape that actually exists
+
+| | Plan 0008 assumed | As built |
+|---|---|---|
+| Measurement identity | none — `metric` rows stood alone | `observation` (`observed_at`, `date`, `source`, `created_at`) |
+| Uniqueness | `UNIQUE (observed_at, name, source)` on `metric` | `UNIQUE (observed_at, source)` on `observation`; `UNIQUE (observation_id, name)` on `metric` |
+| `metric.source` | a column | **does not exist** — lives on `observation` |
+| `metric.observed_at` | a column | **does not exist** — lives on `observation` |
+| `metric.document_id` | a column | did not exist; **added by this plan** |
+| `document` | Plan 0005's, pre-existing | did not exist; **created by this plan** |
+
+### What that changed, in order of how badly it would have bitten
+
+1. **`source = 'derived'` for RMR (§8) would have 500'd the body-composition
+   page.** The worst of them, and the least obvious: with `source` on
+   `observation`, a derived source means a second observation at the same
+   instant carrying no body weight, which `v_body_comp_measurements` surfaces as
+   a measurement row with `weight` NULL against a required `float`. Provoked on
+   a copy of production before deciding, not reasoned about. RMR now lives on
+   the scan's own observation.
+2. **The read path is not source-filtered.** Nothing in the original plan could
+   have anticipated this — Plan 0003 §9 moved reads onto the views after this
+   document was written. The first import would have put a DEXA point into
+   `get_latest()`, `get_stats()` and the `/trends` moving average alongside
+   bioimpedance, which 0003 §4a forbids in as many words. Fixed before the first
+   import by carrying `source` through the read path.
+3. **Idempotency had no constraint to hang on** (§5). Upsert the observation
+   first, then its metrics.
+4. **`metric_def` seeding was never stated.** The FK makes an unseeded name a
+   failed insert, not a warning. Eleven new definitions; `body_fat_pct`'s
+   `INSERT` was a primary-key conflict and is now an `UPDATE`.
+5. **Verification queries in §9 could not have run** — they selected
+   `m.source`, `m.observed_at` and `m.document_id`, none of which existed.
+6. **`observed_at` format was unspecified**, and both the app's notion of a date
+   and the idempotency key depend on it.
+
+### Smaller corrections
+
+- `bone_mineral_density` → `bone_mineral_density_g_cm2`, per ADR-0003 point 4.
+- `httpx` is already a runtime dependency; §6 claimed it was test-only.
+- §9 used a truncated conversion factor disagreeing with `KG_TO_LB`.
+- §10's rollback deleted from `metric` directly; metrics cascade.
+- `height_cm` appeared twice in the §5 promotion table.
+- §8's `v_daily_summary` extension targets a view Plan 0005 has not created. It
+  stays specified here and is **out of scope for this plan**.
+
+### What did *not* change
+
+The units decision. ADR-0003's scope limit and §2 both survive contact with the
+new schema unaltered: `composition.total.total_mass_kg` converts to
+`body_weight_lb` because it is the same *quantity* the scale measures and must
+share an axis with it; `patient_intake.weight_kg` is not promoted at all;
+everything else is a different quantity that never enters body-mass arithmetic
+and keeps its kg-suffixed source unit. Conversion uses
+`app.utils.units.KG_TO_LB`, with the raw kg retained in `document` so the
+arithmetic stays auditable against the original payload.

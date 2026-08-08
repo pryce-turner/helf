@@ -1,6 +1,6 @@
 # Plan 0003: Units and metrics
 
-**Status:** **`a1`–`a4` done, read path moved** (2026-08-08) — only `a5` outstanding
+**Status:** **Complete** (2026-08-08)
 **Prerequisites:** Plan 0002 (Alembic + pragmas) — satisfied
 **Related:** ADR-0003
 
@@ -11,9 +11,10 @@
 | `a3` | `de63ed0bc62d` | Done — 600 rows backfilled |
 | `a4` | `f5abbd14fa00` | Done — four views |
 | — | `7bba3fe3ee35` | Done — `observation` table; **unplanned**, see §9 |
-| `a5` | — | **Outstanding** — drop `weight_unit` |
+| `a5` | `e96bd4b90873` | Done — `weight_unit` dropped, see §10 |
 
-Reads are served from the views as of §9. `body_composition` is write-only.
+Reads are served from the views as of §9. `body_composition` is write-only, and
+retiring it is a separate plan.
 
 > ## `a2`–`a4` implementation notes
 >
@@ -833,3 +834,42 @@ path the container does.
 - Retire `body_composition` entirely. It is now write-only; once the mirror has
   been trusted for a while, the dual write, `_serialize`, `reconcile_mirror` and
   the table all go. That is a separate plan.
+
+---
+
+## 10. `a5` — `weight_unit` dropped (2026-08-08)
+
+**Status: done**, revision `e96bd4b90873`. Plan 0003 is complete.
+
+All three columns held `'lbs'` in every row — 9,292 workouts, 30 upcoming, 150
+body composition — because `a1` converted the only kilogram data there was.
+Storing the same string 9,472 times records nothing and invites the belief that
+another value is possible.
+
+**The API still reports `weight_unit`.** The frontend renders it in six places
+(`WorkoutSession.tsx`, `Progression.tsx`, `Upcoming.tsx`), so removing the field
+would have printed "undefined" next to every weight. Dropping *storage* and
+dropping the *field* are separate decisions, and only the first is justified
+here: the unit is a property of the schema, not of a row. It now comes from
+`app.utils.units.CANONICAL_WEIGHT_UNIT`.
+
+That module also absorbs `KG_TO_LB`, which was duplicated between
+`mqtt_service` and the `a1` migration. The migration keeps its own copy
+deliberately — a migration must not change behaviour because an application
+constant was edited later.
+
+**The migration refuses to drop a column that disagrees with its premise.**
+Dropping is irreversible in the way that matters: the values are gone. If any
+row is not `'lbs'`, either `a1` missed it or a new writer has appeared, and
+dropping would discard the only evidence. Verified by poisoning a copy — one
+`'kg'` row aborts the migration and names the offending value.
+
+**The generated downgrade was wrong and would have failed.** Alembic emitted
+`add_column(..., nullable=False)` with no default; a batch rebuild of a
+populated table cannot fill a NOT NULL column from nothing. It now carries
+`server_default='lbs'`, and the round trip is verified.
+
+Verified: 9,292 workouts and `sum(reps)` 63,719 unchanged; all four `workouts`
+indexes survived the rebuild; `foreign_key_check` clean; `metric` untouched at
+600 rows and reconciling in sync; every endpoint 200 with `weight_unit` still
+reported as `lbs`; writes still work.

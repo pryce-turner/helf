@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.db.models import Category, Exercise, Workout
 from app.models.workout import WorkoutCreate, WorkoutUpdate
 from app.utils.date_helpers import get_current_datetime
+from app.utils.units import CANONICAL_WEIGHT_UNIT
 
 
 class WorkoutRepository:
@@ -20,7 +21,7 @@ class WorkoutRepository:
             "exercise": workout.exercise.name if workout.exercise else None,
             "category": workout.category.name if workout.category else None,
             "weight": workout.weight,
-            "weight_unit": workout.weight_unit,
+            "weight_unit": CANONICAL_WEIGHT_UNIT,
             "reps": workout.reps,
             "distance": workout.distance,
             "distance_unit": workout.distance_unit,
@@ -122,7 +123,6 @@ class WorkoutRepository:
                 exercise_id=exercise.id,
                 category_id=category.id,
                 weight=workout_dict.get("weight"),
-                weight_unit=workout_dict.get("weight_unit") or "lbs",
                 reps=workout_dict.get("reps"),
                 distance=workout_dict.get("distance"),
                 distance_unit=workout_dict.get("distance_unit"),
@@ -156,7 +156,6 @@ class WorkoutRepository:
             existing.exercise_id = exercise.id
             existing.category_id = category.id
             existing.weight = workout_dict.get("weight")
-            existing.weight_unit = workout_dict.get("weight_unit") or "lbs"
             existing.reps = workout_dict.get("reps")
             existing.distance = workout_dict.get("distance")
             existing.distance_unit = workout_dict.get("distance_unit")
@@ -293,7 +292,6 @@ class WorkoutRepository:
                     exercise=source_workout.exercise,
                     category=source_workout.category,
                     weight=source_workout.weight,
-                    weight_unit=source_workout.weight_unit,
                     reps=source_workout.reps,
                     distance=source_workout.distance,
                     distance_unit=source_workout.distance_unit,

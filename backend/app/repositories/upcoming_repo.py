@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.db.models import Category, Exercise, UpcomingWorkout
 from app.models.upcoming import UpcomingWorkoutCreate
 from app.utils.date_helpers import get_current_datetime
+from app.utils.units import CANONICAL_WEIGHT_UNIT
 
 
 class UpcomingWorkoutRepository:
@@ -20,7 +21,7 @@ class UpcomingWorkoutRepository:
             "exercise": workout.exercise.name if workout.exercise else None,
             "category": workout.category.name if workout.category else None,
             "weight": workout.weight,
-            "weight_unit": workout.weight_unit,
+            "weight_unit": CANONICAL_WEIGHT_UNIT,
             "reps": workout.reps,
             "distance": workout.distance,
             "distance_unit": workout.distance_unit,
@@ -118,7 +119,6 @@ class UpcomingWorkoutRepository:
                 exercise_id=exercise.id,
                 category_id=category.id,
                 weight=workout_dict.get("weight"),
-                weight_unit=workout_dict.get("weight_unit") or "lbs",
                 reps=workout_dict.get("reps"),
                 distance=workout_dict.get("distance"),
                 distance_unit=workout_dict.get("distance_unit"),
@@ -161,8 +161,7 @@ class UpcomingWorkoutRepository:
                     exercise_id=exercise.id,
                     category_id=category.id,
                     weight=workout_dict.get("weight"),
-                    weight_unit=workout_dict.get("weight_unit") or "lbs",
-                    reps=workout_dict.get("reps"),
+                        reps=workout_dict.get("reps"),
                     distance=workout_dict.get("distance"),
                     distance_unit=workout_dict.get("distance_unit"),
                     time=workout_dict.get("time"),

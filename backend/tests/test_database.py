@@ -43,7 +43,6 @@ class TestPragmas:
                 date="2026-01-01",
                 exercise_id=99999,  # does not exist
                 category_id=99999,  # does not exist
-                weight_unit="lbs",
                 order=1,
                 created_at=datetime.now(),
                 updated_at=datetime.now(),

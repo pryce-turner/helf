@@ -10,14 +10,14 @@ import paho.mqtt.client as mqtt
 from app.models.body_composition import BodyCompositionCreate
 from app.repositories.body_comp_repo import BodyCompositionRepository
 from app.utils.date_helpers import PACIFIC_TZ
+from app.utils.units import KG_TO_LB
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# openScale reports mass in kilograms. This is a permanent property of the
-# source, not a one-off migration concern - the scale keeps sending kg forever,
-# so ingest converts on every message. Pounds are canonical (ADR-0003).
-KG_TO_LB = 2.20462262184878
+# Re-exported: openScale reports kilograms and always will, so ingest converts
+# on every message rather than as a one-off migration concern.
+__all__ = ["KG_TO_LB", "MQTTService"]
 
 
 class MQTTService:
@@ -113,7 +113,6 @@ class MQTTService:
                 timestamp=dt,
                 date=dt.date().isoformat(),
                 weight=weight_lb,
-                weight_unit="lbs",
                 body_fat_pct=payload.get("fat"),
                 muscle_mass=payload.get("muscle"),
                 bmi=payload.get("bmi"),

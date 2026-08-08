@@ -13,6 +13,7 @@ from app.utils.date_helpers import (
     get_current_datetime,
     parse_iso_timestamp,
 )
+from app.utils.units import CANONICAL_WEIGHT_UNIT
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class BodyCompositionRepository:
             "timestamp": measurement.timestamp,
             "date": measurement.date,
             "weight": measurement.weight,
-            "weight_unit": measurement.weight_unit,
+            "weight_unit": CANONICAL_WEIGHT_UNIT,
             "body_fat_pct": measurement.body_fat_pct,
             "muscle_mass": measurement.muscle_mass,
             "bmi": measurement.bmi,
@@ -79,7 +80,7 @@ class BodyCompositionRepository:
             "timestamp": parse_iso_timestamp(row.observed_at),
             "date": row.date,
             "weight": row.weight,
-            "weight_unit": row.weight_unit,
+            "weight_unit": CANONICAL_WEIGHT_UNIT,
             "body_fat_pct": row.body_fat_pct,
             "muscle_mass": row.muscle_mass,
             "bmi": row.bmi,
@@ -169,7 +170,6 @@ class BodyCompositionRepository:
                 timestamp=timestamp,
                 date=measurement_dict["date"],
                 weight=measurement_dict["weight"],
-                weight_unit=measurement_dict.get("weight_unit") or "lbs",
                 body_fat_pct=measurement_dict.get("body_fat_pct"),
                 muscle_mass=measurement_dict.get("muscle_mass"),
                 bmi=measurement_dict.get("bmi"),

@@ -72,7 +72,6 @@ class Workout(Base):
         ForeignKey("categories.id"), nullable=False, index=True
     )
     weight: Mapped[float | None] = mapped_column(Float, nullable=True)
-    weight_unit: Mapped[str] = mapped_column(String(16), nullable=False)
     reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     distance: Mapped[float | None] = mapped_column(Float, nullable=True)
     distance_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -101,7 +100,6 @@ class UpcomingWorkout(Base):
         ForeignKey("categories.id"), nullable=False, index=True
     )
     weight: Mapped[float | None] = mapped_column(Float, nullable=True)
-    weight_unit: Mapped[str] = mapped_column(String(16), nullable=False)
     reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     distance: Mapped[float | None] = mapped_column(Float, nullable=True)
     distance_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -222,7 +220,6 @@ class BodyComposition(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), unique=True, nullable=False)
     date: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
     weight: Mapped[float] = mapped_column(Float, nullable=False)
-    weight_unit: Mapped[str] = mapped_column(String(8), nullable=False)
     body_fat_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     muscle_mass: Mapped[float | None] = mapped_column(Float, nullable=True)
     bmi: Mapped[float | None] = mapped_column(Float, nullable=True)

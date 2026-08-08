@@ -1,14 +1,13 @@
 """Body composition repository for database operations."""
 
 from datetime import datetime, timedelta
-from typing import Optional
 
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.db.models import BodyComposition
 from app.models.body_composition import BodyCompositionCreate
-from app.utils.date_helpers import get_current_datetime, PACIFIC_TZ
+from app.utils.date_helpers import PACIFIC_TZ, get_current_datetime
 
 
 class BodyCompositionRepository:
@@ -43,13 +42,13 @@ class BodyCompositionRepository:
             ).scalars().all()
             return [self._serialize(m) for m in measurements]
 
-    def get_by_id(self, doc_id: int) -> Optional[dict]:
+    def get_by_id(self, doc_id: int) -> dict | None:
         """Get a measurement by ID."""
         with SessionLocal() as session:
             measurement = session.get(BodyComposition, doc_id)
             return self._serialize(measurement) if measurement else None
 
-    def get_latest(self) -> Optional[dict]:
+    def get_latest(self) -> dict | None:
         """Get the most recent measurement."""
         with SessionLocal() as session:
             measurement = session.execute(
@@ -82,7 +81,7 @@ class BodyCompositionRepository:
             ).scalars().all()
             return [self._serialize(m) for m in measurements]
 
-    def create(self, measurement: BodyCompositionCreate) -> Optional[dict]:
+    def create(self, measurement: BodyCompositionCreate) -> dict | None:
         """Create a new measurement. Returns None if duplicate timestamp."""
         timestamp = measurement.timestamp
 

@@ -1,6 +1,5 @@
 """Exercise and category repository for database operations."""
 
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -48,7 +47,7 @@ class ExerciseRepository:
             ).scalars().all()
             return [self._serialize(exercise) for exercise in exercises]
 
-    def get_by_name(self, name: str) -> Optional[dict]:
+    def get_by_name(self, name: str) -> dict | None:
         """Get an exercise by name."""
         with SessionLocal() as session:
             exercise = session.execute(
@@ -123,7 +122,7 @@ class ExerciseRepository:
             ).scalars().all()
             return [self._serialize(exercise) for exercise in exercises]
 
-    def update(self, exercise_id: int, data: ExerciseUpdate) -> Optional[dict]:
+    def update(self, exercise_id: int, data: ExerciseUpdate) -> dict | None:
         """Update an exercise."""
         with SessionLocal() as session:
             exercise = session.execute(
@@ -178,7 +177,7 @@ class CategoryRepository:
             ).scalars().all()
             return [self._serialize(category) for category in categories]
 
-    def get_by_name(self, name: str) -> Optional[dict]:
+    def get_by_name(self, name: str) -> dict | None:
         """Get a category by name."""
         with SessionLocal() as session:
             category = session.execute(

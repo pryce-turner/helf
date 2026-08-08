@@ -1,9 +1,47 @@
 # Plan 0009: Drop AMRAP notation — `reps` becomes an integer
 
-**Status:** Proposed — **mostly implemented already by the `1a27a0b` merge**
-**Prerequisites:** Plan 0002 (Alembic)
+**Status:** **Done** — implemented 2026-08-08, revision `fd709c41eb19`
+**Prerequisites:** Plan 0002 (Alembic) — satisfied
 **Related:** ADR-0005
 **Risk:** Low — verified lossless against production data
+
+> ## Implementation notes
+>
+> **The migration was exactly lossless.** Against `data/helf.db`:
+> `count(*)` 9,292, `count(reps)` 9,252 and `sum(reps)` 63,719 are identical
+> before and after; `upcoming_workouts` 30/30/194 likewise. `typeof(reps)` went
+> from `text` ×9,252 to `integer` ×9,252 (40 NULLs throughout). All four
+> `workouts` indexes survived the batch rebuild and `PRAGMA foreign_key_check`
+> is clean.
+>
+> **The guard was tested by poisoning a copy**, not just written. A single row set
+> to `'5+'` produces:
+> `workouts: 1 row(s) have non-integer reps and would be corrupted by this
+> migration. Examples: ['5+']`, and the migration aborts.
+>
+> **One correction to §2's reasoning.** It claimed an un-guarded `'5+'` "casts to
+> a wrong integer with no error". It does not — SQLite applies *affinity*, not a
+> cast, and affinity leaves a value it cannot losslessly convert as TEXT. The
+> outcome is arguably worse than the plan predicted: a string sitting in a column
+> that every consumer now assumes is numeric. Either way the guard is what
+> matters, and the reasoning is now right in the migration's own docstring.
+>
+> **Extra scope found while implementing: the repositories were still coercing.**
+> Not in §3's table. Both `workout_repo.py` and `upcoming_repo.py` ran
+> `str(reps)` before every write and `int(reps)` on every read
+> (`_serialize`, `create`, `create_bulk`, `update` — six sites). Harmless while
+> the column was TEXT; after the migration they were writing strings into an
+> INTEGER column and relying on affinity to clean up. Removed — leaving them
+> would have preserved the exact type-mismatch this plan exists to close.
+> `models/progression.py` also still declared `reps: int | str`; now `int`.
+>
+> **Three tests encoded the old behaviour as correct** and were rewritten, not
+> deleted: the `0.0` fallback assertion, `stored.reps == "5"`, and
+> `test_parse_amrap_sets`, which asserted that *all three* sets of `3x10+` are
+> AMRAP — the §3b defect, codified.
+>
+> Suite: **136 passed, 0 failed.** It was 2-failing at `HEAD` before this work;
+> both of those failures were this plan's subject matter.
 
 Small, self-contained, and worth doing early: it removes a silent-wrong-answer
 class from every numeric query on `reps`, including the LLM-authored ones the

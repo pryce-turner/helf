@@ -98,7 +98,7 @@ Code, Cursor, and others all read a `mcpServers` map):
       "command": "python",
       "args": ["-m", "app.mcp.qs_mcp"],
       "env": {
-        "QS_DB_PATH": "/mnt/helf/data/helf.db",
+        "QS_DB_PATH": "/Users/pryceturner/Desktop/projects/helf/data/helf.db",
         "QS_MCP_MODE": "read-only"
       }
     }
@@ -182,8 +182,12 @@ is dropped while the data model settles.
 ## 6. Verification
 
 ```bash
-QS_DB_PATH=/mnt/fast/apps/helf/data/helf.db python -m app.mcp.qs_mcp
+QS_DB_PATH="$PWD/data/helf.db" python -m app.mcp.qs_mcp
 ```
+
+The database lives at `data/helf.db` in the repository directory — the same file
+the container bind-mounts, which is what makes the two-process contention in
+ADR-0002 real rather than hypothetical. Hence WAL and `busy_timeout` (Plan 0002).
 
 Then, with the app running to force concurrency:
 

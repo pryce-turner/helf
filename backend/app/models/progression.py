@@ -1,7 +1,7 @@
 """Progression data models."""
 
+
 from pydantic import BaseModel
-from typing import Optional
 
 
 class ProgressionDataPoint(BaseModel):
@@ -9,9 +9,9 @@ class ProgressionDataPoint(BaseModel):
     date: str
     weight: float
     weight_unit: str
-    reps: int | str
+    reps: int
     estimated_1rm: float
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 class UpcomingProgressionDataPoint(BaseModel):
@@ -20,9 +20,9 @@ class UpcomingProgressionDataPoint(BaseModel):
     projected_date: str
     weight: float
     weight_unit: str
-    reps: int | str
+    reps: int
     estimated_1rm: float
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 class ProgressionResponse(BaseModel):

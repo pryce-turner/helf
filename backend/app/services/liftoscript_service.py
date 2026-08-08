@@ -67,7 +67,10 @@ class LiftoscriptParser:
     """
 
     EXERCISE_NAME_PATTERN = re.compile(r"^([^/]+?)$")
-    SET_PATTERN = re.compile(r"(\d+)x(\d+)\+?")
+    # The trailing "+" is captured, not merely consumed: AMRAP detection reads
+    # group 3. Substring-scanning the spec for "+" would also match one in the
+    # weight expression (e.g. "1x5 BW+25lb").
+    SET_PATTERN = re.compile(r"(\d+)x(\d+)(\+?)")
     WEIGHT_PERCENT_PATTERN = re.compile(r"(\d+(?:\.\d+)?)%")
     WEIGHT_ABSOLUTE_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*(lb|kg)")
     PROGRESS_LP_PATTERN = re.compile(r"progress:\s*lp\((\d+(?:\.\d+)?)\s*(lb|kg)\)")
@@ -188,7 +191,7 @@ class LiftoscriptParser:
             raise LiftoscriptParseError(f"Invalid sets/reps format: {sets_reps_str}")
         sets = int(match.group(1))
         reps = int(match.group(2))
-        is_amrap = "+" in sets_reps_str
+        is_amrap = bool(match.group(3))
         return sets, reps, is_amrap
 
     def _parse_script(
@@ -242,13 +245,16 @@ class LiftoscriptParser:
                 sets, reps, is_amrap = self._parse_sets_reps(set_spec)
                 weight, unit = self._parse_weight(set_spec, exercise_name, cycle_num)
 
-                comment_parts = []
-                if is_amrap:
-                    comment_parts.append("AMRAP")
+                for set_index in range(sets):
+                    # AMRAP marks the final set only - "3x5+" is three sets of
+                    # five with the last taken to failure, not three to failure.
+                    is_last_set = set_index == sets - 1
+                    comment_parts = []
+                    if is_amrap and is_last_set:
+                        comment_parts.append("AMRAP")
 
-                comment = ", ".join(comment_parts) if comment_parts else None
+                    comment = ", ".join(comment_parts) if comment_parts else None
 
-                for _ in range(sets):
                     workout = UpcomingWorkoutCreate(
                         session=session_offset + current_session,
                         exercise=exercise_name,

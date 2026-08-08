@@ -39,6 +39,13 @@ uv.lock
 # Data
 **/helf.json
 **/helf.db
+# WAL leaves -wal and -shm sidecars beside the database while the app is
+# running; they are not matched by the pattern above.
+**/helf.db-wal
+**/helf.db-shm
+**/*.db.bak
+**/*.pre-alembic.bak
+data/
 
 # Scratch
 TODO.md

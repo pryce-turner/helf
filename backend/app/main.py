@@ -1,15 +1,16 @@
 """Main FastAPI application."""
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.api import body_comp, exercises, progression, upcoming, workouts
 from app.config import settings
 from app.database import close_db, init_db
-from app.api import workouts, exercises, progression, upcoming, body_comp
 from app.services.mqtt_service import MQTTService
 
 # Global MQTT service instance

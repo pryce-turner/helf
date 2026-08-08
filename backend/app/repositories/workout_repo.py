@@ -1,6 +1,5 @@
 """Workout repository for database operations."""
 
-from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -15,10 +14,6 @@ class WorkoutRepository:
     """Repository for workout data operations."""
 
     def _serialize(self, workout: Workout) -> dict:
-        reps = workout.reps
-        if isinstance(reps, str) and reps.isdigit():
-            reps = int(reps)
-
         return {
             "doc_id": workout.id,
             "date": workout.date,
@@ -26,7 +21,7 @@ class WorkoutRepository:
             "category": workout.category.name if workout.category else None,
             "weight": workout.weight,
             "weight_unit": workout.weight_unit,
-            "reps": reps,
+            "reps": workout.reps,
             "distance": workout.distance,
             "distance_unit": workout.distance_unit,
             "time": workout.time,
@@ -82,7 +77,7 @@ class WorkoutRepository:
             ).scalars().all()
             return [self._serialize(workout) for workout in workouts]
 
-    def get_by_id(self, doc_id: int) -> Optional[dict]:
+    def get_by_id(self, doc_id: int) -> dict | None:
         """Get a workout by ID."""
         with SessionLocal() as session:
             workout = session.execute(
@@ -118,10 +113,6 @@ class WorkoutRepository:
                 ).scalar_one()
                 workout_dict["order"] = count + 1
 
-            reps = workout_dict.get("reps")
-            if reps is not None and not isinstance(reps, str):
-                reps = str(reps)
-
             order_value = workout_dict.get("order")
             if order_value is None:
                 order_value = 1
@@ -132,7 +123,7 @@ class WorkoutRepository:
                 category_id=category.id,
                 weight=workout_dict.get("weight"),
                 weight_unit=workout_dict.get("weight_unit") or "lbs",
-                reps=reps,
+                reps=workout_dict.get("reps"),
                 distance=workout_dict.get("distance"),
                 distance_unit=workout_dict.get("distance_unit"),
                 time=workout_dict.get("time"),
@@ -149,7 +140,7 @@ class WorkoutRepository:
             session.refresh(category)
             return self._serialize(new_workout)
 
-    def update(self, doc_id: int, workout: WorkoutUpdate) -> Optional[dict]:
+    def update(self, doc_id: int, workout: WorkoutUpdate) -> dict | None:
         """Update an existing workout."""
         workout_dict = workout.model_dump(exclude_none=False)
 
@@ -161,16 +152,12 @@ class WorkoutRepository:
             category = self._get_or_create_category(session, workout_dict["category"])
             exercise = self._get_or_create_exercise(session, workout_dict["exercise"], category)
 
-            reps = workout_dict.get("reps")
-            if reps is not None and not isinstance(reps, str):
-                reps = str(reps)
-
             existing.date = workout_dict["date"]
             existing.exercise_id = exercise.id
             existing.category_id = category.id
             existing.weight = workout_dict.get("weight")
             existing.weight_unit = workout_dict.get("weight_unit") or "lbs"
-            existing.reps = reps
+            existing.reps = workout_dict.get("reps")
             existing.distance = workout_dict.get("distance")
             existing.distance_unit = workout_dict.get("distance_unit")
             existing.time = workout_dict.get("time")
@@ -194,7 +181,7 @@ class WorkoutRepository:
             session.commit()
             return True
 
-    def toggle_complete(self, doc_id: int, completed: bool) -> Optional[dict]:
+    def toggle_complete(self, doc_id: int, completed: bool) -> dict | None:
         """Mark a workout as complete or incomplete."""
         with SessionLocal() as session:
             workout = session.get(Workout, doc_id)

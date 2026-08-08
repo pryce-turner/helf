@@ -54,6 +54,12 @@ COPY --from=backend-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/
 # Copy backend code
 COPY backend/app /app/app
 
+# Migrations must be in the image: init_db() runs `alembic upgrade head` at
+# startup, so a missing migrations/ or alembic.ini fails at container start
+# rather than at build time.
+COPY backend/alembic.ini /app/alembic.ini
+COPY backend/migrations /app/migrations
+
 # Copy frontend build
 COPY --from=frontend-build /app/frontend/dist /app/static
 

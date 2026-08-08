@@ -7,7 +7,8 @@ from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 pytestmark = pytest.mark.usefixtures("db_engine")
 
 
-def test_upcoming_create_converts_reps(db_session):
+def test_upcoming_create_stores_reps_as_integer(db_session):
+    """reps is an integer end to end - no string round-trip (ADR-0005)."""
     repo = UpcomingWorkoutRepository()
     created = repo.create(
         UpcomingWorkoutCreate(
@@ -20,7 +21,8 @@ def test_upcoming_create_converts_reps(db_session):
     )
 
     stored = db_session.query(UpcomingWorkout).filter(UpcomingWorkout.id == created["doc_id"]).one()
-    assert stored.reps == "5"
+    assert stored.reps == 5
+    assert isinstance(stored.reps, int)
     assert created["reps"] == 5
 
 

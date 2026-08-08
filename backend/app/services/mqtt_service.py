@@ -2,13 +2,13 @@
 
 import json
 import logging
-from typing import Callable, Optional
+from collections.abc import Callable
 from datetime import datetime
 
 import paho.mqtt.client as mqtt
 
-from app.repositories.body_comp_repo import BodyCompositionRepository
 from app.models.body_composition import BodyCompositionCreate
+from app.repositories.body_comp_repo import BodyCompositionRepository
 from app.utils.date_helpers import PACIFIC_TZ
 
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +22,7 @@ class MQTTService:
         self,
         broker_host: str = "localhost",
         broker_port: int = 1883,
-        on_measurement_callback: Optional[Callable] = None,
+        on_measurement_callback: Callable | None = None,
     ):
         """
         Initialize MQTT service.

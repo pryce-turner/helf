@@ -43,14 +43,14 @@ wrong, write a new ADR — don't quietly rewrite history.
 
 ### Plans
 - [0001 — Integration roadmap](plans/0001-integration-roadmap.md) — gap analysis, phase order, risk register **(start here)**
-- [0002 — Schema foundation](plans/0002-schema-foundation.md) — Alembic, pragmas, WAL *(blocks everything else)*
+- [0002 — Schema foundation](plans/0002-schema-foundation.md) — Alembic, pragmas, WAL — **Done**
 - [0003 — Units and metrics](plans/0003-units-and-metrics.md) — kg normalization, wide→tall body comp
 - [0004 — Workout session regrain](plans/0004-workout-session-regrain.md) — flat rows → session/set hierarchy
 - [0005 — Food and notes](plans/0005-food-and-notes.md) — new tables, new surface
 - [0006 — MCP server](plans/0006-mcp-server.md) — wiring `reference/qs_mcp.py` to the real DB
 - [0007 — Audit log](plans/0007-audit-log.md) — append-only change history
 - [0008 — BodySpec DEXA integration](plans/0008-bodyspec-integration.md) — API-sourced body composition
-- [0009 — Drop AMRAP notation](plans/0009-drop-amrap-notation.md) — `reps` TEXT → INTEGER; verified lossless
+- [0009 — Drop AMRAP notation](plans/0009-drop-amrap-notation.md) — `reps` TEXT → INTEGER — **Done**
 
 ### Reference
 - [`reference/qs_mcp.py`](reference/qs_mcp.py) — MCP server implementation from the design doc. **Not packaged or imported**; targets the design doc's schema, not the current one. Plan 0006 covers wiring it up.

@@ -71,11 +71,14 @@ helf/
 │   │   │   ├── wendler_531.liftoscript
 │   │   │   └── stronglifts_5x5.liftoscript
 │   │   ├── config.py         # Pydantic BaseSettings (env vars)
-│   │   ├── database.py       # SQLAlchemy engine/session/init
+│   │   ├── database.py       # SQLAlchemy engine/session, pragmas, init_db
 │   │   └── main.py           # FastAPI app, lifespan, CORS, SPA routing
 │   ├── migrations/
-│   │   ├── tinydb_to_sqlite.py   # Legacy data migration
-│   │   └── add_exercise_notes.py # Schema migration
+│   │   ├── alembic/          # Alembic migration environment
+│   │   │   ├── env.py        # Wired to app settings + Base.metadata
+│   │   │   └── versions/     # Revision scripts
+│   │   └── tinydb_to_sqlite.py   # Legacy one-shot data import
+│   ├── alembic.ini
 │   ├── tests/                # 18 pytest test files
 │   └── pyproject.toml
 ├── frontend/

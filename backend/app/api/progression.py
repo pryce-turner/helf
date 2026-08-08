@@ -1,10 +1,11 @@
 """Progression API endpoints."""
 
-from fastapi import APIRouter, Query as QueryParam
+from fastapi import APIRouter
+from fastapi import Query as QueryParam
 
 from app.models.progression import ProgressionResponse
-from app.services.progression_service import ProgressionService
 from app.repositories.exercise_repo import ExerciseRepository
+from app.services.progression_service import ProgressionService
 
 router = APIRouter()
 

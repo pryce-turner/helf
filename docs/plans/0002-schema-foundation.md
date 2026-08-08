@@ -1,9 +1,54 @@
 # Plan 0002: Schema foundation
 
-**Status:** Proposed
+**Status:** **Done** — implemented 2026-08-08, baseline revision `ac2fc3529985`
 **Prerequisites:** none
 **Blocks:** every other plan
 **Related:** ADR-0002, ADR-0004
+
+> ## Implementation notes
+>
+> Executed as written except for four points where the plan was wrong or silent.
+> Recorded here because each was discovered by running the thing, not by reading.
+>
+> **1. The baseline holds the full schema, not nothing.** §1.5 said to autogenerate
+> against the live database and expect an empty revision. That check passed —
+> models and production matched exactly, no drift — but an *empty* baseline is
+> unusable: once `init_db()` is `upgrade head`, a fresh deployment would create
+> no tables at all. The baseline was regenerated against an empty database so it
+> contains every `CREATE TABLE`. Existing databases are `stamp`ed instead of
+> having it replayed.
+>
+> **2. `init_db()` stamps pre-Alembic databases automatically.** The plan's
+> `init_db()` was `upgrade head` alone, which fails against production with
+> `table body_composition already exists`. It now detects an unversioned database
+> and stamps the baseline first.
+>
+> The first attempt tested for the *presence* of `alembic_version` — wrong, and it
+> failed exactly that way in testing: Alembic creates that table empty as a side
+> effect of merely connecting, so `alembic revision --autogenerate` had already
+> left one behind. The guard now tests for a **recorded revision** via
+> `MigrationContext.get_current_revision()`. Regression test:
+> `tests/test_database.py::test_empty_alembic_version_table_still_stamps`.
+>
+> **3. Migrations run with `foreign_keys=OFF`, then a `foreign_key_check`.** Not in
+> the plan, and it matters. Batch mode rebuilds a table by copying to a temp table
+> and renaming; with `foreign_keys=ON`, SQLite *helpfully rewrites referencing
+> tables to point at the temporary name*, silently corrupting the schema.
+> `exercises` and `categories` are both referenced, so this would fire the first
+> time either is rebuilt. `env.py` disables FKs for the migration connection and
+> raises if the post-migration integrity check finds violations.
+>
+> **4. `data/` was never actually gitignored.** `.gitignore` had `**/helf.db`,
+> which does not match `helf.db-wal` or `helf.db-shm` — the sidecars WAL creates.
+> Enabling WAL would have started committing them. Fixed alongside.
+>
+> Verified: `alembic current` → `ac2fc3529985 (head)`; `alembic check` → no drift;
+> `foreign_keys=1`, `journal_mode=wal`, `busy_timeout=5000` as the app sees them;
+> 9,292 workouts / 150 body_composition / 173 exercises intact through adoption;
+> image layout exercised from `/` to confirm no working-directory dependency.
+>
+> Test suite: 130 passed, 2 failed — both pre-existing at `HEAD` (confirmed in a
+> clean worktree) and both fixed by Plan 0009.
 
 Adds the two things the codebase is missing that make all subsequent schema work
 possible: a migration framework, and correct SQLite pragmas.
@@ -203,14 +248,22 @@ Notes:
 ### WAL and Docker
 
 WAL creates `helf.db-wal` and `helf.db-shm` beside the database. Both live in
-the mounted data directory (`/mnt/fast/apps/helf/data`) and must be on the same
-filesystem as the database — they are, since it's one bind mount.
+the mounted data directory and must be on the same filesystem as the database —
+they are, since it's one bind mount.
 
-**WAL requires real shared-memory support and does not work reliably over
-network filesystems** (NFS, SMB). The default `/mnt/fast` path suggests local
-storage; confirm this before deploying. If the data directory is ever moved to a
-network mount, WAL must be reconsidered — and with it, the two-process design in
-ADR-0002.
+**Resolved: the database is `data/helf.db` in the repository directory, on local
+disk**, and that directory is what gets bind-mounted into the container. The
+earlier open question — whether the data path was network storage, which would
+have invalidated WAL and with it ADR-0002's two-process design — does not apply.
+
+Confirmed empirically: running the image against a fresh volume produced
+`helf.db`, `helf.db-wal` and `helf.db-shm`, so WAL is genuinely active in the
+container rather than silently falling back.
+
+This constraint still binds any *future* relocation. **WAL requires real
+shared-memory support and does not work reliably over network filesystems**
+(NFS, SMB). Moving the data directory onto one means reverting WAL and
+revisiting ADR-0002.
 
 Backup implication: copying `helf.db` alone is no longer sufficient while the
 app is running, because recent commits may live in the `-wal` file. Use

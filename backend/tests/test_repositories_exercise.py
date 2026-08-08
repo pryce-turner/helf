@@ -1,7 +1,7 @@
 import pytest
 
-from app.models.exercise import ExerciseCreate, CategoryCreate
-from app.repositories.exercise_repo import ExerciseRepository, CategoryRepository
+from app.models.exercise import CategoryCreate, ExerciseCreate
+from app.repositories.exercise_repo import CategoryRepository, ExerciseRepository
 
 pytestmark = pytest.mark.usefixtures("db_engine")
 

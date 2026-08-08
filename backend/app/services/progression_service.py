@@ -1,13 +1,11 @@
 """Progression calculation service."""
 
-from datetime import timedelta
-from typing import Optional
+from datetime import datetime, timedelta
 
-from app.repositories.workout_repo import WorkoutRepository
 from app.repositories.upcoming_repo import UpcomingWorkoutRepository
+from app.repositories.workout_repo import WorkoutRepository
 from app.utils.calculations import calculate_estimated_1rm
-from app.utils.date_helpers import get_current_date, PACIFIC_TZ
-from datetime import datetime
+from app.utils.date_helpers import PACIFIC_TZ
 
 
 class ProgressionService:

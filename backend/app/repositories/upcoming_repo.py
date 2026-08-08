@@ -1,6 +1,5 @@
 """Upcoming workout repository for database operations."""
 
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -15,10 +14,6 @@ class UpcomingWorkoutRepository:
     """Repository for upcoming workout data operations."""
 
     def _serialize(self, workout: UpcomingWorkout) -> dict:
-        reps = workout.reps
-        if isinstance(reps, str) and reps.isdigit():
-            reps = int(reps)
-
         return {
             "doc_id": workout.id,
             "session": workout.session,
@@ -26,7 +21,7 @@ class UpcomingWorkoutRepository:
             "category": workout.category.name if workout.category else None,
             "weight": workout.weight,
             "weight_unit": workout.weight_unit,
-            "reps": reps,
+            "reps": workout.reps,
             "distance": workout.distance,
             "distance_unit": workout.distance_unit,
             "time": workout.time,
@@ -102,7 +97,7 @@ class UpcomingWorkoutRepository:
             )
             return [self._serialize(workout) for workout in workouts]
 
-    def get_lowest_session(self) -> Optional[int]:
+    def get_lowest_session(self) -> int | None:
         """Get the lowest session number."""
         with SessionLocal() as session:
             lowest = session.execute(
@@ -113,9 +108,6 @@ class UpcomingWorkoutRepository:
     def create(self, workout: UpcomingWorkoutCreate) -> dict:
         """Create a new upcoming workout."""
         workout_dict = workout.model_dump(exclude_none=False)
-        reps = workout_dict.get("reps")
-        if reps is not None and not isinstance(reps, str):
-            reps = str(reps)
 
         with SessionLocal() as session:
             category = self._get_or_create_category(session, workout_dict["category"])
@@ -127,7 +119,7 @@ class UpcomingWorkoutRepository:
                 category_id=category.id,
                 weight=workout_dict.get("weight"),
                 weight_unit=workout_dict.get("weight_unit") or "lbs",
-                reps=reps,
+                reps=workout_dict.get("reps"),
                 distance=workout_dict.get("distance"),
                 distance_unit=workout_dict.get("distance_unit"),
                 time=workout_dict.get("time"),
@@ -164,17 +156,13 @@ class UpcomingWorkoutRepository:
                     exercise = self._get_or_create_exercise(session, exercise_name, category)
                     exercises_cache[exercise_name] = exercise
 
-                reps = workout_dict.get("reps")
-                if reps is not None and not isinstance(reps, str):
-                    reps = str(reps)
-
                 new_workout = UpcomingWorkout(
                     session=workout_dict["session"],
                     exercise_id=exercise.id,
                     category_id=category.id,
                     weight=workout_dict.get("weight"),
                     weight_unit=workout_dict.get("weight_unit") or "lbs",
-                    reps=reps,
+                    reps=workout_dict.get("reps"),
                     distance=workout_dict.get("distance"),
                     distance_unit=workout_dict.get("distance_unit"),
                     time=workout_dict.get("time"),

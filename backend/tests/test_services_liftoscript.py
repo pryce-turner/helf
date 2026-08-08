@@ -3,9 +3,9 @@
 import pytest
 
 from app.services.liftoscript_service import (
-    LiftoscriptParser,
-    LiftoscriptParseError,
     EXERCISE_CATEGORIES,
+    LiftoscriptParseError,
+    LiftoscriptParser,
 )
 
 
@@ -100,8 +100,12 @@ Barbell Squat / 3x5 progress: lp(5lb)
         assert "missing required comment" in str(exc_info.value).lower()
         assert "SW" in str(exc_info.value)
 
-    def test_parse_amrap_sets(self):
-        """Test parsing AMRAP sets (marked with +)."""
+    def test_parse_amrap_marks_only_the_final_set(self):
+        """"3x10+" is three sets of ten with the LAST taken to failure.
+
+        Marking every set AMRAP misstates the programme. Previously latent
+        because every built-in preset uses "1x", where the two are the same.
+        """
         parser = LiftoscriptParser()
         script = """
 ## Day 1
@@ -110,9 +114,36 @@ Pull Ups / 3x10+ 0lb
         workouts = parser.parse(script)
 
         assert len(workouts) == 3
-        for workout in workouts:
-            assert workout.comment == "AMRAP"
-            assert workout.reps == 10
+        assert [w.reps for w in workouts] == [10, 10, 10]
+        assert [w.comment for w in workouts] == [None, None, "AMRAP"]
+
+    def test_parse_single_amrap_set(self):
+        """The "1x5+" case every preset actually uses."""
+        parser = LiftoscriptParser()
+        workouts = parser.parse("## Day 1\nPull Ups / 1x10+ 0lb\n")
+
+        assert len(workouts) == 1
+        assert workouts[0].comment == "AMRAP"
+
+    def test_plus_in_weight_expression_is_not_amrap(self):
+        """AMRAP comes from the captured group, not a scan of the whole spec.
+
+        `is_amrap = "+" in sets_reps_str` matched a "+" anywhere in the line,
+        including the weight, so an additive weight expression falsely reported
+        AMRAP.
+        """
+        parser = LiftoscriptParser()
+        sets, reps, is_amrap = parser._parse_sets_reps("1x5 BW+25lb")
+
+        assert (sets, reps) == (1, 5)
+        assert is_amrap is False
+
+    def test_reps_are_integers(self):
+        """ADR-0005: the parser owns AMRAP notation; `reps` is a plain integer."""
+        parser = LiftoscriptParser()
+        workouts = parser.parse("## Day 1\nPull Ups / 1x10+ 0lb\n")
+
+        assert isinstance(workouts[0].reps, int)
 
     def test_parse_multiple_set_specifications(self):
         """Test parsing multiple set specs separated by commas."""

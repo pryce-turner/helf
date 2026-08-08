@@ -1,7 +1,7 @@
 """Workout data models."""
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -11,26 +11,26 @@ class WorkoutBase(BaseModel):
     date: str = Field(..., description="Workout date in YYYY-MM-DD format")
     exercise: str = Field(..., min_length=1)
     category: str = Field(..., min_length=1)
-    weight: Optional[float] = None
+    weight: float | None = None
     weight_unit: str = "lbs"
-    reps: Optional[int] = None
-    distance: Optional[float] = None
-    distance_unit: Optional[str] = None
-    time: Optional[str] = None
-    comment: Optional[str] = None
-    completed_at: Optional[datetime] = None
+    reps: int | None = None
+    distance: float | None = None
+    distance_unit: str | None = None
+    time: str | None = None
+    comment: str | None = None
+    completed_at: datetime | None = None
 
 
 class WorkoutCreate(WorkoutBase):
     """Model for creating a workout."""
 
-    order: Optional[int] = None
+    order: int | None = None
 
 
 class WorkoutUpdate(WorkoutBase):
     """Model for updating a workout."""
 
-    order: Optional[int] = None
+    order: int | None = None
 
 
 class Workout(WorkoutBase):

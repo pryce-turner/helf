@@ -325,17 +325,33 @@ Tests use an **in-memory SQLite database** (configured in `tests/conftest.py`). 
 
 ## Migrations
 
+Schema is managed by [Alembic](https://alembic.sqlalchemy.org/). The app runs
+`upgrade head` at startup (`init_db()`), so no manual step is normally needed.
+
+```bash
+alembic current                              # revision the database is on
+alembic history                              # all revisions
+alembic upgrade head                         # apply pending migrations
+alembic downgrade -1                         # undo the last one
+alembic check                                # fail if models have drifted
+alembic revision --autogenerate -m "message" # write a new revision
+```
+
+`env.py` takes the database URL from `app.config.settings.db_path`, so
+`DATA_DIR` / `HELF_DATA_PATH` stay the single source of truth — `alembic.ini`
+deliberately has no `sqlalchemy.url`.
+
+A database created before Alembic was adopted is stamped at the baseline
+automatically on first startup rather than having the baseline replayed against
+it. The baseline includes the `exercises.notes` column, which the standalone
+`add_exercise_notes.py` script used to add; that script has been removed.
+
 ### TinyDB to SQLite
 ```bash
 python migrations/tinydb_to_sqlite.py
 ```
-Converts legacy TinyDB JSON exports to the SQLite schema.
-
-### Add Exercise Notes
-```bash
-python migrations/add_exercise_notes.py
-```
-Adds the `notes` column to the exercises table.
+Converts legacy TinyDB JSON exports to the SQLite schema. A one-shot import, not
+part of the Alembic history.
 
 ## Adding a New Endpoint
 

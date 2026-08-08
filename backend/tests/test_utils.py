@@ -1,20 +1,35 @@
 from datetime import datetime
 
+import pytest
+
 from app.utils.calculations import calculate_estimated_1rm, calculate_moving_average
 from app.utils.date_helpers import (
+    PACIFIC_TZ,
     format_timestamp,
     parse_iso_timestamp,
     project_future_dates,
-    PACIFIC_TZ,
 )
 
 
-def test_calculate_estimated_1rm_handles_plus_string():
-    assert calculate_estimated_1rm(100, "5+") == 116.5
+def test_calculate_estimated_1rm_epley():
+    # (0.033 x 5 x 100) + 100
+    assert calculate_estimated_1rm(100, 5) == 116.5
 
 
-def test_calculate_estimated_1rm_handles_invalid_values():
-    assert calculate_estimated_1rm("bad", "x") == 0.0
+def test_calculate_estimated_1rm_single_rep_is_the_weight():
+    assert calculate_estimated_1rm(225, 1) == 232.4
+
+
+def test_calculate_estimated_1rm_raises_on_missing_values():
+    """A missing weight or reps must raise, not quietly become 0.0.
+
+    Returning zero put a fake point on the progression chart that looked like a
+    genuine measurement. Callers filter these rows out before calling (ADR-0005).
+    """
+    with pytest.raises(TypeError):
+        calculate_estimated_1rm(None, 5)
+    with pytest.raises(TypeError):
+        calculate_estimated_1rm(100, None)
 
 
 def test_calculate_moving_average_skips_none_values():

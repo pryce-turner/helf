@@ -3,15 +3,15 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.exercise import (
-    Exercise,
-    ExerciseCreate,
-    ExerciseUpdate,
     Category,
     CategoryCreate,
+    Exercise,
+    ExerciseCreate,
     ExercisesByCategoryResponse,
+    ExerciseUpdate,
     SeedExercisesResponse,
 )
-from app.repositories.exercise_repo import ExerciseRepository, CategoryRepository
+from app.repositories.exercise_repo import CategoryRepository, ExerciseRepository
 
 # Exercises from workout presets (wendler_531, stronglifts_5x5)
 PRESET_EXERCISES = {

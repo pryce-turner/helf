@@ -3,7 +3,7 @@
 
 def calculate_estimated_1rm(weight: float, reps: int) -> float:
     """
-    Calculate estimated 1RM using the formula: (0.033 × reps × weight) + weight
+    Calculate estimated 1RM using the Epley formula: (0.033 × reps × weight) + weight
 
     Args:
         weight: Weight lifted
@@ -11,16 +11,16 @@ def calculate_estimated_1rm(weight: float, reps: int) -> float:
 
     Returns:
         Estimated 1RM value
-    """
-    try:
-        reps_num = int(reps)
-        weight_num = float(weight)
 
-        # Formula: (0.033 × reps × weight) + weight
-        estimated_1rm = (0.033 * reps_num * weight_num) + weight_num
-        return round(estimated_1rm, 1)
-    except (ValueError, TypeError):
-        return 0.0
+    Raises:
+        TypeError: if either argument is None or not a number.
+
+    Deliberately unguarded. This used to return 0.0 for unusable input, which put
+    a fake data point on the progression chart that was indistinguishable from a
+    genuine measurement of zero. Callers must skip rows with a missing weight or
+    reps before calling - all three already do.
+    """
+    return round((0.033 * reps * weight) + weight, 1)
 
 
 def calculate_moving_average(values: list[float | None], window: int = 7) -> list[float | None]:

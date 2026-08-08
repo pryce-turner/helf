@@ -1,20 +1,20 @@
 """Workout API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query as QueryParam
-from typing import Optional
+
+from fastapi import APIRouter, HTTPException
+from fastapi import Query as QueryParam
 
 from app.models.workout import (
+    CalendarResponse,
     Workout,
-    WorkoutCreate,
-    WorkoutUpdate,
-    WorkoutReorder,
     WorkoutBulkReorder,
     WorkoutComplete,
-    WorkoutMoveDate,
-    WorkoutMoveDateResponse,
     WorkoutCopyDate,
     WorkoutCopyDateResponse,
-    CalendarResponse,
+    WorkoutCreate,
+    WorkoutMoveDate,
+    WorkoutMoveDateResponse,
+    WorkoutUpdate,
 )
 from app.repositories.workout_repo import WorkoutRepository
 
@@ -23,7 +23,7 @@ router = APIRouter()
 
 @router.get("/", response_model=list[Workout])
 def get_workouts(
-    date: Optional[str] = None,
+    date: str | None = None,
     skip: int = 0,
     limit: int = 100,
 ):

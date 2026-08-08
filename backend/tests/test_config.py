@@ -1,10 +1,6 @@
 """Tests for config.py - Application settings."""
 
-import os
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 from app.config import Settings
 
@@ -243,7 +239,7 @@ class TestSettings:
 
         assert not nested_dir.exists()
 
-        settings = Settings()
+        Settings()  # constructing it is what creates the directories
 
         assert nested_dir.exists()
         assert nested_dir.is_dir()

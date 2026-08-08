@@ -5,13 +5,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.database as database
-from app.database import Base
-from app.api import workouts, exercises, progression, upcoming, body_comp
-
-import app.repositories.exercise_repo as exercise_repo
-import app.repositories.workout_repo as workout_repo
-import app.repositories.upcoming_repo as upcoming_repo
 import app.repositories.body_comp_repo as body_comp_repo
+import app.repositories.exercise_repo as exercise_repo
+import app.repositories.upcoming_repo as upcoming_repo
+import app.repositories.workout_repo as workout_repo
+from app.api import body_comp, exercises, progression, upcoming, workouts
+from app.database import Base, apply_sqlite_pragmas
 
 
 @pytest.fixture()
@@ -22,7 +21,12 @@ def db_engine(tmp_path, monkeypatch):
         connect_args={"check_same_thread": False},
         pool_pre_ping=True,
     )
-    SessionLocal = sessionmaker(
+    # Same pragmas as production. Tests that pass with foreign keys unenforced
+    # and fail with them enforced are the whole reason to do this here.
+    apply_sqlite_pragmas(engine)
+    # PascalCase deliberately: this is a sessionmaker factory, and it is patched
+    # in as `database.SessionLocal`, whose name it should match.
+    SessionLocal = sessionmaker(  # noqa: N806
         bind=engine,
         autoflush=False,
         autocommit=False,
@@ -46,7 +50,7 @@ def db_engine(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def db_session(db_engine):
-    SessionLocal = sessionmaker(
+    SessionLocal = sessionmaker(  # noqa: N806 - sessionmaker factory, see above
         bind=db_engine,
         autoflush=False,
         autocommit=False,

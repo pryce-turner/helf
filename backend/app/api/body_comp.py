@@ -1,7 +1,7 @@
 """Body composition API endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query as QueryParam
-from typing import Optional
+from fastapi import APIRouter, HTTPException
+from fastapi import Query as QueryParam
 
 from app.models.body_composition import (
     BodyComposition,
@@ -16,8 +16,8 @@ router = APIRouter()
 
 @router.get("/", response_model=list[BodyComposition])
 def get_measurements(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     skip: int = 0,
     limit: int = 100,
 ):
@@ -30,7 +30,7 @@ def get_measurements(
     return repo.get_all(skip=skip, limit=limit)
 
 
-@router.get("/latest", response_model=Optional[BodyComposition])
+@router.get("/latest", response_model=BodyComposition | None)
 def get_latest_measurement():
     """Get the most recent measurement."""
     repo = BodyCompositionRepository()

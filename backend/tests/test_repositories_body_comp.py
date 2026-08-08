@@ -1,5 +1,6 @@
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 
 from app.models.body_composition import BodyCompositionCreate
 from app.repositories.body_comp_repo import BodyCompositionRepository

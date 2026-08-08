@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -111,6 +112,41 @@ class UpcomingWorkout(Base):
     category: Mapped[Category] = relationship("Category", back_populates="upcoming_workouts")
 
 
+class Document(Base):
+    """A raw imported payload, kept whole.
+
+    Promotion into `metric` is deliberately lossy - a BodySpec DEXA scan
+    flattens to well over a hundred scalars and thirteen are worth charting
+    (docs/plans/0008-bodyspec-integration.md §5). The rest live here, reachable
+    with `json_extract`, so promoting one later is a re-run over stored
+    documents rather than a re-fetch from an API.
+
+    `external_id` is the upstream identity - BodySpec's `result_id` - and the
+    unique index over (kind, external_id) is what makes a re-poll a no-op
+    instead of duplicate history.
+    """
+
+    __tablename__ = "document"
+    __table_args__ = (
+        CheckConstraint("json_valid(raw)", name="ck_document_raw_is_json"),
+        # NULLs are distinct in a SQLite UNIQUE index, so documents with no
+        # upstream identity coexist freely while a `result_id` appears at most
+        # once per kind.
+        Index("ux_document_kind_external", "kind", "external_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    imported_at: Mapped[str] = mapped_column(
+        Text, server_default=text("(datetime('now'))"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw: Mapped[str] = mapped_column(Text, nullable=False)
+
+    metrics: Mapped[list["Metric"]] = relationship("Metric", back_populates="document")
+
+
 class MetricDef(Base):
     """Vocabulary of measurable quantities.
 
@@ -198,11 +234,19 @@ class Metric(Base):
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     text_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Provenance: the payload this value was promoted from, where there was
+    # one. NULL for anything entered by hand or read off an MQTT topic.
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document.id"), nullable=True
+    )
 
     observation: Mapped[Observation] = relationship(
         "Observation", back_populates="metrics"
     )
     definition: Mapped[MetricDef] = relationship("MetricDef", back_populates="metrics")
+    document: Mapped["Document | None"] = relationship(
+        "Document", back_populates="metrics"
+    )
 
 
 class BodyComposition(Base):

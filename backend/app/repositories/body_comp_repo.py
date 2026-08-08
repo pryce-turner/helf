@@ -191,6 +191,62 @@ class BodyCompositionRepository:
                 observed_at,
             )
 
+    def reconcile_mirror(self) -> dict:
+        """Compare `body_composition` against its `metric` mirror.
+
+        The mirror is deliberately non-fatal (see `_mirror_to_metric`), which
+        buys durability for the measurement at the cost of the two tables being
+        able to drift apart silently. This is what makes that drift visible.
+
+        `body_composition` is authoritative, so every difference is expressed as
+        something the mirror is missing or has wrong - never the reverse.
+
+        Returns counts plus a bounded sample, so it is safe to log or expose.
+        """
+        with SessionLocal() as session:
+            measurements = session.execute(select(BodyComposition)).scalars().all()
+
+            expected: dict[tuple[str, str], float] = {}
+            for m in measurements:
+                observed_at = _observed_at(m.timestamp)
+                for column, metric_name, _unit in METRIC_COLUMNS:
+                    value = getattr(m, column)
+                    if value is not None:
+                        expected[(observed_at, metric_name)] = float(value)
+
+            actual = {
+                (observed_at, name): value
+                for observed_at, name, value in session.execute(
+                    select(Metric.observed_at, Metric.name, Metric.value).where(
+                        Metric.name.in_([n for _c, n, _u in METRIC_COLUMNS])
+                    )
+                ).all()
+            }
+
+        missing = sorted(k for k in expected if k not in actual)
+        # Float comparison with a tolerance: the values round-trip through
+        # SQLite REAL, so exact equality is not guaranteed to survive.
+        mismatched = sorted(
+            k
+            for k, v in expected.items()
+            if k in actual and abs(float(actual[k]) - v) > 1e-9
+        )
+        orphaned = sorted(k for k in actual if k not in expected)
+
+        return {
+            "expected_rows": len(expected),
+            "mirrored_rows": len(actual),
+            "missing": len(missing),
+            "mismatched": len(mismatched),
+            "orphaned": len(orphaned),
+            "in_sync": not (missing or mismatched or orphaned),
+            "sample": {
+                "missing": missing[:5],
+                "mismatched": mismatched[:5],
+                "orphaned": orphaned[:5],
+            },
+        }
+
     def delete(self, doc_id: int) -> bool:
         """Delete a measurement and its mirrored metric rows."""
         with SessionLocal() as session:

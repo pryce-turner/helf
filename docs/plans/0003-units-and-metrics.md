@@ -87,8 +87,50 @@
 > its foreign key. Because the mirror is deliberately non-fatal, the suite would
 > have stayed green while the dual write did nothing.
 >
+> ## Blocker found: the read path cannot move as designed
+>
+> §4 asserts "**The API contract does not change** — `v_body_comp_daily` pivots
+> the tall rows back into the wide shape the repository already returns." That is
+> not true, and it blocks the switch.
+>
+> The response model (`models/body_composition.py`) requires three things the
+> views cannot supply:
+>
+> | Field | Why the view has none |
+> |---|---|
+> | `id` (serialised as `doc_id`) | A measurement is **four `metric` rows**. There is no single row to take an id from |
+> | `created_at` | Ingestion time is a property of the measurement, not of a metric |
+> | `weight_unit` | Implied by the metric *name* (`body_weight_lb`), not stored |
+>
+> `doc_id` is load-bearing, not decorative: `DELETE /api/body-composition/{id}`
+> takes it, and the frontend's delete mutation filters the cache on it
+> (`useBodyComposition.ts:113`). Serving reads from a view would break deletion.
+>
+> **The tall model has no concept of a measurement** — only of individual
+> observations that happen to share an `observed_at`. The likely fix is an
+> `observation` table (`id`, `observed_at`, `source`, `created_at`) that `metric`
+> rows reference, making `doc_id` a real identity again and giving `created_at` a
+> home. That is a schema design decision, not a mechanical port, so it is not
+> taken here.
+>
+> **Partial migration was considered and rejected.** `trends` needs no identity
+> and could move today, but then one page would read two sources: a failed mirror
+> would show gaps in the chart while the list below it showed the row. One
+> consistent source beats a half-migrated one.
+>
 > **Nothing reads the views yet.** `body_composition` remains the live read path.
-> Switching over is the remaining step before `a5`.
+>
+> ## Mirror reconciliation (2026-08-08)
+>
+> Since the mirror is deliberately non-fatal, the two tables *can* drift, and
+> nothing would say so. `BodyCompositionRepository.reconcile_mirror()` compares
+> them and reports missing, mismatched and orphaned rows with a bounded sample.
+> `body_composition` is authoritative, so every difference is expressed as
+> something the mirror lacks.
+>
+> Against production: **600 expected, 600 mirrored, zero drift.** Each failure
+> mode is provoked in tests rather than assumed — a check that can only report
+> success is worthless.
 
 > ## `a1` implementation notes
 >

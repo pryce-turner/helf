@@ -375,3 +375,93 @@ class TestDualWriteToMetric:
         )
         assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 0
         assert "Failed to mirror measurement" in caplog.text
+
+
+class TestMirrorReconciliation:
+    """The drift detector for the non-fatal mirror.
+
+    A check that only ever reports "in sync" is worthless, so each failure mode
+    is provoked rather than assumed.
+    """
+
+    @staticmethod
+    def _measure(repo, day, **fields):
+        ts = datetime(2026, 7, day, 7, 0, tzinfo=PACIFIC_TZ)
+        return repo.create(
+            BodyCompositionCreate(
+                timestamp=ts,
+                date=ts.date().isoformat(),
+                weight=190.0,
+                body_fat_pct=23.0,
+                **fields,
+            )
+        )
+
+    def test_reports_in_sync_after_normal_writes(self):
+        repo = BodyCompositionRepository()
+        self._measure(repo, 1)
+        self._measure(repo, 2)
+
+        report = repo.reconcile_mirror()
+        assert report["in_sync"] is True
+        assert report["expected_rows"] == report["mirrored_rows"] == 4
+
+    def test_detects_a_mirror_that_never_ran(self, db_session):
+        """The exact consequence of a swallowed mirror failure."""
+        repo = BodyCompositionRepository()
+        self._measure(repo, 3)
+        db_session.execute(text("DELETE FROM metric"))
+        db_session.commit()
+
+        report = repo.reconcile_mirror()
+        assert report["in_sync"] is False
+        assert report["missing"] == 2
+        assert report["sample"]["missing"]
+
+    def test_detects_a_diverged_value(self, db_session):
+        repo = BodyCompositionRepository()
+        self._measure(repo, 4)
+        db_session.execute(
+            text("UPDATE metric SET value = 999 WHERE name = 'body_weight_lb'")
+        )
+        db_session.commit()
+
+        report = repo.reconcile_mirror()
+        assert report["in_sync"] is False
+        assert report["mismatched"] == 1
+
+    def test_detects_an_orphaned_metric_row(self, db_session):
+        """A metric row with no measurement behind it - deletion gone wrong."""
+        repo = BodyCompositionRepository()
+        created = self._measure(repo, 5)
+        db_session.execute(
+            text("DELETE FROM body_composition WHERE id = :i"),
+            {"i": created["doc_id"]},
+        )
+        db_session.commit()
+
+        report = repo.reconcile_mirror()
+        assert report["in_sync"] is False
+        assert report["orphaned"] == 2
+
+    def test_ignores_metrics_that_are_not_mirrored_columns(self, db_session):
+        """Rows from other sources are not this check's business.
+
+        A DEXA import or a journal entry writes metrics that have no
+        body_composition row by design; flagging them as orphans would make the
+        check cry wolf.
+        """
+        repo = BodyCompositionRepository()
+        self._measure(repo, 6)
+        db_session.execute(
+            text("INSERT INTO metric_def (name, canonical_unit) VALUES ('mood', '1-10')")
+        )
+        db_session.execute(
+            text(
+                "INSERT INTO metric (observed_at, name, value, unit, source) "
+                "VALUES ('2026-07-06 07:00:00.000000', 'mood', 7, '1-10', 'journal')"
+            )
+        )
+        db_session.commit()
+
+        assert repo.reconcile_mirror()["in_sync"] is True

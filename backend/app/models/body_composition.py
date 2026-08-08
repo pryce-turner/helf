@@ -60,6 +60,20 @@ class BodyCompositionStats(BaseModel):
     latest_date: str | None = None
 
 
+class BodyCompositionSyncResult(BaseModel):
+    """What one BodySpec sync did.
+
+    `skipped` is the number of scans already held. On a second run it should
+    equal `scans_found` with `imported` at zero - idempotency is the property
+    most likely to break here, and the failure mode is silent duplicate
+    history.
+    """
+    scans_found: int
+    imported: int
+    skipped: int
+    metrics_written: int
+
+
 class BodyCompositionTrend(BaseModel):
     """Trend data for charts.
 

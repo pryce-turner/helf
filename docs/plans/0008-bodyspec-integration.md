@@ -290,15 +290,22 @@ gap, and the FK is what keeps provenance intact.
 Two things depend on the format, and neither is obvious:
 
 - **`observation.date` is `substr(observed_at, 1, 10)`**, a stored generated
-  column, and it is the app's universal join key. `acquire_time` arrives as
-  UTC ISO-8601, so storing it verbatim files a scan taken at 18:00 Pacific under
-  the *following* day. Every existing row is Pacific-local and naive.
+  column, and it is the app's universal join key. Every existing row is
+  Pacific-local and naive, so a format that shifts the day files a scan under
+  the wrong date.
 - **Idempotency keys on byte-identical `observed_at`.** A format that varies
   between runs re-imports the same scan under a second observation.
 
-So `acquire_time` is converted to Pacific and formatted
-`%Y-%m-%d %H:%M:%S.%f`, matching `body_comp_repo._observed_at`. Pinned, not
-incidental.
+The spec settles what `acquire_time` actually is: *"When the scan was acquired
+**in location timezone**"* — not UTC, as an earlier version of this section
+assumed. `parse_iso_timestamp` already does exactly the right thing with that:
+an offset is converted to Pacific, and a naive timestamp is taken as already
+local. It is then formatted `%Y-%m-%d %H:%M:%S.%f`, matching
+`body_comp_repo._observed_at`. Pinned, not incidental.
+
+(A scan taken outside Pacific and reported naive is filed at its own wall-clock
+time, which keeps the calendar date right — the part that matters — while the
+hour is nominal.)
 
 ### What to promote
 

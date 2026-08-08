@@ -1,15 +1,28 @@
 """Body composition API endpoints."""
 
-from fastapi import APIRouter, HTTPException
+import logging
+
+from fastapi import APIRouter, Header, HTTPException
 from fastapi import Query as QueryParam
 
+import app.database as database
 from app.models.body_composition import (
     BodyComposition,
     BodyCompositionCreate,
     BodyCompositionStats,
+    BodyCompositionSyncResult,
     BodyCompositionTrend,
 )
 from app.repositories.body_comp_repo import BodyCompositionRepository
+from app.services import bodyspec_sync
+from app.services.bodyspec_client import (
+    BodySpecAuthError,
+    BodySpecClient,
+    BodySpecError,
+)
+from app.utils.date_helpers import get_current_datetime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -103,6 +116,55 @@ def create_measurement(measurement: BodyCompositionCreate):
         )
 
     return created
+
+
+@router.post("/sync/bodyspec", response_model=BodyCompositionSyncResult)
+def sync_bodyspec(authorization: str = Header(...)):
+    """Import DEXA scans from BodySpec.
+
+    The access token arrives in the `Authorization` header, is forwarded
+    upstream, and is never written anywhere - not to `helf.db`, not to config,
+    not to a log. It exists inside Helf for the duration of this request. See
+    docs/plans/0008-bodyspec-integration.md §3 for why that is the whole
+    design rather than a precaution.
+
+    Sync is user-triggered. There is no scheduler and no stored credential, so
+    there is nothing to rotate, leak, or find expired with nobody present.
+    """
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Expected `Authorization: Bearer <bodyspec access token>`.",
+        )
+
+    try:
+        result = bodyspec_sync.sync(
+            client=BodySpecClient(),
+            token=token,
+            # Resolved through the module rather than imported by name, so the
+            # test fixture's patched sessionmaker is picked up. A `from ...
+            # import SessionLocal` here binds the production engine at import
+            # time and needs a matching entry in conftest's patch list to be
+            # safe - and a test that misses it writes to the real database.
+            session_factory=database.SessionLocal,
+            created_at=get_current_datetime(),
+        )
+    except BodySpecAuthError as exc:
+        # The one error the user will actually hit. A generic 500 here would
+        # send them debugging Helf instead of pasting a new token.
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except BodySpecError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    logger.info(
+        "BodySpec sync: %s found, %s imported, %s skipped, %s metrics",
+        result["scans_found"],
+        result["imported"],
+        result["skipped"],
+        result["metrics_written"],
+    )
+    return result
 
 
 @router.delete("/{measurement_id}", status_code=204)

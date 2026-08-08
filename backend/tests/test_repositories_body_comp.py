@@ -128,6 +128,68 @@ def test_body_comp_stats_calculates_changes():
     stats = repo.get_stats()
     assert stats["total_measurements"] == 3
     assert stats["latest_weight"] == 80
-    assert stats["body_fat_change"] == -3
-    assert stats["muscle_mass_change"] == 3
-    assert stats["weight_change"] == pytest.approx(-9.0)
+    # All three changes are earliest-to-latest across all history.
+    assert stats["body_fat_change"] == -3       # 17 - 20
+    assert stats["muscle_mass_change"] == 3     # 43 - 40
+    assert stats["weight_change"] == pytest.approx(-10.0)  # 80 - 90
+
+
+def test_body_comp_stats_change_ignores_measurement_age():
+    """A change is reported however long ago the last measurement was.
+
+    The previous rolling-30-day definition returned None once the most recent
+    reading aged past the window, so the card went blank on real data.
+    """
+    repo = BodyCompositionRepository()
+    now = datetime.now(PACIFIC_TZ)
+    for days_ago, weight in ((400, 200.0), (300, 190.0)):
+        repo.create(
+            BodyCompositionCreate(
+                timestamp=now - timedelta(days=days_ago),
+                date=(now - timedelta(days=days_ago)).date().isoformat(),
+                weight=weight,
+            )
+        )
+
+    assert repo.get_stats()["weight_change"] == pytest.approx(-10.0)
+
+
+def test_body_comp_stats_change_is_none_for_single_measurement():
+    """One data point is not a change."""
+    repo = BodyCompositionRepository()
+    now = datetime.now(PACIFIC_TZ)
+    repo.create(
+        BodyCompositionCreate(
+            timestamp=now, date=now.date().isoformat(), weight=190.0
+        )
+    )
+
+    assert repo.get_stats()["weight_change"] is None
+
+
+def test_body_comp_stats_change_skips_rows_missing_that_metric():
+    """A gap in the earliest row must not suppress the whole series.
+
+    body_fat_pct is absent from the first measurement; the change is still
+    computed from the two rows that have it.
+    """
+    repo = BodyCompositionRepository()
+    now = datetime.now(PACIFIC_TZ)
+    rows = [
+        (30, 200.0, None),
+        (20, 195.0, 22.0),
+        (10, 190.0, 20.0),
+    ]
+    for days_ago, weight, fat in rows:
+        repo.create(
+            BodyCompositionCreate(
+                timestamp=now - timedelta(days=days_ago),
+                date=(now - timedelta(days=days_ago)).date().isoformat(),
+                weight=weight,
+                body_fat_pct=fat,
+            )
+        )
+
+    stats = repo.get_stats()
+    assert stats["weight_change"] == pytest.approx(-10.0)
+    assert stats["body_fat_change"] == pytest.approx(-2.0)

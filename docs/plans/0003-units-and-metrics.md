@@ -1,8 +1,66 @@
 # Plan 0003: Units and metrics
 
-**Status:** **`a1` done** (2026-08-08, revision `a70937427207`) — `a2`–`a5` outstanding
+**Status:** **`a1`–`a4` done** (2026-08-08) — only `a5` outstanding
 **Prerequisites:** Plan 0002 (Alembic + pragmas) — satisfied
 **Related:** ADR-0003
+
+| Rev | Revision id | State |
+|-----|-------------|-------|
+| `a1` | `a70937427207` | Done — body comp converted to lbs |
+| `a2` | `4de188592eb5` | Done — `metric` + `metric_def`, seeded |
+| `a3` | `de63ed0bc62d` | Done — 600 rows backfilled |
+| `a4` | `f5abbd14fa00` | Done — four views |
+| `a5` | — | **Outstanding** — drop `weight_unit`; do last, after the read path moves |
+
+> ## `a2`–`a4` implementation notes
+>
+> **600 rows backfilled**, 150 each for `body_weight_lb`, `body_fat_pct`,
+> `muscle_pct` and `water_pct`. The migration verifies itself: per-metric row
+> counts *and* sums are compared against the source columns, because all four
+> columns have identical counts and a count check alone would not catch a column
+> being copied into the wrong metric name.
+>
+> **`document_id` is omitted from `metric`.** The design includes it, but
+> `document` does not exist until Plan 0005, and with `foreign_keys=ON` a
+> reference to a missing table fails at INSERT rather than at CREATE. Add it when
+> its target exists.
+>
+> **The daily view averages; it does not `MAX`.** This is a deliberate deviation
+> from §4. The history weighs in more than once on **30 days**, and **13 of those
+> have genuinely different readings, spanning up to 4.06 lb**. `MAX` reports the
+> heaviest reading of each such day, biasing every daily summary upward.
+> Repeated readings from one instrument within one day are repeated measures of
+> the same quantity, so averaging is sound — averaging *across sources* is not,
+> which is exactly what the `source` grouping prevents. The view also exposes
+> `n_measurements` so a collapsed day is visible rather than implied.
+>
+> **A per-measurement view was added** (`v_body_comp_measurements`), which §4
+> suggested and which turns out to be necessary: it reproduces
+> `body_composition` **exactly** — 150 rows, zero mismatches across all four
+> populated columns. The daily view yields 107 rows for the same data. List and
+> detail endpoints must read the per-measurement view; only summaries may read
+> the daily one.
+>
+> **`muscle_mass` in the view is fed from `muscle_pct`.** §4's draft mapped it
+> from `muscle_mass_lb`, a metric nothing seeds — the column would have been
+> silently NULL on every row. The view preserves the legacy column *name* while
+> the metric carries the honest one.
+>
+> **A test regression worth recording.** `test_database.py` built its
+> "pre-Alembic" fixture with `create_all()`, which silently became *head* rather
+> than *baseline* the moment `metric` was added, so the stamp-then-upgrade test
+> broke. It now migrates to the baseline revision and drops `alembic_version`,
+> which is what a pre-Alembic database actually is — and it additionally asserts
+> the database is carried *forward* to head, which the original never checked.
+>
+> Verified: 155 tests pass; `alembic check` reports no drift (views do not
+> confuse autogenerate); FK, UNIQUE and CHECK constraints all reject as intended;
+> downgrade removes every table and view and leaves `body_composition` untouched
+> at 150 rows / `sum(weight)` 29,232.74; all API endpoints still 200.
+>
+> **Nothing reads the views yet.** `body_composition` remains the live read path
+> and is still written by MQTT. Switching over — and the dual-write that has to
+> precede it — is not done here.
 
 > ## `a1` implementation notes
 >

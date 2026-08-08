@@ -126,7 +126,17 @@ class BodyCompositionRepository:
             return True
 
     def get_stats(self) -> dict:
-        """Get summary statistics."""
+        """Get summary statistics.
+
+        Every ``*_change`` is the same comparison: the earliest recorded value
+        for that metric against the most recent, across all history.
+
+        `weight_change` used to be a rolling 30-day vs previous-30-day average
+        delta while the other two were first-vs-latest, so three figures
+        displayed side by side on one row meant two different things. It also
+        read `None` whenever the most recent measurement was over 30 days old,
+        which is a common state for a scale that isn't used daily.
+        """
         with SessionLocal() as session:
             measurements = session.execute(
                 select(BodyComposition).order_by(BodyComposition.timestamp.asc())
@@ -147,59 +157,41 @@ class BodyCompositionRepository:
             first = measurements[0]
             latest = measurements[-1]
 
-            def _ensure_pacific(dt: datetime) -> datetime:
-                if dt.tzinfo is None:
-                    return dt.replace(tzinfo=PACIFIC_TZ)
-                return dt.astimezone(PACIFIC_TZ)
-
-            now = datetime.now(PACIFIC_TZ)
-            thirty_days_ago = now - timedelta(days=30)
-            sixty_days_ago = now - timedelta(days=60)
-
-            last_30_days = [
-                m for m in measurements if _ensure_pacific(m.timestamp) >= thirty_days_ago
-            ]
-            prev_30_days = [
-                m
-                for m in measurements
-                if sixty_days_ago <= _ensure_pacific(m.timestamp) < thirty_days_ago
-            ]
-
-            def calculate_avg_weight(measurement_list):
-                weights = [m.weight for m in measurement_list if m.weight is not None]
-                return sum(weights) / len(weights) if weights else None
-
-            avg_weight_last_30 = calculate_avg_weight(last_30_days)
-            avg_weight_prev_30 = calculate_avg_weight(prev_30_days)
-
-            weight_change = None
-            if avg_weight_last_30 is not None and avg_weight_prev_30 is not None:
-                weight_change = avg_weight_last_30 - avg_weight_prev_30
-
             def safe_float(value):
                 try:
                     return float(value) if value is not None else None
                 except (ValueError, TypeError):
                     return None
 
+            def change(attr: str) -> float | None:
+                """Earliest-to-latest delta for one metric.
+
+                Scoped per metric rather than to the first and last rows
+                overall: a single missing value in the earliest row would
+                otherwise suppress a change that months of data support. That
+                matters increasingly as sources with different column coverage
+                are added - BodySpec populates fields openScale never does.
+
+                Returns None below two data points, where a change is undefined
+                rather than zero.
+                """
+                values = [
+                    v
+                    for v in (safe_float(getattr(m, attr)) for m in measurements)
+                    if v is not None
+                ]
+                if len(values) < 2:
+                    return None
+                return values[-1] - values[0]
+
             return {
                 "total_measurements": len(measurements),
                 "latest_weight": safe_float(latest.weight),
                 "latest_body_fat": safe_float(latest.body_fat_pct),
                 "latest_muscle_mass": safe_float(latest.muscle_mass),
-                "weight_change": weight_change,
-                "body_fat_change": (
-                    safe_float(latest.body_fat_pct) - safe_float(first.body_fat_pct)
-                    if safe_float(latest.body_fat_pct) is not None
-                    and safe_float(first.body_fat_pct) is not None
-                    else None
-                ),
-                "muscle_mass_change": (
-                    safe_float(latest.muscle_mass) - safe_float(first.muscle_mass)
-                    if safe_float(latest.muscle_mass) is not None
-                    and safe_float(first.muscle_mass) is not None
-                    else None
-                ),
+                "weight_change": change("weight"),
+                "body_fat_change": change("body_fat_pct"),
+                "muscle_mass_change": change("muscle_mass"),
                 "first_date": first.date,
                 "latest_date": latest.date,
             }

@@ -102,30 +102,63 @@ class TestInitDb:
         finally:
             engine.dispose()
 
-    def test_pre_alembic_database_is_stamped_not_replayed(self, tmp_path, monkeypatch):
-        """A database created before Alembic must be adopted, not rebuilt.
+    @staticmethod
+    def _build_pre_alembic_db(db_path, monkeypatch, keep_empty_version_table=False):
+        """Produce a database as it looked before Alembic was adopted.
 
-        Replaying the baseline against it fails on the first CREATE TABLE.
+        Built by migrating to the baseline revision and then removing the
+        version table, rather than by `create_all()` of the current models.
+        `create_all()` would produce today's *head* schema, which is a different
+        scenario entirely - and one that got this test wrong once already, when
+        adding the `metric` tables made the models diverge from the baseline.
+        """
+        from alembic import command
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        monkeypatch.setattr(database.settings, "db_path", db_path)
+        cfg = Config(str(database.ALEMBIC_INI))
+        baseline = ScriptDirectory.from_config(cfg).get_base()
+        command.upgrade(cfg, baseline)
+
+        raw = sqlite3.connect(db_path)
+        raw.execute(
+            "INSERT INTO categories (id, name, created_at) "
+            "VALUES (1, 'Legs', '2026-01-01 00:00:00')"
+        )
+        raw.execute("DROP TABLE alembic_version")
+        if keep_empty_version_table:
+            raw.execute(
+                "CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"
+            )
+        raw.commit()
+        raw.close()
+        return baseline
+
+    def test_pre_alembic_database_is_stamped_then_migrated_forward(
+        self, tmp_path, monkeypatch
+    ):
+        """A database predating Alembic is adopted, not rebuilt.
+
+        Replaying the baseline against it fails on the first CREATE TABLE. It
+        must then be carried forward to head like any other database.
         """
         db_path = tmp_path / "legacy.db"
-        legacy = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(bind=legacy)
-        with legacy.begin() as conn:
-            conn.execute(
-                text(
-                    "INSERT INTO categories (id, name, created_at) "
-                    "VALUES (1, 'Legs', '2026-01-01 00:00:00')"
-                )
-            )
-        legacy.dispose()
+        baseline = self._build_pre_alembic_db(db_path, monkeypatch)
 
         engine = self._point_at(monkeypatch, db_path)
         try:
             database.init_db()
             with engine.connect() as conn:
-                assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                version = conn.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar()
+                # Adopted at the baseline, then migrated onward - not left there.
+                assert version != baseline
                 # The pre-existing row survived, i.e. nothing was recreated.
                 assert conn.execute(text("SELECT count(*) FROM categories")).scalar() == 1
+            # Later revisions actually ran against it.
+            assert "metric" in set(inspect(engine).get_table_names())
         finally:
             engine.dispose()
 
@@ -136,20 +169,14 @@ class TestInitDb:
         skips the stamp and replays the baseline against a populated database.
         """
         db_path = tmp_path / "halfway.db"
-        legacy = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(bind=legacy)
-        legacy.dispose()
-
-        raw = sqlite3.connect(db_path)
-        raw.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
-        raw.commit()
-        raw.close()
+        self._build_pre_alembic_db(db_path, monkeypatch, keep_empty_version_table=True)
 
         engine = self._point_at(monkeypatch, db_path)
         try:
             database.init_db()
             with engine.connect() as conn:
                 assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                assert conn.execute(text("SELECT count(*) FROM categories")).scalar() == 1
         finally:
             engine.dispose()
 

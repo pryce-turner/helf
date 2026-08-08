@@ -2,7 +2,18 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    Computed,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -102,8 +113,76 @@ class UpcomingWorkout(Base):
     category: Mapped[Category] = relationship("Category", back_populates="upcoming_workouts")
 
 
+class MetricDef(Base):
+    """Vocabulary of measurable quantities.
+
+    A definition, not storage. Declaring a metric here costs nothing and fixes
+    its name and unit before anything writes it, which is the cheapest moment to
+    get those right. A definition with no rows behind it is reported honestly by
+    the `v_metric_coverage` view (n_rows = 0) rather than looking like a series
+    that happens to be flat.
+    """
+
+    __tablename__ = "metric_def"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    canonical_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ref_low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ref_high: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    metrics: Mapped[list["Metric"]] = relationship("Metric", back_populates="definition")
+
+
+class Metric(Base):
+    """A single observed value: tall storage for anything measurable.
+
+    Replaces the wide `body_composition` table, five of whose nine columns have
+    never held a value. Adding a quantity here is a row, not a migration.
+    """
+
+    __tablename__ = "metric"
+    __table_args__ = (
+        # reference/qs_mcp.py upserts ON CONFLICT(observed_at, name, source), so
+        # this triple must be unique or the agent's write tool raises at runtime.
+        # It also keeps a bioimpedance estimate and a DEXA measurement of the
+        # same quantity on the same day as two rows rather than one overwriting
+        # the other.
+        UniqueConstraint("observed_at", "name", "source", name="uq_metric_observation"),
+        CheckConstraint(
+            "value IS NOT NULL OR text_value IS NOT NULL",
+            name="ck_metric_has_a_value",
+        ),
+        Index("ix_metric_date_name", "date", "name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    observed_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    # STORED rather than VIRTUAL so it can be indexed. This is the universal
+    # join key across every quantity the system records.
+    date: Mapped[str] = mapped_column(
+        String(10),
+        Computed("substr(observed_at, 1, 10)", persisted=True),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        ForeignKey("metric_def.name"), nullable=False
+    )
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    text_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+
+    definition: Mapped[MetricDef] = relationship("MetricDef", back_populates="metrics")
+
+
 class BodyComposition(Base):
-    """Body composition measurement."""
+    """Body composition measurement.
+
+    Legacy wide table. Superseded by `metric` but kept and dual-written until the
+    view-backed path is verified against real numbers; dropping it is a later
+    plan (docs/plans/0003-units-and-metrics.md §4).
+    """
 
     __tablename__ = "body_composition"
     __table_args__ = (Index("ix_body_composition_date_timestamp", "date", "timestamp"),)

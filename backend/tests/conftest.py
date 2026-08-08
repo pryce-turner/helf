@@ -11,6 +11,8 @@ import app.repositories.upcoming_repo as upcoming_repo
 import app.repositories.workout_repo as workout_repo
 from app.api import body_comp, exercises, progression, upcoming, workouts
 from app.database import Base, apply_sqlite_pragmas
+from app.db.models import MetricDef
+from app.repositories.body_comp_repo import METRIC_COLUMNS
 
 
 @pytest.fixture()
@@ -41,6 +43,17 @@ def db_engine(tmp_path, monkeypatch):
         monkeypatch.setattr(module, "SessionLocal", SessionLocal)
 
     Base.metadata.create_all(bind=engine)
+
+    # In production `metric_def` is seeded by migration, but these fixtures
+    # build schema with create_all(), which creates the table empty. Without
+    # this, every mirrored metric write fails its foreign key - and because the
+    # mirror is deliberately non-fatal, the tests would pass while the dual
+    # write silently did nothing.
+    with SessionLocal() as session:
+        for _column, name, unit in METRIC_COLUMNS:
+            session.add(MetricDef(name=name, canonical_unit=unit))
+        session.commit()
+
     try:
         yield engine
     finally:

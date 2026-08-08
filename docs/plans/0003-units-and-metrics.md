@@ -58,9 +58,37 @@
 > downgrade removes every table and view and leaves `body_composition` untouched
 > at 150 rows / `sum(weight)` 29,232.74; all API endpoints still 200.
 >
-> **Nothing reads the views yet.** `body_composition` remains the live read path
-> and is still written by MQTT. Switching over — and the dual-write that has to
-> precede it — is not done here.
+> ## Dual-write (2026-08-08)
+>
+> **The mirror lives in `BodyCompositionRepository.create`, not in
+> `mqtt_service`.** §4a listed it as an MQTT change, but the manual POST endpoint
+> is a second writer — putting it in the service would have left every manually
+> entered measurement missing from `metric`. MQTT passes `source='openscale'` to
+> continue the backfilled series; the API defaults to `'manual'`.
+>
+> **The mirror commits in its own transaction, after the primary write, and
+> swallows its own failures.** This looks wrong and is deliberate. The two
+> failure modes are not symmetric: a lost scale reading is unrecoverable because
+> openScale does not retransmit, while a divergence between the tables is fixed
+> by re-running the backfill. So the mirror is never permitted to roll back the
+> measurement. Failures are logged at exception level.
+>
+> **`observed_at` formatting is load-bearing.** It is TEXT, and `a3` copied
+> `body_composition.timestamp` verbatim, so new rows must render byte-identically
+> or they silently fork the series and `UNIQUE(observed_at, name, source)` stops
+> deduplicating. Verified end-to-end against a copy of production.
+>
+> **Two stale `kg` defaults fixed**: `BodyCompositionBase.weight_unit` and the
+> repository's `or "kg"` fallback. A manual POST omitting the unit would have
+> stored `kg` into a table that is now entirely pounds.
+>
+> **`metric_def` had to be seeded in the test fixtures.** They build schema with
+> `create_all()`, which creates the table empty — so every mirrored write failed
+> its foreign key. Because the mirror is deliberately non-fatal, the suite would
+> have stayed green while the dual write did nothing.
+>
+> **Nothing reads the views yet.** `body_composition` remains the live read path.
+> Switching over is the remaining step before `a5`.
 
 > ## `a1` implementation notes
 >

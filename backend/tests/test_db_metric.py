@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 import app.database as database
 from app.database import apply_sqlite_pragmas
-from app.db.models import Metric, MetricDef
+from app.db.models import Metric
 
 
 def _metric(session, **kwargs):
@@ -31,10 +31,7 @@ def _metric(session, **kwargs):
 
 @pytest.fixture()
 def seeded(db_session):
-    """metric_def is seeded by migration, so fixture-built databases need it."""
-    db_session.add(MetricDef(name="body_weight_lb", canonical_unit="lb"))
-    db_session.add(MetricDef(name="body_fat_pct", canonical_unit="%"))
-    db_session.commit()
+    """The db_engine fixture already seeds metric_def; this just names it."""
     return db_session
 
 

@@ -10,16 +10,18 @@ pytestmark = pytest.mark.usefixtures("db_engine")
 class StubRepo:
     def __init__(self):
         self.measurements = []
+        self.sources = []
 
-    def create(self, measurement):
+    def create(self, measurement, source="manual"):
         self.measurements.append(measurement)
+        self.sources.append(source)
         return {"doc_id": 1}
 
 
-def _deliver(payload):
+def _deliver(payload, repo=None):
     """Push one openScale payload through _on_message, return what was stored."""
     service = MQTTService()
-    stub_repo = StubRepo()
+    stub_repo = repo or StubRepo()
     service.body_comp_repo = stub_repo
 
     msg = type(
@@ -32,6 +34,18 @@ def _deliver(payload):
     )
     service._on_message(None, None, msg)
     return stub_repo.measurements
+
+
+def test_mqtt_tags_readings_as_openscale():
+    """The mirrored metric rows must continue the backfilled series.
+
+    A different source string would fork eight months of history into two
+    incomparable ones.
+    """
+    repo = StubRepo()
+    _deliver({"date": "2024-01-01T12:00:00", "weight": 70.5}, repo=repo)
+
+    assert repo.sources == ["openscale"]
 
 
 def test_mqtt_on_message_creates_measurement():

@@ -124,8 +124,9 @@ class MQTTService:
                 protein_pct=payload.get("protein"),
             )
 
-            # Save to database
-            saved = self.body_comp_repo.create(measurement)
+            # Save to database. source="openscale" matches the backfilled
+            # history, so new readings continue the same series.
+            saved = self.body_comp_repo.create(measurement, source="openscale")
 
             topic_type = msg.topic.split("/")[-1]
             if saved:

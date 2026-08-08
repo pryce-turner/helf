@@ -10,7 +10,7 @@ class BodyCompositionBase(BaseModel):
     timestamp: datetime
     date: str = Field(..., description="Date in YYYY-MM-DD format")
     weight: float
-    weight_unit: str = "kg"
+    weight_unit: str = "lbs"
     body_fat_pct: float | None = Field(None, ge=0, le=100)
     muscle_mass: float | None = None
     bmi: float | None = None

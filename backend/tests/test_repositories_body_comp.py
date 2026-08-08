@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 
 from app.models.body_composition import BodyCompositionCreate
 from app.repositories.body_comp_repo import BodyCompositionRepository
@@ -193,3 +194,184 @@ def test_body_comp_stats_change_skips_rows_missing_that_metric():
     stats = repo.get_stats()
     assert stats["weight_change"] == pytest.approx(-10.0)
     assert stats["body_fat_change"] == pytest.approx(-2.0)
+
+
+class TestDualWriteToMetric:
+    """Every body_composition write is mirrored into the tall `metric` table.
+
+    The dual-write window: both tables are maintained until the read path moves
+    onto the views (docs/plans/0003-units-and-metrics.md §4).
+    """
+
+    def test_create_mirrors_all_populated_columns(self, db_session):
+        repo = BodyCompositionRepository()
+        ts = datetime(2026, 6, 1, 7, 30, tzinfo=PACIFIC_TZ)
+        repo.create(
+            BodyCompositionCreate(
+                timestamp=ts,
+                date="2026-06-01",
+                weight=190.0,
+                body_fat_pct=23.7,
+                muscle_mass=39.1,
+                water_pct=51.0,
+            )
+        )
+
+        rows = dict(
+            db_session.execute(
+                text("SELECT name, value FROM metric ORDER BY name")
+            ).all()
+        )
+        assert rows == {
+            "body_weight_lb": 190.0,
+            "body_fat_pct": 23.7,
+            "muscle_pct": 39.1,
+            "water_pct": 51.0,
+        }
+
+    def test_observed_at_matches_body_composition_timestamp_exactly(self, db_session):
+        """Byte-identical, or new rows will not line up with the backfill.
+
+        `metric.observed_at` is TEXT and the a3 backfill copied the stored
+        timestamp verbatim. A different rendering would silently fork the series
+        and stop UNIQUE(observed_at, name, source) from deduplicating.
+        """
+        repo = BodyCompositionRepository()
+        ts = datetime(2026, 6, 2, 8, 15, 30, tzinfo=PACIFIC_TZ)
+        repo.create(
+            BodyCompositionCreate(timestamp=ts, date="2026-06-02", weight=190.0)
+        )
+
+        stored_ts = db_session.execute(
+            text("SELECT timestamp FROM body_composition")
+        ).scalar()
+        observed_at = db_session.execute(
+            text("SELECT DISTINCT observed_at FROM metric")
+        ).scalar()
+
+        assert observed_at == stored_ts
+
+    def test_absent_columns_are_not_mirrored(self, db_session):
+        """A missing reading is absent, not zero."""
+        repo = BodyCompositionRepository()
+        ts = datetime(2026, 6, 3, 7, 0, tzinfo=PACIFIC_TZ)
+        repo.create(
+            BodyCompositionCreate(timestamp=ts, date="2026-06-03", weight=190.0)
+        )
+
+        names = {
+            r[0] for r in db_session.execute(text("SELECT name FROM metric")).all()
+        }
+        assert names == {"body_weight_lb"}
+
+    def test_source_defaults_to_manual_and_is_overridable(self, db_session):
+        repo = BodyCompositionRepository()
+        repo.create(
+            BodyCompositionCreate(
+                timestamp=datetime(2026, 6, 4, 7, 0, tzinfo=PACIFIC_TZ),
+                date="2026-06-04",
+                weight=190.0,
+            )
+        )
+        repo.create(
+            BodyCompositionCreate(
+                timestamp=datetime(2026, 6, 5, 7, 0, tzinfo=PACIFIC_TZ),
+                date="2026-06-05",
+                weight=191.0,
+            ),
+            source="openscale",
+        )
+
+        sources = dict(
+            db_session.execute(
+                text("SELECT source, count(*) FROM metric GROUP BY source")
+            ).all()
+        )
+        assert sources == {"manual": 1, "openscale": 1}
+
+    def test_duplicate_timestamp_mirrors_nothing(self, db_session):
+        """A rejected measurement must not leave metric rows behind."""
+        repo = BodyCompositionRepository()
+        ts = datetime(2026, 6, 6, 7, 0, tzinfo=PACIFIC_TZ)
+        payload = BodyCompositionCreate(timestamp=ts, date="2026-06-06", weight=190.0)
+
+        assert repo.create(payload) is not None
+        assert repo.create(payload) is None
+
+        assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 1
+
+    def test_delete_removes_mirrored_rows(self, db_session):
+        repo = BodyCompositionRepository()
+        ts = datetime(2026, 6, 7, 7, 0, tzinfo=PACIFIC_TZ)
+        created = repo.create(
+            BodyCompositionCreate(
+                timestamp=ts, date="2026-06-07", weight=190.0, body_fat_pct=23.0
+            )
+        )
+        assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 2
+
+        assert repo.delete(created["doc_id"]) is True
+
+        assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 0
+
+    def test_primary_write_commits_before_the_mirror_is_attempted(
+        self, db_session, monkeypatch
+    ):
+        """Ordering: the measurement is durable before mirroring starts.
+
+        openScale does not retransmit, so a dropped reading is gone for good. A
+        divergence between the two tables is recoverable by re-running the
+        backfill; that asymmetry is why the mirror commits separately.
+        """
+        repo = BodyCompositionRepository()
+
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("metric table is on fire")
+
+        monkeypatch.setattr(repo, "_mirror_to_metric", boom)
+
+        with pytest.raises(RuntimeError):
+            repo.create(
+                BodyCompositionCreate(
+                    timestamp=datetime(2026, 6, 8, 7, 0, tzinfo=PACIFIC_TZ),
+                    date="2026-06-08",
+                    weight=190.0,
+                )
+            )
+
+        assert (
+            db_session.execute(text("SELECT count(*) FROM body_composition")).scalar()
+            == 1
+        )
+
+    def test_real_mirror_failure_is_swallowed_and_logged(
+        self, db_session, monkeypatch, caplog
+    ):
+        """A genuine database error in the mirror must not reach the caller.
+
+        Simulated by pointing the mirror at a metric name `metric_def` does not
+        define, which is a real foreign key violation rather than a stubbed
+        exception.
+        """
+        import app.repositories.body_comp_repo as repo_module
+
+        monkeypatch.setattr(
+            repo_module, "METRIC_COLUMNS", [("weight", "undefined_metric", "lb")]
+        )
+        repo = BodyCompositionRepository()
+
+        created = repo.create(
+            BodyCompositionCreate(
+                timestamp=datetime(2026, 6, 9, 7, 0, tzinfo=PACIFIC_TZ),
+                date="2026-06-09",
+                weight=190.0,
+            )
+        )
+
+        assert created is not None
+        assert (
+            db_session.execute(text("SELECT count(*) FROM body_composition")).scalar()
+            == 1
+        )
+        assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 0
+        assert "Failed to mirror measurement" in caplog.text

@@ -1,13 +1,39 @@
 """Body composition repository for database operations."""
 
+import logging
 from datetime import datetime, timedelta
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.db.models import BodyComposition
+from app.db.models import BodyComposition, Metric
 from app.models.body_composition import BodyCompositionCreate
 from app.utils.date_helpers import PACIFIC_TZ, get_current_datetime
+
+logger = logging.getLogger(__name__)
+
+# Wide column -> (metric name, unit). Mirrors the a3 backfill exactly; the two
+# must agree or history and new readings end up under different names.
+#
+# `muscle_mass` holds a percentage despite its name, so it maps to `muscle_pct`.
+METRIC_COLUMNS = [
+    ("weight", "body_weight_lb", "lb"),
+    ("body_fat_pct", "body_fat_pct", "%"),
+    ("muscle_mass", "muscle_pct", "%"),
+    ("water_pct", "water_pct", "%"),
+]
+
+
+def _observed_at(timestamp: datetime) -> str:
+    """Render a timestamp the way SQLAlchemy's SQLite DATETIME does.
+
+    `metric.observed_at` is TEXT and the backfill copied `body_composition.
+    timestamp` verbatim, so new rows must use byte-identical formatting or they
+    will not line up with history - and the UNIQUE(observed_at, name, source)
+    constraint would stop deduplicating.
+    """
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
 class BodyCompositionRepository:
@@ -81,8 +107,17 @@ class BodyCompositionRepository:
             ).scalars().all()
             return [self._serialize(m) for m in measurements]
 
-    def create(self, measurement: BodyCompositionCreate) -> dict | None:
-        """Create a new measurement. Returns None if duplicate timestamp."""
+    def create(
+        self, measurement: BodyCompositionCreate, source: str = "manual"
+    ) -> dict | None:
+        """Create a new measurement. Returns None if duplicate timestamp.
+
+        `source` tags the mirrored `metric` rows so instruments of different
+        accuracy stay distinguishable - a bioimpedance reading and a DEXA scan
+        of the same quantity must never be averaged together. Defaults to
+        "manual"; the MQTT ingest path passes "openscale", matching the
+        backfilled history.
+        """
         timestamp = measurement.timestamp
 
         with SessionLocal() as session:
@@ -99,7 +134,7 @@ class BodyCompositionRepository:
                 timestamp=timestamp,
                 date=measurement_dict["date"],
                 weight=measurement_dict["weight"],
-                weight_unit=measurement_dict.get("weight_unit") or "kg",
+                weight_unit=measurement_dict.get("weight_unit") or "lbs",
                 body_fat_pct=measurement_dict.get("body_fat_pct"),
                 muscle_mass=measurement_dict.get("muscle_mass"),
                 bmi=measurement_dict.get("bmi"),
@@ -113,14 +148,63 @@ class BodyCompositionRepository:
             session.add(new_measurement)
             session.commit()
             session.refresh(new_measurement)
-            return self._serialize(new_measurement)
+            serialized = self._serialize(new_measurement)
+
+        # Deliberately AFTER the commit above and in its own transaction.
+        #
+        # `body_composition` is still the source of truth, and a scale reading
+        # that fails to store is gone for good - openScale does not retransmit.
+        # A divergence between the two tables is recoverable (re-run the
+        # backfill); a lost measurement is not. So the mirror is never allowed
+        # to roll back the primary write.
+        self._mirror_to_metric(new_measurement, source)
+        return serialized
+
+    def _mirror_to_metric(self, measurement: BodyComposition, source: str) -> None:
+        """Write the same reading into the tall `metric` table.
+
+        Dual-write window: both tables are maintained until the read path moves
+        onto the views (docs/plans/0003-units-and-metrics.md §4).
+        """
+        observed_at = _observed_at(measurement.timestamp)
+        try:
+            with SessionLocal() as session:
+                for column, metric_name, unit in METRIC_COLUMNS:
+                    value = getattr(measurement, column)
+                    if value is None:
+                        continue
+                    session.add(
+                        Metric(
+                            observed_at=observed_at,
+                            name=metric_name,
+                            value=value,
+                            unit=unit,
+                            source=source,
+                        )
+                    )
+                session.commit()
+        except Exception:
+            # Loud, but not fatal: the measurement itself is already safe.
+            logger.exception(
+                "Failed to mirror measurement %s into `metric`; "
+                "body_composition is authoritative and can be re-backfilled",
+                observed_at,
+            )
 
     def delete(self, doc_id: int) -> bool:
-        """Delete a measurement."""
+        """Delete a measurement and its mirrored metric rows."""
         with SessionLocal() as session:
             measurement = session.get(BodyComposition, doc_id)
             if not measurement:
                 return False
+
+            # One transaction here: unlike create, a failure loses nothing.
+            session.execute(
+                sa_delete(Metric).where(
+                    Metric.observed_at == _observed_at(measurement.timestamp),
+                    Metric.name.in_([name for _c, name, _u in METRIC_COLUMNS]),
+                )
+            )
             session.delete(measurement)
             session.commit()
             return True

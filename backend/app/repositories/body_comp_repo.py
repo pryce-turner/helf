@@ -49,7 +49,7 @@ def _observed_at(timestamp: datetime) -> str:
 class BodyCompositionRepository:
     """Repository for body composition data operations."""
 
-    def _serialize(self, measurement: BodyComposition) -> dict:
+    def _serialize(self, measurement: BodyComposition, source: str) -> dict:
         return {
             "doc_id": measurement.id,
             "timestamp": measurement.timestamp,
@@ -65,6 +65,7 @@ class BodyCompositionRepository:
             "metabolic_age": measurement.metabolic_age,
             "protein_pct": measurement.protein_pct,
             "created_at": measurement.created_at,
+            "source": source,
         }
 
     @staticmethod
@@ -79,6 +80,7 @@ class BodyCompositionRepository:
             "doc_id": row.doc_id,
             "timestamp": parse_iso_timestamp(row.observed_at),
             "date": row.date,
+            "source": row.source,
             "weight": row.weight,
             "weight_unit": CANONICAL_WEIGHT_UNIT,
             "body_fat_pct": row.body_fat_pct,
@@ -134,11 +136,18 @@ class BodyCompositionRepository:
             end=end_date,
         )
 
-    def get_recent(self, days: int = 30) -> list[dict]:
-        """Get measurements from the last N days."""
+    def get_recent(self, days: int = 30, source: str | None = None) -> list[dict]:
+        """Get measurements from the last N days, optionally one instrument."""
         cutoff_date = (
             datetime.now(PACIFIC_TZ).date() - timedelta(days=days)
         ).isoformat()
+        if source:
+            return self._read_measurements(
+                where="date >= :cutoff AND source = :source",
+                order="ASC",
+                cutoff=cutoff_date,
+                source=source,
+            )
         return self._read_measurements(
             where="date >= :cutoff", order="ASC", cutoff=cutoff_date
         )
@@ -183,7 +192,7 @@ class BodyCompositionRepository:
             session.add(new_measurement)
             session.commit()
             session.refresh(new_measurement)
-            serialized = self._serialize(new_measurement)
+            serialized = self._serialize(new_measurement, source)
 
         # Deliberately AFTER the commit above and in its own transaction.
         #
@@ -325,6 +334,13 @@ class BodyCompositionRepository:
         displayed side by side on one row meant two different things. It also
         read `None` whenever the most recent measurement was over 30 days old,
         which is a common state for a scale that isn't used daily.
+
+        **Every delta is computed within one source.** Subtracting a DEXA body
+        fat from a bioimpedance one measures the gap between two instruments,
+        not a change in the body - the two disagree by several percentage
+        points and always will. `primary_source` names the series the deltas
+        describe, so the number on screen is never ambiguous about what it
+        summarises.
         """
         # Reads the per-measurement view like every other read, so the page
         # cannot show a summary computed from one table beside a list from
@@ -336,15 +352,40 @@ class BodyCompositionRepository:
                 "latest_weight": None,
                 "latest_body_fat": None,
                 "latest_muscle_mass": None,
+                "latest_source": None,
                 "weight_change": None,
                 "body_fat_change": None,
                 "muscle_mass_change": None,
+                "primary_source": None,
                 "first_date": None,
                 "latest_date": None,
             }
 
         first = measurements[0]
         latest = measurements[-1]
+
+        # The series the deltas describe: the most recently used instrument
+        # that has enough history to have a trend at all. Two measurements is
+        # the floor - a single DEXA scan says nothing about direction, and
+        # letting it become the primary source would blank three figures that
+        # eight months of scale data still support.
+        #
+        # It moves once a second source accumulates two points, which is
+        # deliberate: the deltas should describe the instrument currently in
+        # use, and `primary_source` in the response makes the switch visible
+        # rather than silent.
+        counts: dict[str, int] = {}
+        for m in measurements:
+            counts[m["source"]] = counts.get(m["source"], 0) + 1
+        primary_source = next(
+            (
+                m["source"]
+                for m in reversed(measurements)
+                if counts.get(m["source"], 0) >= 2
+            ),
+            None,
+        )
+        primary = [m for m in measurements if m["source"] == primary_source]
 
         def safe_float(value):
             try:
@@ -353,7 +394,7 @@ class BodyCompositionRepository:
                 return None
 
         def change(field: str) -> float | None:
-            """Earliest-to-latest delta for one metric.
+            """Earliest-to-latest delta for one metric, within `primary_source`.
 
             Scoped per metric rather than to the first and last rows overall: a
             single missing value in the earliest row would otherwise suppress a
@@ -361,13 +402,15 @@ class BodyCompositionRepository:
             sources with different column coverage are added - BodySpec
             populates fields openScale never does.
 
+            Scoped to one source because a cross-source delta is not a change.
+            openScale reads body fat several points above DEXA; differencing
+            the two would report that gap as fat lost between the two dates.
+
             Returns None below two data points, where a change is undefined
             rather than zero.
             """
             values = [
-                v
-                for v in (safe_float(m[field]) for m in measurements)
-                if v is not None
+                v for v in (safe_float(m[field]) for m in primary) if v is not None
             ]
             if len(values) < 2:
                 return None
@@ -375,12 +418,16 @@ class BodyCompositionRepository:
 
         return {
             "total_measurements": len(measurements),
+            # Latest is latest, whatever produced it - a DEXA scan taken today
+            # is the best available answer to "what do I weigh".
             "latest_weight": safe_float(latest["weight"]),
             "latest_body_fat": safe_float(latest["body_fat_pct"]),
             "latest_muscle_mass": safe_float(latest["muscle_mass"]),
+            "latest_source": latest["source"],
             "weight_change": change("weight"),
             "body_fat_change": change("body_fat_pct"),
             "muscle_mass_change": change("muscle_mass"),
+            "primary_source": primary_source,
             "first_date": first["date"],
             "latest_date": latest["date"],
         }

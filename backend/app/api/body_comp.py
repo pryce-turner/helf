@@ -52,16 +52,25 @@ def get_stats():
 @router.get("/trends", response_model=BodyCompositionTrend)
 def get_trends(
     days: int = QueryParam(30, ge=1, le=365, description="Number of days"),
+    source: str | None = QueryParam(
+        None,
+        description=(
+            "Restrict to one instrument, e.g. 'openscale' or 'bodyspec'. "
+            "Omit to receive every point with `sources` naming each one - a "
+            "chart must not join points from different instruments with a line."
+        ),
+    ),
 ):
     """Get trend data for charts."""
     repo = BodyCompositionRepository()
-    measurements = repo.get_recent(days=days)
+    measurements = repo.get_recent(days=days, source=source)
 
     dates = []
     weights = []
     body_fat_pcts = []
     muscle_masses = []
     water_pcts = []
+    sources = []
 
     for m in measurements:
         dates.append(m.get('date', ''))
@@ -69,6 +78,7 @@ def get_trends(
         body_fat_pcts.append(m.get('body_fat_pct'))
         muscle_masses.append(m.get('muscle_mass'))
         water_pcts.append(m.get('water_pct'))
+        sources.append(m.get('source', ''))
 
     return BodyCompositionTrend(
         dates=dates,
@@ -76,6 +86,7 @@ def get_trends(
         body_fat_pcts=body_fat_pcts,
         muscle_masses=muscle_masses,
         water_pcts=water_pcts,
+        sources=sources,
     )
 
 

@@ -556,3 +556,93 @@ class TestReadPathUsesTheViews:
         latest = repo.get_latest()
         assert isinstance(latest["timestamp"], datetime)
         assert isinstance(latest["created_at"], datetime)
+
+
+class TestSourcesAreNeverMixed:
+    """openScale and BodySpec measure the same quantities and disagree.
+
+    Bioimpedance reads body fat several percentage points above DEXA, and that
+    gap is an artefact of the instruments, not of the body. Any figure that
+    subtracts one from the other reports the gap as a change.
+    """
+
+    @staticmethod
+    def _create(repo, day, source, **values):
+        ts = datetime(2026, 5, day, 7, 0, tzinfo=PACIFIC_TZ)
+        return repo.create(
+            BodyCompositionCreate(
+                timestamp=ts, date=ts.date().isoformat(), **values
+            ),
+            source=source,
+        )
+
+    def _mixed_history(self, repo):
+        """Eight scale readings, then a DEXA scan reading much lower."""
+        self._create(repo, 1, "openscale", weight=200.0, body_fat_pct=23.7)
+        self._create(repo, 2, "openscale", weight=198.0, body_fat_pct=23.2)
+        self._create(repo, 3, "bodyspec", weight=193.3, body_fat_pct=16.6)
+
+    def test_measurements_carry_their_source(self):
+        repo = BodyCompositionRepository()
+        self._mixed_history(repo)
+
+        assert [m["source"] for m in repo.get_all()] == [
+            "bodyspec",
+            "openscale",
+            "openscale",
+        ]
+
+    def test_deltas_do_not_cross_instruments(self):
+        """The whole point. Without this the DEXA scan reads as fat loss.
+
+        Differencing across sources gives 16.6 - 23.7 = -7.1pp, which would be
+        reported as seven points of body fat lost in two days. The honest
+        figure is the openScale series' own -0.5pp.
+        """
+        repo = BodyCompositionRepository()
+        self._mixed_history(repo)
+
+        stats = repo.get_stats()
+        assert stats["primary_source"] == "openscale"
+        assert stats["body_fat_change"] == pytest.approx(-0.5)
+        assert stats["weight_change"] == pytest.approx(-2.0)
+
+    def test_latest_is_latest_whatever_produced_it(self):
+        """A DEXA scan taken today is the best answer to "what do I weigh"."""
+        repo = BodyCompositionRepository()
+        self._mixed_history(repo)
+
+        stats = repo.get_stats()
+        assert stats["latest_source"] == "bodyspec"
+        assert stats["latest_weight"] == pytest.approx(193.3)
+        assert stats["latest_body_fat"] == pytest.approx(16.6)
+        assert stats["total_measurements"] == 3
+
+    def test_a_lone_scan_does_not_become_the_primary_series(self):
+        """One measurement has no trend, and taking it as primary would blank
+        three figures that months of scale data still support."""
+        repo = BodyCompositionRepository()
+        self._mixed_history(repo)
+
+        assert repo.get_stats()["primary_source"] == "openscale"
+
+    def test_primary_moves_once_the_new_instrument_has_a_trend(self):
+        """Two scans make a DEXA trend, and it is the one worth reporting."""
+        repo = BodyCompositionRepository()
+        self._mixed_history(repo)
+        self._create(repo, 4, "bodyspec", weight=191.0, body_fat_pct=15.9)
+
+        stats = repo.get_stats()
+        assert stats["primary_source"] == "bodyspec"
+        assert stats["body_fat_change"] == pytest.approx(-0.7)
+
+    def test_recent_can_be_restricted_to_one_instrument(self):
+        repo = BodyCompositionRepository()
+        self._mixed_history(repo)
+
+        every = repo.get_recent(days=3650)
+        assert {m["source"] for m in every} == {"openscale", "bodyspec"}
+
+        dexa_only = repo.get_recent(days=3650, source="bodyspec")
+        assert [m["source"] for m in dexa_only] == ["bodyspec"]
+        assert [m["weight"] for m in dexa_only] == [pytest.approx(193.3)]

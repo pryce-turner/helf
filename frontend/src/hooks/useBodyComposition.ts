@@ -75,6 +75,7 @@ export function useCreateBodyComposition() {
         metabolic_age: newMeasurement.metabolic_age ?? null,
         protein_pct: newMeasurement.protein_pct ?? null,
         created_at: new Date().toISOString(),
+        source: 'manual',
       };
 
       queryClient.setQueriesData<BodyComposition[]>(
@@ -121,6 +122,28 @@ export function useDeleteBodyComposition() {
       });
     },
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['body-composition'] });
+    },
+  });
+}
+
+
+/**
+ * Trigger a BodySpec import.
+ *
+ * The token is an argument to the mutation, never held in this hook, never
+ * cached by React Query, and never written to storage. Its whole lifetime is
+ * the request - see docs/plans/0008-bodyspec-integration.md §3.
+ */
+export function useSyncBodySpec() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (token: string) => {
+      const response = await bodyCompositionApi.syncBodySpec(token);
+      return response.data;
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['body-composition'] });
     },
   });

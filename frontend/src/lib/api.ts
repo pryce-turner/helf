@@ -16,6 +16,7 @@ import type {
     BodyComposition,
     BodyCompositionStats,
     BodyCompositionTrend,
+    BodySpecSyncResult,
 } from "../types/bodyComposition";
 import type { ProgressionResponse } from "../types/progression";
 import type {
@@ -198,6 +199,21 @@ export const bodyCompositionApi = {
         api.post<BodyComposition>("/api/body-composition/", measurement),
 
     delete: (id: number) => api.delete(`/api/body-composition/${id}`),
+
+    /**
+     * Import DEXA scans from BodySpec.
+     *
+     * The token goes in the Authorization header rather than a JSON body, so
+     * it stays out of request-body logging and out of any URL. It is passed
+     * per call and never held anywhere - not in this module, not in component
+     * state, not in storage. It dies with the request, mirroring the backend.
+     */
+    syncBodySpec: (token: string) =>
+        api.post<BodySpecSyncResult>(
+            "/api/body-composition/sync/bodyspec",
+            null,
+            { headers: { Authorization: `Bearer ${token}` } },
+        ),
 };
 
 // System

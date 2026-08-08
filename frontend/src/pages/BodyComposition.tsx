@@ -11,19 +11,56 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
     useBodyCompositionStats,
     useBodyCompositionTrends,
+    useSyncBodySpec,
 } from "@/hooks/useBodyComposition";
 import {
+    ComposedChart,
     LineChart,
     Line,
+    Scatter,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
 } from "recharts";
+
+// openScale is a line; BodySpec is scatter only. This is the whole point of
+// plotting them together: bioimpedance is precise but not accurate, so its
+// curve carries *shape*, while four DEXA points a year carry *level*. A line
+// through the DEXA points would fabricate the months between them.
+//
+// The pair is validated for colour-vision deficiency in
+// docs/plans/0003-units-and-metrics.md §4a (deutan dE 27.5). It replaces the
+// per-metric hues on these two charts deliberately: which instrument produced
+// a point is semantic, where the metric's hue was decorative - the card title
+// already names it. Reusing the metric hues would also have put a green DEXA
+// scatter on top of a red body-fat line, the classic deutan collision.
+const SCALE_COLOR = "var(--chart-2)";
+const DEXA_COLOR = "#16a34a";
+
+// The sparse series gets the heavier mark. Visual weight is inverted against
+// data volume on purpose, because the sparse series is the accurate one. The
+// surface-coloured ring keeps a dot legible where it lands on the line.
+const DexaDot = (props: { cx?: number; cy?: number }) => {
+    const { cx, cy } = props;
+    if (cx == null || cy == null) return null;
+    return (
+        <circle
+            cx={cx}
+            cy={cy}
+            r={5}
+            fill={DEXA_COLOR}
+            stroke="var(--bg-secondary)"
+            strokeWidth={2}
+        />
+    );
+};
 
 const StatCard = ({
     title,
@@ -82,6 +119,85 @@ const StatCard = ({
     );
 };
 
+/**
+ * Paste-a-token BodySpec import.
+ *
+ * The token lives in local component state and nowhere else - not in React
+ * Query's cache, not in localStorage, not in a context. It is cleared on
+ * success, and unmounting the page discards it. That mirrors the backend,
+ * where its whole lifetime is one request
+ * (docs/plans/0008-bodyspec-integration.md §3).
+ *
+ * `type="password"` so it is not shoulder-surfable or captured in a
+ * screenshot.
+ */
+const BodySpecSync = () => {
+    const [token, setToken] = useState("");
+    const sync = useSyncBodySpec();
+
+    const submit = (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!token.trim()) return;
+        sync.mutate(token.trim(), { onSuccess: () => setToken("") });
+    };
+
+    const failed = sync.error as { response?: { status?: number; data?: { detail?: string } } } | null;
+    const expired = failed?.response?.status === 401;
+
+    return (
+        <Card className="animate-in section">
+            <CardHeader style={{ paddingBottom: 0 }}>
+                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: DEXA_COLOR, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                    Import DEXA scans
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+                    Paste an access token from{" "}
+                    <a
+                        href="https://app.bodyspec.com/docs"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: 'var(--accent)' }}
+                    >
+                        app.bodyspec.com/docs
+                    </a>
+                    {" "}(the Authorize button). Tokens last 60 minutes and are never stored.
+                </p>
+                <form onSubmit={submit} style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    <Input
+                        type="password"
+                        value={token}
+                        onChange={(e) => setToken(e.target.value)}
+                        placeholder="BodySpec access token"
+                        autoComplete="off"
+                        style={{ flex: '1 1 260px' }}
+                    />
+                    <Button type="submit" disabled={!token.trim() || sync.isPending}>
+                        {sync.isPending ? "Syncing..." : "Sync"}
+                    </Button>
+                </form>
+
+                {sync.data && (
+                    <p style={{ fontSize: '12px', color: 'var(--success)', marginTop: 'var(--space-3)' }}>
+                        {sync.data.imported > 0
+                            ? `Imported ${sync.data.imported} scan${sync.data.imported === 1 ? "" : "s"} (${sync.data.metrics_written} measurements).`
+                            : "Already up to date"}
+                        {sync.data.skipped > 0 && ` ${sync.data.skipped} already held.`}
+                    </p>
+                )}
+                {sync.isError && (
+                    <p style={{ fontSize: '12px', color: 'var(--error)', marginTop: 'var(--space-3)' }}>
+                        {expired
+                            ? "That token was rejected - they expire after 60 minutes. Paste a fresh one."
+                            : failed?.response?.data?.detail ?? "Sync failed."}
+                    </p>
+                )}
+            </CardContent>
+        </Card>
+    );
+};
+
 const BodyComposition = () => {
     const [trendDays, setTrendDays] = useState(30);
 
@@ -89,15 +205,28 @@ const BodyComposition = () => {
     const { data: trends, isLoading: trendsLoading } =
         useBodyCompositionTrends(trendDays);
 
+    // Weight and body fat are split by instrument; muscle % and water % are
+    // not, because only those two quantities are genuinely dual-source. DEXA
+    // reports `lean_mass_kg`, a mass, where openScale reports a percentage of
+    // a different model - they share no axis and neither refines the other.
     const chartData = trends
-        ? trends.dates.map((date, index) => ({
-              date,
-              weight: trends.weights[index],
-              bodyFat: trends.body_fat_pcts[index],
-              muscleMass: trends.muscle_masses[index],
-              water: trends.water_pcts[index],
-          }))
+        ? trends.dates.map((date, index) => {
+              const isDexa = trends.sources[index] === "bodyspec";
+              return {
+                  date,
+                  weight: trends.weights[index],
+                  bodyFat: trends.body_fat_pcts[index],
+                  weightScale: isDexa ? null : trends.weights[index],
+                  weightDexa: isDexa ? trends.weights[index] : null,
+                  bodyFatScale: isDexa ? null : trends.body_fat_pcts[index],
+                  bodyFatDexa: isDexa ? trends.body_fat_pcts[index] : null,
+                  muscleMass: trends.muscle_masses[index],
+                  water: trends.water_pcts[index],
+              };
+          })
         : [];
+
+    const hasDexa = chartData.some((d) => d.weightDexa != null || d.bodyFatDexa != null);
 
     return (
         <>
@@ -172,6 +301,8 @@ const BodyComposition = () => {
                                 </div>
                             </div>
 
+                            <BodySpecSync />
+
                             {/* Period selector */}
                             <div className="flex items-center justify-between animate-in" style={{ marginBottom: 'var(--space-4)' }}>
                                 <h2 className="page__title page__title--compact" style={{ fontSize: '20px' }}>TRENDS</h2>
@@ -202,6 +333,22 @@ const BodyComposition = () => {
                                 </div>
                             ) : chartData.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                                    {/* Only worth the space once both instruments are
+                                        present; with one source the marks need no
+                                        explaining. */}
+                                    {hasDexa && (
+                                        <div className="flex items-center animate-in" style={{ gap: 'var(--space-4)', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                            <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                                                <span style={{ display: 'inline-block', width: '16px', height: '2px', backgroundColor: SCALE_COLOR }} />
+                                                Scale (bioimpedance)
+                                            </span>
+                                            <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                                                <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: DEXA_COLOR, border: '2px solid var(--bg-secondary)' }} />
+                                                DEXA — points only, never joined
+                                            </span>
+                                        </div>
+                                    )}
+
                                     {/* Weight Chart */}
                                     {chartData.some(d => d.weight != null) && (
                                         <Card className="animate-in">
@@ -212,7 +359,7 @@ const BodyComposition = () => {
                                             </CardHeader>
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
-                                                    <LineChart data={chartData}>
+                                                    <ComposedChart data={chartData}>
                                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                                                         <XAxis
                                                             dataKey="date"
@@ -235,21 +382,32 @@ const BodyComposition = () => {
                                                                 color: 'var(--text-primary)',
                                                             }}
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value: number | undefined) => {
-                                                                if (value == null) return ["N/A", "Weight"];
-                                                                return [value.toFixed(1) + " lbs", "Weight"];
+                                                            formatter={(value: number | undefined, name?: string) => {
+                                                                const label = name ?? "Weight";
+                                                                if (value == null) return ["N/A", label];
+                                                                return [value.toFixed(1) + " lbs", label];
                                                             }}
                                                         />
+                                                        {/* One y-axis, deliberately. Two scales would
+                                                            make the offset between the instruments
+                                                            unreadable, and that offset is the most
+                                                            useful thing this chart shows. */}
                                                         <Line
                                                             type="monotone"
-                                                            dataKey="weight"
-                                                            stroke="var(--chart-2)"
-                                                            name="Weight"
+                                                            dataKey="weightScale"
+                                                            stroke={SCALE_COLOR}
+                                                            name="Scale"
                                                             strokeWidth={2}
-                                                            dot={{ r: 3 }}
+                                                            dot={false}
                                                             connectNulls
                                                         />
-                                                    </LineChart>
+                                                        <Scatter
+                                                            dataKey="weightDexa"
+                                                            name="DEXA"
+                                                            fill={DEXA_COLOR}
+                                                            shape={<DexaDot />}
+                                                        />
+                                                    </ComposedChart>
                                                 </ResponsiveContainer>
                                             </CardContent>
                                         </Card>
@@ -265,7 +423,7 @@ const BodyComposition = () => {
                                             </CardHeader>
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
-                                                    <LineChart data={chartData}>
+                                                    <ComposedChart data={chartData}>
                                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                                                         <XAxis
                                                             dataKey="date"
@@ -288,21 +446,32 @@ const BodyComposition = () => {
                                                                 color: 'var(--text-primary)',
                                                             }}
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value: number | undefined) => {
-                                                                if (value == null) return ["N/A", "Body Fat"];
-                                                                return [value.toFixed(1) + "%", "Body Fat"];
+                                                            formatter={(value: number | undefined, name?: string) => {
+                                                                const label = name ?? "Body Fat";
+                                                                if (value == null) return ["N/A", label];
+                                                                return [value.toFixed(1) + "%", label];
                                                             }}
                                                         />
+                                                        {/* The two disagree by several points and
+                                                            always will - bioimpedance reads high.
+                                                            Keeping them as separate marks is what
+                                                            stops that gap reading as fat lost. */}
                                                         <Line
                                                             type="monotone"
-                                                            dataKey="bodyFat"
-                                                            stroke="var(--error)"
-                                                            name="Body Fat %"
+                                                            dataKey="bodyFatScale"
+                                                            stroke={SCALE_COLOR}
+                                                            name="Scale"
                                                             strokeWidth={2}
-                                                            dot={{ r: 3 }}
+                                                            dot={false}
                                                             connectNulls
                                                         />
-                                                    </LineChart>
+                                                        <Scatter
+                                                            dataKey="bodyFatDexa"
+                                                            name="DEXA"
+                                                            fill={DEXA_COLOR}
+                                                            shape={<DexaDot />}
+                                                        />
+                                                    </ComposedChart>
                                                 </ResponsiveContainer>
                                             </CardContent>
                                         </Card>

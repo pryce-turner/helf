@@ -12,20 +12,31 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 
+from datetime import datetime
+
 import app.database as database
 from app.database import apply_sqlite_pragmas
-from app.db.models import Metric
+from app.db.models import Metric, Observation
 
 
 def _metric(session, **kwargs):
-    defaults = {
-        "observed_at": "2026-01-01 08:00:00.000000",
-        "name": "body_weight_lb",
-        "value": 190.0,
-        "unit": "lb",
-        "source": "openscale",
-    }
-    session.add(Metric(**{**defaults, **kwargs}))
+    """Record one value, creating (or reusing) its observation."""
+    observed_at = kwargs.pop("observed_at", "2026-01-01 08:00:00.000000")
+    source = kwargs.pop("source", "openscale")
+    defaults = {"name": "body_weight_lb", "value": 190.0, "unit": "lb"}
+
+    observation = (
+        session.query(Observation)
+        .filter_by(observed_at=observed_at, source=source)
+        .one_or_none()
+    )
+    if observation is None:
+        observation = Observation(
+            observed_at=observed_at, source=source, created_at=datetime(2026, 1, 1)
+        )
+        session.add(observation)
+
+    observation.metrics.append(Metric(**{**defaults, **kwargs}))
     session.commit()
 
 
@@ -37,10 +48,31 @@ def seeded(db_session):
 
 class TestMetricConstraints:
     def test_date_is_derived_from_observed_at(self, seeded):
+        """`date` lives on the observation - the instant is its property."""
         _metric(seeded, observed_at="2026-03-10 14:23:45.000000")
 
-        stored = seeded.query(Metric).one()
-        assert stored.date == "2026-03-10"
+        assert seeded.query(Observation).one().date == "2026-03-10"
+
+    def test_metrics_are_reachable_from_their_observation(self, seeded):
+        """One act of measuring, several values."""
+        _metric(seeded, name="body_weight_lb", value=190.0)
+        _metric(seeded, name="body_fat_pct", value=23.7, unit="%")
+
+        observation = seeded.query(Observation).one()
+        assert {m.name for m in observation.metrics} == {
+            "body_weight_lb",
+            "body_fat_pct",
+        }
+
+    def test_deleting_an_observation_removes_its_metrics(self, seeded):
+        """ON DELETE CASCADE: `DELETE /{id}` names the observation only."""
+        _metric(seeded, name="body_weight_lb", value=190.0)
+        _metric(seeded, name="body_fat_pct", value=23.7, unit="%")
+
+        seeded.delete(seeded.query(Observation).one())
+        seeded.commit()
+
+        assert seeded.query(Metric).count() == 0
 
     def test_unknown_metric_name_is_rejected(self, seeded):
         """metric_def is the vocabulary, enforced in the schema.
@@ -106,8 +138,16 @@ class TestViews:
             for observed_at, name, value, source in rows:
                 conn.execute(
                     text(
-                        "INSERT INTO metric (observed_at, name, value, unit, source) "
-                        "VALUES (:o, :n, :v, 'x', :s)"
+                        "INSERT OR IGNORE INTO observation "
+                        "(observed_at, source, created_at) VALUES (:o, :s, :o)"
+                    ),
+                    {"o": observed_at, "s": source},
+                )
+                conn.execute(
+                    text(
+                        "INSERT INTO metric (observation_id, name, value, unit) "
+                        "SELECT id, :n, :v, 'x' FROM observation "
+                        "WHERE observed_at = :o AND source = :s"
                     ),
                     {"o": observed_at, "n": name, "v": value, "s": source},
                 )

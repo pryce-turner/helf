@@ -134,8 +134,44 @@ class MetricDef(Base):
     metrics: Mapped[list["Metric"]] = relationship("Metric", back_populates="definition")
 
 
+class Observation(Base):
+    """One act of measuring: a time, an instrument, and the values it produced.
+
+    The tall model needs this because a "measurement" is several `metric` rows -
+    a scale reports weight, body fat, muscle and water in one step off. Without
+    an observation to hang them on there is nothing to give a stable id to, no
+    home for ingestion time, and no way for `DELETE /{id}` to name what to
+    remove.
+    """
+
+    __tablename__ = "observation"
+    __table_args__ = (
+        # An instrument produces at most one reading per instant. This is what
+        # keeps a bioimpedance estimate and a DEXA scan on the same day as two
+        # observations rather than one overwriting the other.
+        UniqueConstraint("observed_at", "source", name="uq_observation_instant"),
+        Index("ix_observation_date", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    observed_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    # STORED rather than VIRTUAL so it can be indexed. The universal join key
+    # across every quantity the system records.
+    date: Mapped[str] = mapped_column(
+        String(10),
+        Computed("substr(observed_at, 1, 10)", persisted=True),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    metrics: Mapped[list["Metric"]] = relationship(
+        "Metric", back_populates="observation", cascade="all, delete-orphan"
+    )
+
+
 class Metric(Base):
-    """A single observed value: tall storage for anything measurable.
+    """A single named value belonging to an observation.
 
     Replaces the wide `body_composition` table, five of whose nine columns have
     never held a value. Adding a quantity here is a row, not a migration.
@@ -143,27 +179,20 @@ class Metric(Base):
 
     __tablename__ = "metric"
     __table_args__ = (
-        # reference/qs_mcp.py upserts ON CONFLICT(observed_at, name, source), so
-        # this triple must be unique or the agent's write tool raises at runtime.
-        # It also keeps a bioimpedance estimate and a DEXA measurement of the
-        # same quantity on the same day as two rows rather than one overwriting
-        # the other.
-        UniqueConstraint("observed_at", "name", "source", name="uq_metric_observation"),
+        # One value per name per observation. Equivalent to the old
+        # UNIQUE(observed_at, name, source), since `observation` is itself
+        # unique on (observed_at, source).
+        UniqueConstraint("observation_id", "name", name="uq_metric_observation"),
         CheckConstraint(
             "value IS NOT NULL OR text_value IS NOT NULL",
             name="ck_metric_has_a_value",
         ),
-        Index("ix_metric_date_name", "date", "name"),
+        Index("ix_metric_name", "name"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    observed_at: Mapped[str] = mapped_column(String(32), nullable=False)
-    # STORED rather than VIRTUAL so it can be indexed. This is the universal
-    # join key across every quantity the system records.
-    date: Mapped[str] = mapped_column(
-        String(10),
-        Computed("substr(observed_at, 1, 10)", persisted=True),
-        nullable=False,
+    observation_id: Mapped[int] = mapped_column(
+        ForeignKey("observation.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(
         ForeignKey("metric_def.name"), nullable=False
@@ -171,8 +200,10 @@ class Metric(Base):
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     text_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
 
+    observation: Mapped[Observation] = relationship(
+        "Observation", back_populates="metrics"
+    )
     definition: Mapped[MetricDef] = relationship("MetricDef", back_populates="metrics")
 
 

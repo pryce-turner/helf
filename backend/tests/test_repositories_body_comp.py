@@ -246,7 +246,7 @@ class TestDualWriteToMetric:
             text("SELECT timestamp FROM body_composition")
         ).scalar()
         observed_at = db_session.execute(
-            text("SELECT DISTINCT observed_at FROM metric")
+            text("SELECT DISTINCT observed_at FROM observation")
         ).scalar()
 
         assert observed_at == stored_ts
@@ -284,7 +284,7 @@ class TestDualWriteToMetric:
 
         sources = dict(
             db_session.execute(
-                text("SELECT source, count(*) FROM metric GROUP BY source")
+                text("SELECT source, count(*) FROM observation GROUP BY source")
             ).all()
         )
         assert sources == {"manual": 1, "openscale": 1}
@@ -458,8 +458,14 @@ class TestMirrorReconciliation:
         )
         db_session.execute(
             text(
-                "INSERT INTO metric (observed_at, name, value, unit, source) "
-                "VALUES ('2026-07-06 07:00:00.000000', 'mood', 7, '1-10', 'journal')"
+                "INSERT INTO observation (observed_at, source, created_at) "
+                "VALUES ('2026-07-06 07:00:00.000000', 'journal', '2026-07-06')"
+            )
+        )
+        db_session.execute(
+            text(
+                "INSERT INTO metric (observation_id, name, value, unit) "
+                "SELECT id, 'mood', 7, '1-10' FROM observation WHERE source='journal'"
             )
         )
         db_session.commit()

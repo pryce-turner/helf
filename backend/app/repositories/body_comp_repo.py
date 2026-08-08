@@ -7,7 +7,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.db.models import BodyComposition, Metric
+from app.db.models import BodyComposition, Metric, Observation
 from app.models.body_composition import BodyCompositionCreate
 from app.utils.date_helpers import PACIFIC_TZ, get_current_datetime
 
@@ -23,6 +23,12 @@ METRIC_COLUMNS = [
     ("muscle_mass", "muscle_pct", "%"),
     ("water_pct", "water_pct", "%"),
 ]
+
+# Sources whose observations mirror a `body_composition` row. `body_composition`
+# does not record which one produced a given measurement, so deletion and
+# reconciliation match on the instant and restrict to these - leaving a DEXA
+# import or a journal entry at the same instant alone.
+MIRROR_SOURCES = ("manual", "openscale")
 
 
 def _observed_at(timestamp: datetime) -> str:
@@ -169,19 +175,19 @@ class BodyCompositionRepository:
         observed_at = _observed_at(measurement.timestamp)
         try:
             with SessionLocal() as session:
+                observation = Observation(
+                    observed_at=observed_at,
+                    source=source,
+                    created_at=measurement.created_at,
+                )
                 for column, metric_name, unit in METRIC_COLUMNS:
                     value = getattr(measurement, column)
                     if value is None:
                         continue
-                    session.add(
-                        Metric(
-                            observed_at=observed_at,
-                            name=metric_name,
-                            value=value,
-                            unit=unit,
-                            source=source,
-                        )
+                    observation.metrics.append(
+                        Metric(name=metric_name, value=value, unit=unit)
                     )
+                session.add(observation)
                 session.commit()
         except Exception:
             # Loud, but not fatal: the measurement itself is already safe.
@@ -217,8 +223,14 @@ class BodyCompositionRepository:
             actual = {
                 (observed_at, name): value
                 for observed_at, name, value in session.execute(
-                    select(Metric.observed_at, Metric.name, Metric.value).where(
-                        Metric.name.in_([n for _c, n, _u in METRIC_COLUMNS])
+                    select(Observation.observed_at, Metric.name, Metric.value)
+                    .join(Metric, Metric.observation_id == Observation.id)
+                    .where(
+                        Metric.name.in_([n for _c, n, _u in METRIC_COLUMNS]),
+                        # Only observations that mirror a body_composition row.
+                        # A DEXA import writes body_fat_pct too and would
+                        # otherwise be reported as an orphan.
+                        Observation.source.in_(MIRROR_SOURCES),
                     )
                 ).all()
             }
@@ -255,10 +267,11 @@ class BodyCompositionRepository:
                 return False
 
             # One transaction here: unlike create, a failure loses nothing.
+            # Metrics go with the observation via ON DELETE CASCADE.
             session.execute(
-                sa_delete(Metric).where(
-                    Metric.observed_at == _observed_at(measurement.timestamp),
-                    Metric.name.in_([name for _c, name, _u in METRIC_COLUMNS]),
+                sa_delete(Observation).where(
+                    Observation.observed_at == _observed_at(measurement.timestamp),
+                    Observation.source.in_(MIRROR_SOURCES),
                 )
             )
             session.delete(measurement)

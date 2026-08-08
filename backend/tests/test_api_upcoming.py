@@ -41,13 +41,13 @@ def test_upcoming_bulk_create_and_delete(client):
     assert deleted.status_code == 204
 
 
-def test_wendler_generate_and_maxes(client):
+def test_wendler_maxes_endpoint(client):
+    """Test that the wendler maxes endpoint returns current 1RM values."""
     maxes = client.get("/api/upcoming/wendler/maxes")
     assert maxes.status_code == 200
 
-    generated = client.post(
-        "/api/upcoming/wendler/generate",
-        json={"num_cycles": 1, "squat_max": 200, "bench_max": 150, "deadlift_max": 250},
-    )
-    assert generated.status_code == 200
-    assert generated.json()["count"] == 72
+    data = maxes.json()
+    # Should have squat, bench, deadlift keys (values may be null if no data)
+    assert "squat" in data
+    assert "bench" in data
+    assert "deadlift" in data

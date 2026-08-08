@@ -2,6 +2,7 @@ export interface Exercise {
   doc_id: number;
   name: string;
   category: string;
+  notes: string | null;
   last_used: string | null;
   use_count: number;
   created_at: string;
@@ -10,6 +11,13 @@ export interface Exercise {
 export interface ExerciseCreate {
   name: string;
   category: string;
+  notes?: string;
+}
+
+export interface ExerciseUpdate {
+  name?: string;
+  category?: string;
+  notes?: string;
 }
 
 export interface Category {
@@ -24,4 +32,10 @@ export interface CategoryCreate {
 
 export interface ExercisesByCategory {
   [category: string]: string[];
+}
+
+export interface SeedExercisesResponse {
+  categories_created: number;
+  exercises_created: number;
+  message: string;
 }

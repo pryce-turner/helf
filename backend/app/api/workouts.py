@@ -12,6 +12,8 @@ from app.models.workout import (
     WorkoutComplete,
     WorkoutMoveDate,
     WorkoutMoveDateResponse,
+    WorkoutCopyDate,
+    WorkoutCopyDateResponse,
     CalendarResponse,
 )
 from app.repositories.workout_repo import WorkoutRepository
@@ -118,6 +120,33 @@ def move_workouts_to_date(source_date: str, move: WorkoutMoveDate):
         target_date=move.target_date,
         count=count,
         message=f"Moved {count} workout(s) to {move.target_date}"
+    )
+
+
+@router.post("/date/{source_date}/copy", response_model=WorkoutCopyDateResponse)
+def copy_workouts_to_date(source_date: str, copy: WorkoutCopyDate):
+    """Copy all workouts from one date to another."""
+    repo = WorkoutRepository()
+
+    if source_date == copy.target_date:
+        raise HTTPException(
+            status_code=400,
+            detail="Source and target dates must be different"
+        )
+
+    count = repo.copy_to_date(source_date, copy.target_date)
+
+    if count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="No workouts found on source date"
+        )
+
+    return WorkoutCopyDateResponse(
+        source_date=source_date,
+        target_date=copy.target_date,
+        count=count,
+        message=f"Successfully copied {count} workout(s) from {source_date} to {copy.target_date}"
     )
 
 

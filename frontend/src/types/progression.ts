@@ -2,7 +2,7 @@ export interface ProgressionDataPoint {
   date: string;
   weight: number;
   weight_unit: string;
-  reps: number | string;
+  reps: number;
   estimated_1rm: number;
   comment: string | null;
 }
@@ -12,7 +12,7 @@ export interface UpcomingProgressionDataPoint {
   projected_date: string;
   weight: number;
   weight_unit: string;
-  reps: number | string;
+  reps: number;
   estimated_1rm: number;
   comment: string | null;
 }

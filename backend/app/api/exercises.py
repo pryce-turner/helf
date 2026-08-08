@@ -5,11 +5,45 @@ from fastapi import APIRouter, HTTPException
 from app.models.exercise import (
     Exercise,
     ExerciseCreate,
+    ExerciseUpdate,
     Category,
     CategoryCreate,
     ExercisesByCategoryResponse,
+    SeedExercisesResponse,
 )
 from app.repositories.exercise_repo import ExerciseRepository, CategoryRepository
+
+# Exercises from workout presets (wendler_531, stronglifts_5x5)
+PRESET_EXERCISES = {
+    "Legs": [
+        "Barbell Squat",
+        "Front Squat",
+        "Bulgarian Split Squat",
+    ],
+    "Chest": [
+        "Flat Barbell Bench Press",
+        "Incline Dumbbell Press",
+    ],
+    "Back": [
+        "Deadlift",
+        "Pull Ups",
+        "Dumbbell Row",
+        "Barbell Row",
+    ],
+    "Biceps": [
+        "Barbell Curl",
+        "Dumbbell Curl",
+    ],
+    "Triceps": [
+        "Overhead Press",
+        "Parallel Bar Triceps Dip",
+    ],
+    "Core": [
+        "Decline Crunch",
+        "Landmines",
+        "Cable side bend",
+    ],
+}
 
 router = APIRouter()
 
@@ -46,6 +80,69 @@ def create_exercise(exercise: ExerciseCreate):
     """Create a new exercise."""
     repo = ExerciseRepository()
     return repo.create(exercise)
+
+
+@router.put("/{exercise_id}", response_model=Exercise)
+def update_exercise(exercise_id: int, exercise: ExerciseUpdate):
+    """Update an exercise."""
+    repo = ExerciseRepository()
+    updated = repo.update(exercise_id, exercise)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    return updated
+
+
+@router.delete("/{exercise_id}", status_code=204)
+def delete_exercise(exercise_id: int):
+    """Delete an exercise."""
+    repo = ExerciseRepository()
+    if not repo.delete(exercise_id):
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+
+@router.post("/seed", response_model=SeedExercisesResponse)
+def seed_exercises():
+    """Seed exercises from workout presets.
+
+    Creates all exercises needed for the built-in workout programs
+    (Wendler 5/3/1, StrongLifts 5x5). Only creates exercises that
+    don't already exist.
+    """
+    exercise_repo = ExerciseRepository()
+    category_repo = CategoryRepository()
+
+    created_categories = 0
+    created_exercises = 0
+
+    for category_name, exercises in PRESET_EXERCISES.items():
+        # Get or create category
+        category = category_repo.get_by_name(category_name)
+        if not category:
+            category = category_repo.create(CategoryCreate(name=category_name))
+            created_categories += 1
+
+        # Create exercises that don't exist
+        for exercise_name in exercises:
+            existing = exercise_repo.get_by_name(exercise_name)
+            if not existing:
+                exercise_repo.create(ExerciseCreate(
+                    name=exercise_name,
+                    category=category_name,
+                ))
+                created_exercises += 1
+
+    if created_exercises == 0 and created_categories == 0:
+        message = "All preset exercises already exist"
+    else:
+        message = f"Created {created_exercises} exercises in {created_categories} categories"
+
+    return SeedExercisesResponse(
+        categories_created=created_categories,
+        exercises_created=created_exercises,
+        message=message,
+    )
 
 
 # Category endpoints

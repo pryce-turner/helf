@@ -29,7 +29,7 @@ def test_workout_create_defaults_order(db_session):
     assert second["order"] == 2
 
     stored = db_session.query(Workout).filter(Workout.id == first["doc_id"]).one()
-    assert stored.reps == "5"
+    assert stored.reps == 5
 
 
 def test_workout_update_preserves_order_when_missing():
@@ -42,14 +42,14 @@ def test_workout_update_preserves_order_when_missing():
             date="2024-01-02",
             exercise="Front Squat",
             category="Legs",
-            reps="5+",
+            reps=5,
             weight=120,
         ),
     )
 
     assert updated["order"] == 3
     assert updated["exercise"] == "Front Squat"
-    assert updated["reps"] == "5+"
+    assert updated["reps"] == 5
 
 
 def test_workout_toggle_complete_updates_timestamp():

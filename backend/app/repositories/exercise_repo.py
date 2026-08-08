@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
 from app.db.models import Category, Exercise
-from app.models.exercise import CategoryCreate, ExerciseCreate
+from app.models.exercise import CategoryCreate, ExerciseCreate, ExerciseUpdate
 from app.utils.date_helpers import get_current_datetime
 
 
@@ -19,6 +19,7 @@ class ExerciseRepository:
             "doc_id": exercise.id,
             "name": exercise.name,
             "category": exercise.category.name if exercise.category else None,
+            "notes": exercise.notes,
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
             "created_at": exercise.created_at,
@@ -86,6 +87,7 @@ class ExerciseRepository:
             new_exercise = Exercise(
                 name=exercise.name,
                 category_id=category.id,
+                notes=exercise.notes,
                 last_used=None,
                 use_count=0,
                 created_at=now,
@@ -120,6 +122,42 @@ class ExerciseRepository:
                 .limit(limit)
             ).scalars().all()
             return [self._serialize(exercise) for exercise in exercises]
+
+    def update(self, exercise_id: int, data: ExerciseUpdate) -> Optional[dict]:
+        """Update an exercise."""
+        with SessionLocal() as session:
+            exercise = session.execute(
+                select(Exercise)
+                .options(selectinload(Exercise.category))
+                .where(Exercise.id == exercise_id)
+            ).scalar_one_or_none()
+            if not exercise:
+                return None
+
+            if data.name is not None:
+                exercise.name = data.name
+            if data.category is not None:
+                category = self._get_or_create_category(session, data.category)
+                exercise.category_id = category.id
+            if data.notes is not None:
+                exercise.notes = data.notes if data.notes else None
+
+            session.commit()
+            session.refresh(exercise)
+            return self._serialize(exercise)
+
+    def delete(self, exercise_id: int) -> bool:
+        """Delete an exercise."""
+        with SessionLocal() as session:
+            exercise = session.execute(
+                select(Exercise).where(Exercise.id == exercise_id)
+            ).scalar_one_or_none()
+            if not exercise:
+                return False
+
+            session.delete(exercise)
+            session.commit()
+            return True
 
 
 class CategoryRepository:

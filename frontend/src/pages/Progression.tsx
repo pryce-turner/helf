@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { Weight, Hash, MessageSquare, TrendingUp } from "lucide-react";
@@ -36,11 +36,9 @@ const Progression = () => {
     const { data: exercises } = useProgressionExercises();
 
     // Auto-select first exercise when list loads (if no URL param or selection)
-    useEffect(() => {
-        if (!selectedExercise && exercises && exercises.length > 0) {
-            setSelectedExercise(exercises[0]);
-        }
-    }, [exercises, selectedExercise]);
+    if (!selectedExercise && exercises && exercises.length > 0) {
+        setSelectedExercise(exercises[0]);
+    }
     const { data: progressionData, isLoading } = useProgression(
         selectedExercise,
         includeUpcoming,
@@ -204,7 +202,7 @@ const Progression = () => {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <ResponsiveContainer width="100%" height={400}>
+                                    <ResponsiveContainer width="100%" height={320}>
                                         <LineChart data={combinedData}>
                                             <CartesianGrid
                                                 strokeDasharray="3 3"
@@ -242,9 +240,10 @@ const Progression = () => {
                                                     )
                                                 }
                                                 formatter={(
-                                                    value: any,
+                                                    value: number | undefined,
                                                     name?: string,
                                                 ) => {
+                                                    if (value == null) return ["-", name];
                                                     if (name === "Estimated 1RM")
                                                         return [
                                                             value.toFixed(1),
@@ -273,9 +272,10 @@ const Progression = () => {
                                                 stroke="var(--chart-2)"
                                                 name="Estimated 1RM"
                                                 strokeWidth={2}
-                                                dot={(props: any) => {
+                                                dot={(props: { cx?: number; cy?: number; payload: { type: string } }) => {
                                                     const { cx, cy, payload } =
                                                         props;
+                                                    if (cx == null || cy == null) return null;
                                                     return (
                                                         <circle
                                                             cx={cx}
@@ -305,7 +305,7 @@ const Progression = () => {
                                 </CardContent>
                             </Card>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 'var(--space-6)' }}>
+                            <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 'var(--space-4)' }}>
                                 <Card className="animate-in">
                                     <CardHeader>
                                         <CardTitle className="font-display text-xl tracking-tight">

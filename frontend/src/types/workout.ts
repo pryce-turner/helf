@@ -5,7 +5,7 @@ export interface Workout {
   category: string;
   weight: number | null;
   weight_unit: string;
-  reps: number | string | null;
+  reps: number | null;
   distance: number | null;
   distance_unit: string | null;
   time: string | null;
@@ -22,7 +22,7 @@ export interface WorkoutCreate {
   category: string;
   weight?: number | null;
   weight_unit?: string;
-  reps?: number | string | null;
+  reps?: number | null;
   distance?: number | null;
   distance_unit?: string | null;
   time?: string | null;

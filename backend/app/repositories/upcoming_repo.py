@@ -70,22 +70,36 @@ class UpcomingWorkoutRepository:
     def get_all(self) -> list[dict]:
         """Get all upcoming workouts, sorted by session."""
         with SessionLocal() as session:
-            workouts = session.execute(
-                select(UpcomingWorkout)
-                .options(selectinload(UpcomingWorkout.exercise), selectinload(UpcomingWorkout.category))
-                .order_by(UpcomingWorkout.session.asc())
-            ).scalars().all()
+            workouts = (
+                session.execute(
+                    select(UpcomingWorkout)
+                    .options(
+                        selectinload(UpcomingWorkout.exercise),
+                        selectinload(UpcomingWorkout.category),
+                    )
+                    .order_by(UpcomingWorkout.session.asc())
+                )
+                .scalars()
+                .all()
+            )
             return [self._serialize(workout) for workout in workouts]
 
     def get_by_session(self, session_id: int) -> list[dict]:
         """Get all workouts for a specific session."""
         with SessionLocal() as session:
-            workouts = session.execute(
-                select(UpcomingWorkout)
-                .options(selectinload(UpcomingWorkout.exercise), selectinload(UpcomingWorkout.category))
-                .where(UpcomingWorkout.session == session_id)
-                .order_by(UpcomingWorkout.id.asc())
-            ).scalars().all()
+            workouts = (
+                session.execute(
+                    select(UpcomingWorkout)
+                    .options(
+                        selectinload(UpcomingWorkout.exercise),
+                        selectinload(UpcomingWorkout.category),
+                    )
+                    .where(UpcomingWorkout.session == session_id)
+                    .order_by(UpcomingWorkout.id.asc())
+                )
+                .scalars()
+                .all()
+            )
             return [self._serialize(workout) for workout in workouts]
 
     def get_lowest_session(self) -> Optional[int]:
@@ -179,9 +193,13 @@ class UpcomingWorkoutRepository:
     def delete_session(self, session_id: int) -> int:
         """Delete all workouts in a session. Returns count of deleted workouts."""
         with SessionLocal() as session:
-            workouts = session.execute(
-                select(UpcomingWorkout).where(UpcomingWorkout.session == session_id)
-            ).scalars().all()
+            workouts = (
+                session.execute(
+                    select(UpcomingWorkout).where(UpcomingWorkout.session == session_id)
+                )
+                .scalars()
+                .all()
+            )
             if not workouts:
                 return 0
 
@@ -194,11 +212,30 @@ class UpcomingWorkoutRepository:
     def get_by_exercise(self, exercise: str) -> list[dict]:
         """Get all upcoming workouts for a specific exercise."""
         with SessionLocal() as session:
-            workouts = session.execute(
-                select(UpcomingWorkout)
-                .join(Exercise)
-                .options(selectinload(UpcomingWorkout.exercise), selectinload(UpcomingWorkout.category))
-                .where(Exercise.name == exercise)
-                .order_by(UpcomingWorkout.session.asc())
-            ).scalars().all()
+            workouts = (
+                session.execute(
+                    select(UpcomingWorkout)
+                    .join(Exercise)
+                    .options(
+                        selectinload(UpcomingWorkout.exercise),
+                        selectinload(UpcomingWorkout.category),
+                    )
+                    .where(Exercise.name == exercise)
+                    .order_by(UpcomingWorkout.session.asc())
+                )
+                .scalars()
+                .all()
+            )
             return [self._serialize(workout) for workout in workouts]
+
+    def delete_all(self) -> int:
+        """Delete all upcoming workouts. Returns count of deleted workouts."""
+        with SessionLocal() as session:
+            workouts = session.execute(select(UpcomingWorkout)).scalars().all()
+
+            count = len(workouts)
+            for workout in workouts:
+                session.delete(workout)
+
+            session.commit()
+            return count

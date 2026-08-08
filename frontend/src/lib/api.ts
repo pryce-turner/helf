@@ -7,8 +7,10 @@ import type {
 import type {
     Exercise,
     ExerciseCreate,
+    ExerciseUpdate,
     Category,
     CategoryCreate,
+    SeedExercisesResponse,
 } from "../types/exercise";
 import type {
     BodyComposition,
@@ -19,9 +21,11 @@ import type { ProgressionResponse } from "../types/progression";
 import type {
     UpcomingWorkout,
     UpcomingWorkoutCreate,
-    WendlerGenerateRequest,
-    WendlerGenerateResponse,
     WendlerCurrentMaxes,
+    LiftoscriptGenerateRequest,
+    LiftoscriptGenerateResponse,
+    PresetInfo,
+    PresetContent,
 } from "../types/upcoming";
 
 // Use relative URL - Vite proxy handles routing to backend in dev
@@ -68,6 +72,14 @@ export const workoutsApi = {
             count: number;
             message: string;
         }>(`/api/workouts/date/${sourceDate}/move`, { target_date: targetDate }),
+
+    copyToDate: (sourceDate: string, targetDate: string) =>
+        api.post<{
+            source_date: string;
+            target_date: string;
+            count: number;
+            message: string;
+        }>(`/api/workouts/date/${sourceDate}/copy`, { target_date: targetDate }),
 };
 
 // Exercises
@@ -82,6 +94,13 @@ export const exercisesApi = {
 
     create: (exercise: ExerciseCreate) =>
         api.post<Exercise>("/api/exercises/", exercise),
+
+    update: (id: number, exercise: ExerciseUpdate) =>
+        api.put<Exercise>(`/api/exercises/${id}`, exercise),
+
+    delete: (id: number) => api.delete(`/api/exercises/${id}`),
+
+    seed: () => api.post<SeedExercisesResponse>("/api/exercises/seed"),
 };
 
 // Categories
@@ -145,8 +164,15 @@ export const upcomingApi = {
     getWendlerMaxes: () =>
         api.get<WendlerCurrentMaxes>("/api/upcoming/wendler/maxes"),
 
-    generateWendler: (request: WendlerGenerateRequest) =>
-        api.post<WendlerGenerateResponse>("/api/upcoming/wendler/generate", request),
+    // Liftoscript endpoints
+    getPresets: () =>
+        api.get<PresetInfo[]>("/api/upcoming/presets"),
+
+    getPreset: (name: string) =>
+        api.get<PresetContent>(`/api/upcoming/presets/${encodeURIComponent(name)}`),
+
+    generateLiftoscript: (request: LiftoscriptGenerateRequest) =>
+        api.post<LiftoscriptGenerateResponse>("/api/upcoming/liftoscript/generate", request),
 };
 
 // Body Composition

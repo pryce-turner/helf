@@ -11,7 +11,7 @@ import { useCalendar } from "@/hooks/useWorkouts";
 const calculateStreak = (workoutCounts: Record<string, number>): number => {
     // Get all dates with workouts, sorted descending (most recent first)
     const workoutDates = Object.entries(workoutCounts)
-        .filter(([_, count]) => count > 0)
+        .filter(([, count]) => count > 0)
         .map(([date]) => new Date(date + 'T00:00:00'))
         .sort((a, b) => b.getTime() - a.getTime());
 
@@ -109,7 +109,10 @@ const Calendar = () => {
         navigate(`/day/${date}`);
     };
 
-    const workoutCounts = calendarData?.counts || {};
+    const workoutCounts = useMemo(
+        () => calendarData?.counts || {},
+        [calendarData?.counts],
+    );
 
     // Calculate streak using combined data from current and previous month
     const streak = useMemo(() => {
@@ -122,7 +125,7 @@ const Calendar = () => {
         return calculateStreak(combinedCounts);
     }, [workoutCounts, prevMonthData?.counts, isViewingCurrentMonth]);
 
-    const getDayClasses = (_day: number, count: number, isToday: boolean) => {
+    const getDayClasses = (count: number, isToday: boolean) => {
         const classes = ['calendar-day'];
         if (count > 0) classes.push('calendar-day--has-workout');
         if (isToday) classes.push('calendar-day--today');
@@ -155,7 +158,7 @@ const Calendar = () => {
                         </div>
 
                         {/* Day Headers */}
-                        <div className="grid grid-cols-7 gap-1" style={{ marginBottom: 'var(--space-4)' }}>
+                        <div className="grid grid-cols-7" style={{ gap: 'var(--space-1)', marginBottom: 'var(--space-3)' }}>
                             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                                 (day, index) => (
                                     <div
@@ -186,7 +189,7 @@ const Calendar = () => {
                                 </p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-7 gap-1">
+                            <div className="grid grid-cols-7" style={{ gap: 'var(--space-1)' }}>
                                 {/* Empty cells for days before month starts */}
                                 {Array.from({ length: firstDay }).map((_, i) => (
                                     <div key={`empty-${i}`} className="calendar-day calendar-day--empty" />
@@ -205,7 +208,7 @@ const Calendar = () => {
                                         <div
                                             key={day}
                                             onClick={() => handleDayClick(day)}
-                                            className={getDayClasses(day, count, isToday)}
+                                            className={getDayClasses(count, isToday)}
                                         >
                                             <div className="calendar-day__number">{day}</div>
                                             {count > 0 ? (
@@ -226,10 +229,10 @@ const Calendar = () => {
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-32">
+                    <div className="grid grid-cols-3" style={{ gap: 'var(--space-3)' }}>
                         <div className="stat-card animate-in">
-                            <div className="stat-card__label" style={{ marginBottom: 'var(--space-2)' }}>
-                                THIS MONTH
+                            <div className="stat-card__header">
+                                This Month
                             </div>
                             <div className="stat-card__value">
                                 {Object.values(workoutCounts).reduce((a, b) => a + b, 0)}
@@ -238,20 +241,20 @@ const Calendar = () => {
                         </div>
 
                         <div className="stat-card animate-in">
-                            <div className="stat-card__label" style={{ marginBottom: 'var(--space-2)' }}>
-                                ACTIVE DAYS
+                            <div className="stat-card__header">
+                                Active Days
                             </div>
                             <div className="stat-card__value">
                                 {Object.values(workoutCounts).filter((c) => c > 0).length}
                             </div>
-                            <div className="stat-card__label">Days with workouts</div>
+                            <div className="stat-card__label">Days trained</div>
                         </div>
 
                         <div className="stat-card animate-in">
-                            <div className="stat-card__label" style={{ marginBottom: 'var(--space-2)' }}>
-                                STREAK
+                            <div className="stat-card__header">
+                                Streak
                             </div>
-                            <div className="stat-card__value flex items-center justify-center" style={{ gap: 'var(--space-2)' }}>
+                            <div className="stat-card__value flex items-center" style={{ gap: 'var(--space-2)' }}>
                                 {streak !== null ? (
                                     <>
                                         <span>{streak}</span>

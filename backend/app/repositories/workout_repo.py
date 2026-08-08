@@ -281,6 +281,47 @@ class WorkoutRepository:
             session.commit()
             return len(source_workouts)
 
+    def copy_to_date(self, source_date: str, target_date: str) -> int:
+        """Copy all workouts from one date to another."""
+        with SessionLocal() as session:
+            # Get source workouts
+            source_workouts = session.execute(
+                select(Workout).where(Workout.date == source_date).order_by(Workout.order.asc())
+            ).scalars().all()
+
+            if not source_workouts:
+                return 0
+
+            # Get target date's max order
+            target_count = session.execute(
+                select(func.count()).select_from(Workout).where(Workout.date == target_date)
+            ).scalar_one()
+            starting_order = target_count + 1
+
+            # Create copies
+            now = get_current_datetime()
+            for i, source_workout in enumerate(source_workouts):
+                new_workout = Workout(
+                    date=target_date,
+                    exercise=source_workout.exercise,
+                    category=source_workout.category,
+                    weight=source_workout.weight,
+                    weight_unit=source_workout.weight_unit,
+                    reps=source_workout.reps,
+                    distance=source_workout.distance,
+                    distance_unit=source_workout.distance_unit,
+                    time=source_workout.time,
+                    comment=source_workout.comment,
+                    order=starting_order + i,
+                    created_at=now,
+                    updated_at=now,
+                    completed_at=None  # Reset completion status for copies
+                )
+                session.add(new_workout)
+
+            session.commit()
+            return len(source_workouts)
+
     def get_workout_counts_by_date(self, year: int, month: int) -> dict[str, int]:
         """Get workout counts grouped by date for a specific month."""
         pattern = f"{year}-{month:02d}-%"

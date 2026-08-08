@@ -30,12 +30,20 @@ class ExerciseBase(BaseModel):
 
 class ExerciseCreate(ExerciseBase):
     """Model for creating an exercise."""
-    pass
+    notes: str | None = None
+
+
+class ExerciseUpdate(BaseModel):
+    """Model for updating an exercise."""
+    name: str | None = None
+    category: str | None = None
+    notes: str | None = None
 
 
 class Exercise(ExerciseBase):
     """Full exercise model with metadata."""
     id: int = Field(..., alias="doc_id")
+    notes: str | None = None
     last_used: str | None = None
     use_count: int = 0
     created_at: datetime
@@ -47,3 +55,10 @@ class ExercisesByCategoryResponse(BaseModel):
     """Response for exercises grouped by category."""
     category: str
     exercises: list[str]
+
+
+class SeedExercisesResponse(BaseModel):
+    """Response from seeding exercises."""
+    categories_created: int
+    exercises_created: int
+    message: str

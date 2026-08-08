@@ -59,9 +59,10 @@ import {
   useBulkReorderWorkouts,
   useToggleComplete,
   useMoveToDate,
+  useCopyToDate,
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
-import { useCategories, useExercises } from "@/hooks/useExercises";
+import { useCategories, useExercises, useRecentExercises } from "@/hooks/useExercises";
 import { useProgression } from "@/hooks/useProgression";
 import type { WorkoutCreate } from "@/types/workout";
 
@@ -141,10 +142,11 @@ const SortableWorkoutCard = ({
 
   return (
     <Card ref={setNodeRef} style={style} className="card-hover animate-in">
-      <CardContent style={{ padding: "var(--space-4)", position: "relative" }}>
+      <CardContent style={{ padding: "var(--space-4)", position: "relative", minHeight: "120px" }}>
         {isEditing && (
           <button
             type="button"
+            className="action-btn"
             onClick={(e) => {
               e.stopPropagation();
               resetForm();
@@ -155,15 +157,13 @@ const SortableWorkoutCard = ({
               position: "absolute",
               top: "var(--space-3)",
               right: "var(--space-3)",
-              width: "90px",
-              height: "90px",
-              background: "transparent",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
               zIndex: 2,
+              width: "36px",
+              height: "36px",
             }}
-          />
+          >
+            <X style={{ width: "20px", height: "20px" }} />
+          </button>
         )}
         {!isEditing && (
           <div
@@ -297,96 +297,52 @@ const SortableWorkoutCard = ({
             </span>
           </div>
 
-          {/* Data chips - keep row height consistent even when empty */}
+          {/* Data chips */}
           <div
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: "var(--space-3)",
-              minHeight: "70px",
+              gap: "var(--space-2)",
             }}
           >
             {workout.weight && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "var(--bg-tertiary)",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
+              <div className="workout-chip">
                 <Weight
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "14px",
+                    height: "14px",
                     color: "var(--accent)",
                   }}
                 />
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--text-primary)",
-                    fontSize: "15px",
-                  }}
-                >
+                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
                   {workout.weight} {workout.weight_unit}
                 </span>
               </div>
             )}
             {workout.reps && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "var(--bg-tertiary)",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
+              <div className="workout-chip">
                 <Hash
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "14px",
+                    height: "14px",
                     color: "var(--accent)",
                   }}
                 />
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--text-primary)",
-                    fontSize: "15px",
-                  }}
-                >
+                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
                   {workout.reps} reps
                 </span>
               </div>
             )}
             {workout.comment && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "var(--bg-tertiary)",
-                  padding: "8px 14px",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
+              <div className="workout-chip">
                 <MessageSquare
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "14px",
+                    height: "14px",
                     color: "var(--text-muted)",
                   }}
                 />
-                <span
-                  style={{ color: "var(--text-secondary)", fontSize: "14px" }}
-                >
+                <span className="workout-chip__comment">
                   {workout.comment}
                 </span>
               </div>
@@ -481,20 +437,51 @@ const SortableWorkoutCard = ({
                     <Hash style={{ width: "14px", height: "14px" }} />
                     Reps
                   </Label>
-                  <Input
-                    id="reps-edit"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="e.g., 5 or 5+"
-                    className="input--mono"
-                    value={formData.reps || ""}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({
-                        ...formData,
-                        reps: e.target.value || null,
-                      })
-                    }
-                  />
+                  <div className="stepper">
+                    <button
+                      type="button"
+                      className="stepper__btn stepper__btn--start"
+                      onClick={() => {
+                        const currentReps = formData.reps || 0;
+                        const newValue = Math.max(0, currentReps - 1);
+                        setFormData({
+                          ...formData,
+                          reps: newValue > 0 ? newValue : null,
+                        });
+                      }}
+                    >
+                      <Minus style={{ width: "18px", height: "18px" }} />
+                    </button>
+                    <input
+                      id="reps-edit"
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="e.g., 5"
+                      className="input--stepper input--mono"
+                      value={formData.reps || ""}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const value = e.target.value ? parseInt(e.target.value) : null;
+                        setFormData({
+                          ...formData,
+                          reps: value,
+                        });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="stepper__btn stepper__btn--end"
+                      onClick={() => {
+                        const currentReps = formData.reps || 0;
+                        const newValue = currentReps + 1;
+                        setFormData({
+                          ...formData,
+                          reps: newValue,
+                        });
+                      }}
+                    >
+                      <Plus style={{ width: "18px", height: "18px" }} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -666,6 +653,7 @@ const WorkoutSession = () => {
   const { data: workouts, isLoading } = useWorkouts({ date });
   const { data: categories } = useCategories();
   const { data: exercises } = useExercises();
+  const { data: recentExercises } = useRecentExercises(8);
 
   const createWorkout = useCreateWorkout();
   const updateWorkout = useUpdateWorkout();
@@ -673,6 +661,7 @@ const WorkoutSession = () => {
   const bulkReorderWorkouts = useBulkReorderWorkouts();
   const toggleComplete = useToggleComplete();
   const moveToDate = useMoveToDate();
+  const copyToDate = useCopyToDate();
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -691,8 +680,11 @@ const WorkoutSession = () => {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedExercise, setSelectedExercise] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
+  const [showAddRecent, setShowAddRecent] = useState(false);
   const [showMoveCalendar, setShowMoveCalendar] = useState(false);
   const [targetDate, setTargetDate] = useState<Date | undefined>(new Date());
+  const [showCopyCalendar, setShowCopyCalendar] = useState(false);
+  const [copyTargetDate, setCopyTargetDate] = useState<Date | undefined>(undefined);
   const [formData, setFormData] = useState<WorkoutCreate>({
     date: date || format(new Date(), "yyyy-MM-dd"),
     exercise: "",
@@ -746,7 +738,7 @@ const WorkoutSession = () => {
     setShowForm(false);
   };
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFormData({
       date: date || format(new Date(), "yyyy-MM-dd"),
       exercise: "",
@@ -763,7 +755,8 @@ const WorkoutSession = () => {
     setSelectedExercise("");
     setEditingWorkout(null);
     setShowForm(false);
-  };
+    setShowAddRecent(false);
+  }, [date]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -785,23 +778,20 @@ const WorkoutSession = () => {
   };
 
   // Sync exercise selection when editing and exercises data is available
-  useEffect(() => {
-    if (editingWorkout && exercises) {
-      // Look up the exercise's actual category
-      const exerciseData = exercises.find(
-        (e) => e.name === editingWorkout.exercise,
-      );
-      if (exerciseData) {
-        const actualCategory = exerciseData.category;
-        if (selectedCategory !== actualCategory) {
-          setSelectedCategory(actualCategory);
-        }
-        if (selectedExercise !== editingWorkout.exercise) {
-          setSelectedExercise(editingWorkout.exercise);
-        }
-      }
+  const [lastSyncedEdit, setLastSyncedEdit] = useState<number | null>(null);
+  if (editingWorkout && exercises && lastSyncedEdit !== editingWorkout.doc_id) {
+    const exerciseData = exercises.find(
+      (e) => e.name === editingWorkout.exercise,
+    );
+    if (exerciseData) {
+      setSelectedCategory(exerciseData.category);
+      setSelectedExercise(editingWorkout.exercise);
+      setLastSyncedEdit(editingWorkout.doc_id);
     }
-  }, [editingWorkout, exercises, selectedCategory, selectedExercise]);
+  }
+  if (!editingWorkout && lastSyncedEdit !== null) {
+    setLastSyncedEdit(null);
+  }
 
   // Auto-cancel delete confirmation after 3 seconds
   useEffect(() => {
@@ -868,6 +858,23 @@ const WorkoutSession = () => {
     setShowMoveCalendar(false);
     navigate(`/workout/${targetDateStr}`);
   }, [date, targetDate, moveToDate, navigate]);
+
+  const handleCopyToDate = useCallback(async () => {
+    if (!date || !copyTargetDate) return;
+    const targetDateStr = format(copyTargetDate, "yyyy-MM-dd");
+    await copyToDate.mutateAsync({
+      sourceDate: date,
+      targetDate: targetDateStr,
+    });
+    setShowCopyCalendar(false);
+    // Stay on current page (unlike move which navigates)
+  }, [date, copyTargetDate, copyToDate]);
+
+  // Progression data for add form's selected exercise
+  const { data: addFormProgression } = useProgression(
+    showAddRecent && selectedExercise && !editingWorkout ? selectedExercise : "",
+    false,
+  );
 
   const categoryExercises =
     exercises?.filter((e) => e.category === selectedCategory) || [];
@@ -940,17 +947,29 @@ const WorkoutSession = () => {
               </div>
             </div>
 
-            <div className="flex" style={{ gap: "var(--space-2)" }}>
+            <div className="flex flex-wrap" style={{ gap: "var(--space-2)" }}>
               {workouts && workouts.length > 0 && (
                 <Button
                   variant="secondary"
+                  size="sm"
                   onClick={() => setShowMoveCalendar(!showMoveCalendar)}
                 >
-                  <CalendarIcon style={{ width: "18px", height: "18px" }} />
-                  Move All
+                  <CalendarIcon style={{ width: "16px", height: "16px" }} />
+                  Move
+                </Button>
+              )}
+              {workouts && workouts.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowCopyCalendar(!showCopyCalendar)}
+                >
+                  <Copy style={{ width: "16px", height: "16px" }} />
+                  Copy
                 </Button>
               )}
               <Button
+                size="sm"
                 onClick={() => {
                   if (showForm) {
                     resetForm();
@@ -959,8 +978,8 @@ const WorkoutSession = () => {
                   }
                 }}
               >
-                <Plus style={{ width: "20px", height: "20px" }} />
-                Add Exercise
+                <Plus style={{ width: "16px", height: "16px" }} />
+                Add
               </Button>
             </div>
           </div>
@@ -1017,6 +1036,63 @@ const WorkoutSession = () => {
             </Card>
           )}
 
+          {/* Copy to Date Calendar */}
+          {showCopyCalendar && (
+            <Card
+              className="animate-in"
+              style={{
+                marginBottom: "var(--space-6)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <CardContent style={{ padding: "var(--space-5)" }}>
+                <p
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontSize: "14px",
+                    color: "var(--text-secondary)",
+                    marginBottom: "var(--space-4)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Select target date
+                </p>
+                <Calendar
+                  mode="single"
+                  selected={copyTargetDate}
+                  onSelect={setCopyTargetDate}
+                  className="rounded-[var(--radius-md)] border border-[var(--border)]"
+                />
+                <div
+                  className="flex justify-end"
+                  style={{ marginTop: "var(--space-4)", gap: "var(--space-2)" }}
+                >
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowCopyCalendar(false);
+                      setCopyTargetDate(undefined);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCopyToDate}
+                    disabled={
+                      !copyTargetDate ||
+                      format(copyTargetDate, "yyyy-MM-dd") === date
+                    }
+                  >
+                    <Copy style={{ width: "18px", height: "18px" }} />
+                    Copy to{" "}
+                    {copyTargetDate && format(copyTargetDate, "MMM d, yyyy")}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Add Exercise Form - Only show at top for new exercises */}
           {showForm && !editingWorkout && (
             <Card
@@ -1063,6 +1139,61 @@ const WorkoutSession = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent style={{ padding: "var(--space-6)" }}>
+                {/* Recent Exercises */}
+                {recentExercises && recentExercises.length > 0 && (
+                  <div style={{ marginBottom: "var(--space-6)" }}>
+                    <Label className="form-label" style={{ marginBottom: "var(--space-3)" }}>
+                      <History style={{ width: "14px", height: "14px" }} />
+                      Recents
+                    </Label>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "var(--space-2)",
+                      }}
+                    >
+                      {recentExercises.map((ex) => {
+                        const isSelected = selectedExercise === ex.name;
+                        const catColor = getCategoryColor(ex.category);
+                        return (
+                          <button
+                            key={ex.doc_id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCategory(ex.category);
+                              setSelectedExercise(ex.name);
+                              setFormData({
+                                ...formData,
+                                exercise: ex.name,
+                                category: ex.category,
+                              });
+                            }}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: "var(--radius-sm)",
+                              border: isSelected
+                                ? "1px solid var(--accent)"
+                                : `1px solid ${catColor.border}40`,
+                              background: isSelected
+                                ? "var(--accent-glow)"
+                                : `${catColor.bg}10`,
+                              color: isSelected ? "var(--accent)" : "var(--text-primary)",
+                              fontSize: "13px",
+                              fontWeight: 500,
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                              fontFamily: "var(--font-body)",
+                            }}
+                          >
+                            {ex.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <form
                   onSubmit={handleSubmit}
                   style={{
@@ -1190,20 +1321,51 @@ const WorkoutSession = () => {
                       <Hash style={{ width: "14px", height: "14px" }} />
                       Reps
                     </Label>
-                    <Input
-                      id="reps"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="e.g., 5 or 5+"
-                      className="input--mono"
-                      value={formData.reps || ""}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setFormData({
-                          ...formData,
-                          reps: e.target.value || null,
-                        })
-                      }
-                    />
+                    <div className="stepper">
+                      <button
+                        type="button"
+                        className="stepper__btn stepper__btn--start"
+                        onClick={() => {
+                          const currentReps = formData.reps || 0;
+                          const newValue = Math.max(0, currentReps - 1);
+                          setFormData({
+                            ...formData,
+                            reps: newValue > 0 ? newValue : null,
+                          });
+                        }}
+                      >
+                        <Minus style={{ width: "18px", height: "18px" }} />
+                      </button>
+                      <input
+                        id="reps"
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="e.g., 5"
+                        className="input--stepper input--mono"
+                        value={formData.reps || ""}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const value = e.target.value ? parseInt(e.target.value) : null;
+                          setFormData({
+                            ...formData,
+                            reps: value,
+                          });
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="stepper__btn stepper__btn--end"
+                        onClick={() => {
+                          const currentReps = formData.reps || 0;
+                          const newValue = currentReps + 1;
+                          setFormData({
+                            ...formData,
+                            reps: newValue,
+                          });
+                        }}
+                      >
+                        <Plus style={{ width: "18px", height: "18px" }} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="form-field" style={{ overflow: "hidden" }}>
@@ -1234,6 +1396,16 @@ const WorkoutSession = () => {
                       marginTop: "var(--space-4)",
                     }}
                   >
+                    {selectedExercise && (
+                      <Button
+                        type="button"
+                        variant={showAddRecent ? "default" : "secondary"}
+                        onClick={() => setShowAddRecent(!showAddRecent)}
+                      >
+                        <History style={{ width: "18px", height: "18px" }} />
+                        Recent
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="secondary"
@@ -1253,6 +1425,104 @@ const WorkoutSession = () => {
                       {editingWorkout ? "Save" : "Add Workout"}
                     </Button>
                   </div>
+
+                  {showAddRecent &&
+                    selectedExercise &&
+                    addFormProgression?.historical &&
+                    addFormProgression.historical.length > 0 && (
+                      <div
+                        style={{
+                          padding: "var(--space-3)",
+                          background: "var(--bg-secondary)",
+                          borderRadius: "var(--radius-sm)",
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "var(--space-2)",
+                            maxHeight: "150px",
+                            overflowY: "auto",
+                          }}
+                        >
+                          {addFormProgression.historical
+                            .slice(-5)
+                            .reverse()
+                            .map((entry, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({
+                                    ...formData,
+                                    weight: entry.weight,
+                                    reps: entry.reps,
+                                  });
+                                }}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  padding: "var(--space-2)",
+                                  background: "var(--bg-tertiary)",
+                                  border: "1px solid var(--border-subtle)",
+                                  borderRadius: "var(--radius-sm)",
+                                  cursor: "pointer",
+                                  transition: "all 0.15s ease",
+                                  textAlign: "left",
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.background =
+                                    "var(--bg-hover)";
+                                  e.currentTarget.style.borderColor =
+                                    "var(--accent-muted)";
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.background =
+                                    "var(--bg-tertiary)";
+                                  e.currentTarget.style.borderColor =
+                                    "var(--border-subtle)";
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontFamily: "var(--font-mono)",
+                                    fontSize: "13px",
+                                    color: "var(--text-primary)",
+                                  }}
+                                >
+                                  {entry.weight} {entry.weight_unit} × {entry.reps}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "var(--text-muted)",
+                                  }}
+                                >
+                                  {entry.date}
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                  {showAddRecent &&
+                    selectedExercise &&
+                    (!addFormProgression?.historical ||
+                      addFormProgression.historical.length === 0) && (
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "var(--text-muted)",
+                          fontStyle: "italic",
+                        }}
+                      >
+                        No previous entries for this exercise
+                      </p>
+                    )}
                 </form>
               </CardContent>
             </Card>

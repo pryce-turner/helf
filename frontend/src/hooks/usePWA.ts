@@ -2,14 +2,11 @@ import { useEffect, useState } from "react";
 
 export function usePWA() {
     const [isOnline, setIsOnline] = useState(navigator.onLine);
-    const [isInstalled, setIsInstalled] = useState(false);
+    const [isInstalled] = useState(
+        () => window.matchMedia("(display-mode: standalone)").matches
+    );
 
     useEffect(() => {
-        // Check if app is installed
-        if (window.matchMedia("(display-mode: standalone)").matches) {
-            setIsInstalled(true);
-        }
-
         // Listen for online/offline events
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => setIsOnline(false);

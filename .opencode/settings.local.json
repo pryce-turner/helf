@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(pkill:*)",
+      "WebFetch(domain:www.thecreativemomentum.com)",
+      "Bash(curl:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(lsof:*)",
+      "Bash(git -C /home/coder/projects/helf log --oneline -10)",
+      "Bash(git -C /home/coder/projects/helf show:*)",
+      "Bash(git -C /home/coder/projects/helf log --all --full-history --source -- backend/data/helf.json)",
+      "Bash(cat:*)",
+      "Bash(npm run build:*)",
+      "Bash(for ep in workouts body-composition exercises progression)",
+      "Bash(do echo \"=== /api/$ep ===\" curl -sI \"http://localhost:8000/api/$ep\")",
+      "Bash(done)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash('git rm --cached --ignore-unmatch body_composition.csv upcoming_workouts.csv workouts.csv helf.json data/body_composition.csv data/upcoming_workouts.csv data/workouts.csv data/helf.json backend/data/helf.json' )",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git stash pop:*)",
+      "Bash(git add:*)",
+      "Bash(npm install:*)",
+      "Bash(source:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

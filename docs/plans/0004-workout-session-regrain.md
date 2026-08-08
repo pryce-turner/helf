@@ -82,7 +82,7 @@ timestamp. Real session start times cannot be recovered.
 
 ### Backend
 
-- `backend/app/repositories/workout_repo.py` (307 lines) — near-total rewrite
+- `backend/app/repositories/workout_repo.py` (348 lines) — near-total rewrite
 - `backend/app/services/progression_service.py:55,130` — reads flat rows
 - `backend/app/services/wendler_service.py` — `get_latest_estimated_1rm` queries by exercise
 - `backend/app/api/workouts.py` — every endpoint, especially `PATCH /{id}/reorder`
@@ -90,7 +90,7 @@ timestamp. Real session start times cannot be recovered.
 
 ### Frontend
 
-- `frontend/src/pages/WorkoutSession.tsx` — **1356 lines**, the largest file in
+- `frontend/src/pages/WorkoutSession.tsx` — **1,626 lines**, the largest file in
   the frontend. Carries drag-to-reorder, inline expansion editing, set
   completion, duplicate, and move-to-date
 - `frontend/src/pages/Calendar.tsx` — counts per date
@@ -100,7 +100,7 @@ timestamp. Real session start times cannot be recovered.
 ### The reorder contract
 
 `PATCH /api/workouts/{id}/reorder` and the `ix_workouts_date_order` index
-(`db/models.py:52`) are built directly on flat `(date, order)`. Reordering
+(`db/models.py:53`) are built directly on flat `(date, order)`. Reordering
 across a hierarchy means either reordering sets within an exercise or exercises
 within a session — two different operations where there is currently one. The
 drag-and-drop UI (commit `2ee4223`) has to be reworked to express which.

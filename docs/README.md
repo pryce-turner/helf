@@ -62,8 +62,13 @@ browser-based Claude conversation and were imported verbatim. The design doc
 references a `schema.sql` that was never downloaded — see the open item in
 `TODO.md`. UI/UX items come from Obsidian (`PryceVault/Lifting/Helf Notes.md`).
 
-## Known gap
+## Agent instructions
 
-`CLAUDE.md` points at `.claude/DESIGN_SYSTEM.md` for the design system spec, but
-`.claude/` is gitignored — that document is not durable and not shared. It
-should move to `docs/design/design-system.md`. Tracked in `TODO.md`.
+`CLAUDE.md` is now a one-line `@AGENTS.md` import; the substance lives in
+`AGENTS.md` at the repo root. That file covers stack, structure, deployment, and
+the design system — the previously-flagged gap (a design system spec stranded in
+gitignored `.claude/`) is **resolved**, since the content moved inline.
+
+Division of labour: `AGENTS.md` describes the system **as it is today**;
+`docs/` argues about **how it should change**. Keep decisions and plans out of
+`AGENTS.md`, and keep current-state reference out of `docs/plans/`.

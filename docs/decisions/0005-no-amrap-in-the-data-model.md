@@ -6,7 +6,7 @@
 ## Context
 
 `workouts.reps` and `upcoming_workouts.reps` are `String(16)`
-(`backend/app/db/models.py:64,93`) rather than integers, for one reason: to hold
+(`backend/app/db/models.py:65,94`) rather than integers, for one reason: to hold
 AMRAP notation like `"5+"` — "five reps, then as many as possible".
 
 That single affordance costs more than it returns:
@@ -41,15 +41,24 @@ single record, while degrading correctness for all 9,252 rows that exist.
 
 ## Decision
 
-**`reps` becomes an integer. AMRAP notation is removed from the data model.**
+**`reps` becomes an integer. AMRAP notation is removed from the data model, and
+the Liftoscript parser is its sole owner.**
+
+The division: `+` is *programme notation*, valid in `.liftoscript` source and
+resolved at parse time into an integer plus a comment. It is never a value in a
+column. Any future AMRAP handling — multi-set semantics, richer annotation — is a
+parser concern, not a schema one.
 
 1. `workouts.reps` and `upcoming_workouts.reps` become `Integer`, nullable.
 2. `calculate_estimated_1rm` takes `int`. The string branch and the
    `except: return 0.0` are deleted — a bad input should raise, not silently
    yield zero.
-3. **The Wendler generator stops emitting `+`.**
-   `backend/app/services/wendler_service.py:44-49` currently produces `'5+'`,
-   `'3+'`, `'1+'` for the top set of weeks 1–3. Those become `5`, `3`, `1`.
+3. **The generator stops emitting `+` into `reps`.**
+   *Already satisfied.* Merge `1a27a0b` replaced the hard-coded Wendler table
+   with a Liftoscript preset engine, whose parser
+   (`backend/app/services/liftoscript_service.py:188-192`) reads
+   `1x5+ 85%` as `reps = int(...)` plus `is_amrap = "+" in ...`, and writes
+   "AMRAP" into the comment. The remote arrived at this decision independently.
 4. If the "go past this number" intent matters on a given set, it belongs in the
    existing `comment` field as prose. It is a note, not a measurement.
 
@@ -65,11 +74,12 @@ single record, while degrading correctness for all 9,252 rows that exist.
   non-numeric, so `CAST` is exact for every existing row. This will not be true
   later if AMRAP ever starts being recorded — which is an argument for doing it
   now rather than deferring.
-- **The prescriptive top set loses its "+" marker.** Wendler's 5/3/1 does
-  intend the last set as AMRAP, and that intent is no longer expressed in the
-  data. It survives as programme knowledge and can be written into `comment`.
-  This is the real cost of the decision, and it is accepted: the marker was
-  never recorded as an outcome, only as an instruction.
+- **The prescriptive top set keeps its "+" marker — just not in `reps`.**
+  Wendler's 5/3/1 does intend the last set as AMRAP, and that intent survives in
+  two places: as `1x5+ 85%` in the `.liftoscript` preset source, and as "AMRAP"
+  in the generated row's `comment`. This was written up as the real cost of the
+  decision; in practice the Liftoscript engine already resolves it, so the cost
+  is close to zero.
 - **One fewer thing in the MCP instructions.** The `CAST(REPLACE(...))` caveat —
   flagged in `plans/0006-mcp-server.md` §5 as the single most important line —
   disappears entirely.

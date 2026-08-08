@@ -34,8 +34,8 @@ document, note
 | Concern | Today | Target | Migration cost |
 |---------|-------|--------|----------------|
 | Workout grain | Flat. `workouts` row = one logged entry, ordered by `(date, order)`. No session entity | `workout` session parent → `exercise_set` children | **High** — see §4 |
-| Body comp | Wide, 9 nullable columns (`db/models.py:104-123`) | Tall `metric` rows + `metric_def` | Medium — mechanical, reversible via view. **A single BodySpec DEXA scan carries 100+ scalars, which the wide table cannot hold at any price** |
-| Units | Per-row `weight_unit`; training 249/249 lbs, scale labelled kg | lbs canonical for mass, no unit column | Low — training data untouched (ADR-0003) |
+| Body comp | Wide, 9 nullable columns (`db/models.py:105-124`) | Tall `metric` rows + `metric_def` | Medium — mechanical, reversible via view. **A single BodySpec DEXA scan carries 100+ scalars, which the wide table cannot hold at any price** |
+| Units | Per-row `weight_unit`; training 9,292/9,292 lbs, scale labelled kg | lbs canonical for mass, no unit column | Low — training data untouched (ADR-0003) |
 | `date` | Stored `String(10)`, set by the app | Generated `substr(ts,1,10)`, indexed | Low, but needs table rebuild |
 | Food | Absent | `food` + `food_log` | **None** — purely additive |
 | Notes | `workouts.comment` free text only | First-class `note` with `kind` + `source` — also the journal for unshaped data | Low — additive |
@@ -124,7 +124,7 @@ agent something to actually reason about when it arrives.
 
 Plan 0004 sets this out in full. In short: it rewrites the schema's spine, and
 the code most coupled to the current shape is
-`frontend/src/pages/WorkoutSession.tsx` — at **1356 lines**, by a wide margin
+`frontend/src/pages/WorkoutSession.tsx` — at **1,626 lines**, by a wide margin
 the largest file in the frontend, carrying drag-to-reorder, inline editing, and
 set completion. The `PATCH /{id}/reorder` contract depends on the flat
 `(date, order)` model directly.
@@ -140,14 +140,14 @@ when there's a feature that needs it, not as a prerequisite.
 
 | # | Risk | Impact | Mitigation |
 |---|------|--------|------------|
-| R1 | ~~Unit backfill halves all training weights~~ | **Retired** | ADR-0003 chose lbs; `workouts` is already 249/249 lbs and is no longer migrated at all |
+| R1 | ~~Unit backfill halves all training weights~~ | **Retired** | ADR-0003 chose lbs; `workouts` is already 9,292/9,292 lbs and is no longer migrated at all |
 | R1a | ~~Body-comp relabelled without checking the payload~~ | **Retired** | Measured: weight is kg (84.9–92.2, mean 88.4). `plans/0003` §1 |
 | R1b | `muscle_mass` is a **percentage** (r = −0.985 vs weight), not a mass | **Confirmed real** | Seeds as `muscle_pct` and is never converted. Also a live display bug — `plans/0003` §2 |
 | R2 | `foreign_keys=ON` surfaces existing orphans, app starts failing | High | Run the integrity check *before* enabling; fix or delete orphans as a data migration |
 | R3 | Two processes contend on SQLite | High | WAL + `busy_timeout` in Phase 0, before the MCP server exists |
 | R4 | Agent-authored SQL breaks silently after a schema change | Medium | `get_schema` tool reads live DDL; prefer views as a stable interface |
 | R5 | Agent reads sensitive `note` rows | Medium | ADR-0004 — read-only ≠ confidential; restrict via views and `tools.include` |
-| R6 | Regrain breaks reorder/drag-drop in a 1356-line component | High | Deferred (Phase 5); adapter in MCP write path instead |
+| R6 | Regrain breaks reorder/drag-drop in a 1,626-line component | High | Deferred (Phase 5); adapter in MCP write path instead |
 | R7 | `schema.sql` never recovered, DDL details lost | Medium | Reconstruct from the design doc's prose and `reference/qs_mcp.py`'s queries — every table it touches is inferable |
 | R8 | Docker/stdio transport mismatch | Medium | Unresolved — decide transport in Plan 0006 before building |
 

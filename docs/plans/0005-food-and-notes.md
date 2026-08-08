@@ -261,7 +261,7 @@ Two dependencies worth stating:
   replace** (`DROP VIEW` / `CREATE VIEW`, no data risk), which is exactly why
   they're the right interface to give the agent.
 - `training_volume_lb` is safe to ship immediately. `workouts` is already
-  uniformly lbs (249/249), so this column is correct whether or not Plan 0003
+  uniformly lbs (9,292/9,292), so this column is correct whether or not Plan 0003
   has run — one consequence of ADR-0003 choosing the unit the data was already
   in. Only the `metric`-derived columns wait on Plan 0003.
 
@@ -273,9 +273,15 @@ New page, following `CLAUDE.md`'s "Add a new frontend page":
 - `frontend/src/hooks/useFood.ts`, `frontend/src/types/food.ts`
 - Route in `frontend/src/App.tsx`, nav entry in `Navigation.tsx`
 
-Navigation is at capacity on mobile — commits `7aa5f44` and `accd72a` were both
-navbar spacing fixes. A fifth item needs a layout decision, not just an
-insertion.
+**Navigation is past capacity.** `Navigation.tsx:14-18` now carries **five**
+items — Calendar, Progress, Body, Upcoming, Exercises — after merge `1a27a0b`
+added the Exercises page. Three separate commits have been navbar spacing fixes
+(`7aa5f44`, `accd72a`, `cd5f32d`), plus one for double-tap (`c64434e`).
+
+A Food page would be the **sixth**. That is a layout decision — overflow menu,
+grouping, or a different navigation pattern — not an insertion. Settle it before
+building the page, since it may change where food lives (e.g. a tab under Body
+rather than a peer of it).
 
 Design-system notes: `.stat-card` for the kcal/macro row, `--chart-1..5` for
 macro breakdown, `<Input>` for entry. Numeric inputs need the mobile keyboard

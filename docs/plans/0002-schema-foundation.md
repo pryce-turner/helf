@@ -34,6 +34,35 @@ impossible.
 `backend/migrations/tinydb_to_sqlite.py` is a one-shot import script, not a
 migration framework — it doesn't version anything.
 
+### This is no longer hypothetical
+
+Merge `1a27a0b` added `Exercise.notes` (`db/models.py:37`) and, because
+`create_all()` cannot add a column to an existing table, shipped
+`backend/migrations/add_exercise_notes.py` alongside it — a hand-rolled script
+that opens `sqlite3` directly, inspects `PRAGMA table_info`, and issues a bare
+`ALTER TABLE exercises ADD COLUMN notes TEXT`.
+
+It works, and it is exactly the pattern this plan exists to replace:
+
+- **No version tracking.** Nothing records that it ran. Its only idempotency is
+  an inline column-existence check, hand-written per migration.
+- **No downgrade.**
+- **Run manually**, with the DB path as `argv[1]`. Forgetting it on any
+  environment leaves a schema the ORM believes exists — and the failure surfaces
+  as a query error at runtime, not at startup.
+- **It won't compose.** A second such script has no defined ordering relative to
+  the first.
+
+One ad-hoc script is tolerable. The roadmap ahead adds `metric`, `metric_def`,
+`document`, `note`, `food`, `food_log`, `audit_log`, a `reps` type change, and a
+unit conversion. Hand-rolling that sequence, in order, idempotently, across two
+environments is precisely what Alembic does correctly.
+
+**Migrate `add_exercise_notes.py` into the Alembic baseline** rather than leaving
+two mechanisms live. The prod copy at `data/helf.db` already has the column, so
+the baseline must reflect a schema where `notes` exists — verified:
+`PRAGMA table_info(exercises)` lists it.
+
 ### Steps
 
 1. Add the dependency to `backend/pyproject.toml`:

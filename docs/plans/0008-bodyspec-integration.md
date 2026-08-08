@@ -38,7 +38,7 @@ scan is **well over a hundred scalars**. All confirmed against a live response.
 list across sections.
 
 That number settles a design question. The wide `body_composition` table
-(`db/models.py:104-123`, nine columns) could not hold this without a column
+(`db/models.py:105-124`, nine columns) could not hold this without a column
 explosion, and adding a column per region per measure per scan type is exactly
 the migration treadmill the tall `metric` table exists to avoid. **BodySpec is
 the strongest argument yet for Plan 0003's wide→tall conversion.**

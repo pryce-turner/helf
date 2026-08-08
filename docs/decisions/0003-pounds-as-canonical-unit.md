@@ -94,14 +94,14 @@ This governs **mass**. It does not make the system imperial:
   and unit-agnostic, but rounding is not. Nearest-5-lb rounding works directly
   against stored values with no display-layer parameterisation.
 - **The 1RM formula is unaffected** either way — `(0.033 × reps × weight) +
-  weight` (`utils/calculations.py:25`) is linear in weight. Historical values
+  weight` (`utils/calculations.py:20`) is linear in weight. Historical values
   keep their current magnitude, so any thresholds or cached estimates remain
   valid. Under the kg draft they would all have changed.
 - **MQTT ingest gains a conversion**, if verification shows kg on the wire.
   openScale will keep sending its native unit forever, so this is a permanent
   ingest-time conversion rather than a one-off. Float precision is not a
   practical concern at this scale.
-- **`kgToLbs` in `frontend/src/pages/BodyComposition.tsx:39` is deleted, not
+- **`kgToLbs` in `frontend/src/pages/BodyComposition.tsx:102` is deleted, not
   generalised.** Once storage is lbs, the display path is the identity function.
   This is the clearest signal the decision is right: the conversion code
   disappears instead of spreading.

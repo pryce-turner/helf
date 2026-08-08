@@ -4,11 +4,13 @@ import sqlite3
 from datetime import datetime
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 import app.database as database
 from app.db.models import Metric, Observation
+from app.models.body_composition import BodyComposition
 
 
 def _metric(session, **kwargs):
@@ -172,7 +174,13 @@ class TestViews:
         self._insert(
             migrated,
             [
+                # Each observation carries a weight because the views define a
+                # body-composition measurement as one that has a body weight -
+                # a scale reading and a DEXA scan both do. Body fat alone would
+                # be excluded, which is the point of that restriction.
+                ("2026-02-01 07:00:00", "body_weight_lb", 200.0, "openscale"),
                 ("2026-02-01 07:00:00", "body_fat_pct", 23.7, "openscale"),
+                ("2026-02-01 09:00:00", "body_weight_lb", 193.3, "bodyspec"),
                 ("2026-02-01 09:00:00", "body_fat_pct", 16.6, "bodyspec"),
             ],
         )
@@ -220,7 +228,10 @@ class TestViews:
         """
         self._insert(
             migrated,
-            [("2026-01-05 07:00:00", "muscle_pct", 39.1, "openscale")],
+            [
+                ("2026-01-05 07:00:00", "body_weight_lb", 200.0, "openscale"),
+                ("2026-01-05 07:00:00", "muscle_pct", 39.1, "openscale"),
+            ],
         )
 
         with migrated.connect() as conn:
@@ -232,6 +243,69 @@ class TestViews:
             ).scalar()
 
         assert value == pytest.approx(39.1)
+
+    def test_an_observation_with_no_weight_is_not_a_measurement(self, migrated):
+        """A mood entry must not surface as a body-composition measurement.
+
+        The views used to emit a row for any observation carrying any metric,
+        which was harmless only while every observation was a weigh-in.
+        `metric_def` now defines mood, sleep and eleven DEXA quantities, and
+        `BodyComposition.weight` is a required float - so a weightless
+        observation in the list is a 500 on the whole endpoint, not one bad row.
+        """
+        self._insert(
+            migrated,
+            [
+                ("2026-03-01 07:00:00", "body_weight_lb", 200.0, "openscale"),
+                ("2026-03-01 21:00:00", "mood", 7.0, "manual"),
+                ("2026-03-01 21:00:00", "sleep_hours", 7.5, "manual"),
+            ],
+        )
+
+        with migrated.connect() as conn:
+            measurements = conn.execute(
+                text(
+                    "SELECT source, weight FROM v_body_comp_measurements "
+                    "WHERE date = '2026-03-01'"
+                )
+            ).all()
+            daily = conn.execute(
+                text(
+                    "SELECT source FROM v_body_comp_daily "
+                    "WHERE date = '2026-03-01'"
+                )
+            ).scalars().all()
+
+        assert [(r.source, r.weight) for r in measurements] == [("openscale", 200.0)]
+        assert daily == ["openscale"]
+
+    def test_null_weight_would_break_the_response_model(self, migrated):
+        """Proves the consequence the view is guarding against is real.
+
+        Without this, the test above only asserts that a row is absent, with no
+        evidence that its presence would matter.
+        """
+        self._insert(
+            migrated, [("2026-03-02 21:00:00", "mood", 7.0, "manual")]
+        )
+
+        with migrated.connect() as conn:
+            leaked = conn.execute(
+                text(
+                    "SELECT count(*) FROM v_body_comp_measurements "
+                    "WHERE date = '2026-03-02'"
+                )
+            ).scalar_one()
+        assert leaked == 0
+
+        with pytest.raises(ValidationError):
+            BodyComposition(
+                doc_id=1,
+                timestamp=datetime(2026, 3, 2, 21, 0),
+                date="2026-03-02",
+                weight=None,
+                created_at=datetime(2026, 3, 2, 21, 0),
+            )
 
 
 def test_metric_def_seed_survives_migration(tmp_path, monkeypatch):

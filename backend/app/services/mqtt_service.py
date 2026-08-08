@@ -14,6 +14,11 @@ from app.utils.date_helpers import PACIFIC_TZ
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# openScale reports mass in kilograms. This is a permanent property of the
+# source, not a one-off migration concern - the scale keeps sending kg forever,
+# so ingest converts on every message. Pounds are canonical (ADR-0003).
+KG_TO_LB = 2.20462262184878
+
 
 class MQTTService:
     """MQTT client service for body composition data."""
@@ -77,11 +82,13 @@ class MQTTService:
             logger.info(f"Received message on {msg.topic}: {payload}")
 
             date_str = payload.get("date")
-            weight = payload.get("weight")
+            weight_kg = payload.get("weight")
 
-            if not date_str or not weight:
+            if not date_str or not weight_kg:
                 logger.warning(f"Missing required fields in payload: {payload}")
                 return
+
+            weight_lb = weight_kg * KG_TO_LB
 
             # Parse ISO 8601 timestamp
             try:
@@ -94,17 +101,24 @@ class MQTTService:
                 dt = datetime.fromisoformat(date_str.replace("T", " ").split("-")[0])
                 dt = dt.replace(tzinfo=PACIFIC_TZ)
 
-            # Create measurement
+            # `bone` is a genuine mass and converts; every other optional field
+            # below is a percentage, an index, or an age, and must NOT be scaled.
+            # In particular `muscle` is a *percentage* despite the column being
+            # named muscle_mass - it correlates with body weight at r = -0.985
+            # across the existing 150 rows, which is the signature of a fraction,
+            # not a mass. See docs/plans/0003-units-and-metrics.md §2.
+            bone_kg = payload.get("bone")
+
             measurement = BodyCompositionCreate(
                 timestamp=dt,
                 date=dt.date().isoformat(),
-                weight=weight,
-                weight_unit="kg",
+                weight=weight_lb,
+                weight_unit="lbs",
                 body_fat_pct=payload.get("fat"),
                 muscle_mass=payload.get("muscle"),
                 bmi=payload.get("bmi"),
                 water_pct=payload.get("water"),
-                bone_mass=payload.get("bone"),
+                bone_mass=bone_kg * KG_TO_LB if bone_kg is not None else None,
                 visceral_fat=payload.get("visceralFat"),
                 metabolic_age=payload.get("metabolicAge"),
                 protein_pct=payload.get("protein"),
@@ -116,11 +130,14 @@ class MQTTService:
             topic_type = msg.topic.split("/")[-1]
             if saved:
                 logger.info(
-                    f"Saved {topic_type} measurement: {weight} kg "
+                    f"Saved {topic_type} measurement: {weight_lb:.1f} lbs "
+                    f"({weight_kg} kg received) "
                     f"(fat: {payload.get('fat')}%, muscle: {payload.get('muscle')}%)"
                 )
             else:
-                logger.info(f"Skipped duplicate {topic_type} measurement: {weight} kg")
+                logger.info(
+                    f"Skipped duplicate {topic_type} measurement: {weight_lb:.1f} lbs"
+                )
 
             # Call callback if provided
             if self.on_measurement_callback:

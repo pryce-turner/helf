@@ -1,8 +1,42 @@
 # Plan 0003: Units and metrics
 
-**Status:** Proposed — no open questions
-**Prerequisites:** Plan 0002 (Alembic + pragmas)
+**Status:** **`a1` done** (2026-08-08, revision `a70937427207`) — `a2`–`a5` outstanding
+**Prerequisites:** Plan 0002 (Alembic + pragmas) — satisfied
 **Related:** ADR-0003
+
+> ## `a1` implementation notes
+>
+> Body composition is in pounds. 150 rows converted; `sum(weight)` went
+> 13,259.75 → 29,232.74, matching `× 2.20462262184878` exactly, and the
+> downgrade restores 13,259.75 precisely (verified on a copy, both directions).
+> Range is now 187.2–203.4 lbs, mean 194.9.
+>
+> **Percentages were left alone, as required:** `sum(body_fat_pct)` 3,689.1 and
+> `sum(muscle_mass)` 5,809.0 are byte-identical before and after. `workouts`
+> remains `lbs | 9292`, untouched.
+>
+> **The migration self-checks.** A double-applied conversion leaves values that
+> are still numeric, still positive, and still ordered the same way — nothing
+> downstream would complain. `upgrade()` therefore asserts the result lands in a
+> plausible human range (50–700 lbs) and refuses to commit otherwise.
+>
+> **`a1` had to ship with the frontend change, not before it.** Converting stored
+> values while `BodyComposition.tsx` still called `kgToLbs` would have doubled
+> every displayed weight. Both are in the same commit.
+>
+> **The muscle-mass bug is fixed, and it was in three places, not two.** Besides
+> the stat card (`:156`) and the chart tooltip (`:362`), the muscle chart's
+> y-axis had its own inline `(v * 2.20462)` tick formatter — a percentage scaled
+> as a mass on the axis as well as in the readout. The card and chart are now
+> labelled "Muscle" / "Muscle %" with a `%` unit, since displaying it correctly
+> means saying what it is.
+>
+> **Correction found while verifying: `water_pct` is populated** in all 150 rows.
+> See §1. This changes `a3`'s expected row count from 450 to 600.
+>
+> Not done here: `a2`–`a5` (the tall `metric` table, the pivot view, dropping
+> `weight_unit`), and §4a's two-source chart, which needs Plan 0008's BodySpec
+> rows to exist first.
 **Risk:** Low. Training data is untouched; body composition is one column across
 150 rows.
 
@@ -40,19 +74,27 @@ cancelling errors.
 
 ### What the scale actually populates
 
-Only three of the nine columns are ever written:
+Only four of the nine columns are ever written:
 
 | Column | Non-null of 150 |
 |---|---|
 | `weight` | 150 |
 | `muscle_mass` | 150 |
 | `body_fat_pct` | 150 |
-| `bmi`, `water_pct`, `bone_mass`, `visceral_fat`, `metabolic_age`, `protein_pct` | **0** |
+| `water_pct` | 150 |
+| `bmi`, `bone_mass`, `visceral_fat`, `metabolic_age`, `protein_pct` | **0** |
 
-Six columns have never held a value. This is an argument for the tall table in
+> **Corrected 2026-08-08.** An earlier draft listed `water_pct` among the empty
+> columns. It is populated in all 150 rows, ranging 48.59–51.90% (mean 50.28) —
+> a plausible total-body-water percentage. The seed list and backfill below are
+> four metrics, not three, and the expected backfill row count is **600**, not
+> 450. Found when the `/latest` endpoint returned `water_pct: 50.99` after the
+> `a1` conversion.
+
+Five columns have never held a value. This is an argument for the tall table in
 its own right — the wide schema reserves storage and cognitive space for
 measurements that do not exist. It also means the openScale backfill produces
-three metric names, not nine, and BodySpec is the only source for bone and
+four metric names, not nine, and BodySpec is the only source for bone and
 visceral measures.
 
 *(An earlier draft cited a BMI of 24.6 as corroboration. `bmi` is NULL in every
@@ -87,8 +129,9 @@ WHERE weight_unit = 'kg';
 
 - `muscle_mass` — a **percentage** (§2). Not converted.
 - `body_fat_pct` — a percentage. Not converted.
-- `bone_mass`, `bmi`, `water_pct`, `protein_pct`, `visceral_fat`,
-  `metabolic_age` — all NULL in every row (§1). Nothing to convert.
+- `water_pct` — a percentage, populated in all 150 rows. Not converted.
+- `bone_mass`, `bmi`, `protein_pct`, `visceral_fat`, `metabolic_age` — all NULL
+  in every row (§1). Nothing to convert.
 
 Converting `muscle_mass` would be the bug the earlier draft nearly introduced by
 treating it as one of "the three mass columns".
@@ -211,12 +254,12 @@ Unit-suffixed per ADR-0003, in lbs:
 | `body_weight_lb` | lb | `body_composition.weight`, converted |
 | `body_fat_pct` | % | unchanged |
 | `muscle_pct` | % | **percentage, per §2** — not a mass |
+| `water_pct` | % | unchanged |
 
-Only these three. The other six wide columns are NULL in all 150 rows (§1), so
-they seed no metrics from openScale — `bone_mass_lb`, `bmi`, `water_pct`,
-`visceral_fat`, `metabolic_age`, `protein_pct` are defined only if and when a
-source actually produces them. BodySpec supplies genuine bone and visceral
-measures (Plan 0008).
+Only these four. The other five wide columns are NULL in all 150 rows (§1), so
+they seed no metrics from openScale — `bone_mass_lb`, `bmi`, `visceral_fat`,
+`metabolic_age`, `protein_pct` are defined only if and when a source actually
+produces them. BodySpec supplies genuine bone and visceral measures (Plan 0008).
 
 ### Reserved metrics — declared now, populated later
 
@@ -266,7 +309,7 @@ mix a bioimpedance estimate with a DEXA measurement.
 
 ### Backfill
 
-Three inserts, one per populated column:
+Four inserts, one per populated column:
 
 ```sql
 INSERT INTO metric (observed_at, name, value, unit, source)
@@ -280,6 +323,10 @@ FROM body_composition WHERE body_fat_pct IS NOT NULL;
 INSERT INTO metric (observed_at, name, value, unit, source)
 SELECT timestamp, 'muscle_pct', muscle_mass, '%', 'openscale'
 FROM body_composition WHERE muscle_mass IS NOT NULL;
+
+INSERT INTO metric (observed_at, name, value, unit, source)
+SELECT timestamp, 'water_pct', water_pct, '%', 'openscale'
+FROM body_composition WHERE water_pct IS NOT NULL;
 ```
 
 Note the third: source column `muscle_mass` → metric name `muscle_pct`. The
@@ -288,12 +335,12 @@ rename happens here, and this is the only place the misnomer needs handling.
 `source = 'openscale'` makes the step reversible with
 `DELETE FROM metric WHERE source = 'openscale'`.
 
-**Expected row count: exactly 450** (150 × 3). Verify:
+**Expected row count: exactly 600** (150 × 4). Verify:
 
 ```sql
-SELECT count(*) FROM metric WHERE source = 'openscale';   -- 450
+SELECT count(*) FROM metric WHERE source = 'openscale';   -- 600
 SELECT name, count(*) FROM metric WHERE source = 'openscale' GROUP BY name;
--- body_fat_pct 150 | body_weight_lb 150 | muscle_pct 150
+-- body_fat_pct 150 | body_weight_lb 150 | muscle_pct 150 | water_pct 150
 ```
 
 ---
@@ -559,7 +606,7 @@ Stop after `a1` and verify against real numbers before continuing.
 SELECT weight, weight_unit FROM body_composition ORDER BY timestamp DESC LIMIT 3;
 
 -- training data untouched
-SELECT weight_unit, count(*) FROM workouts GROUP BY weight_unit;   -- lbs | 249
+SELECT weight_unit, count(*) FROM workouts GROUP BY weight_unit;   -- lbs | 9292
 
 -- backfill complete
 SELECT count(*) FROM metric WHERE source = 'openscale';
@@ -569,9 +616,10 @@ SELECT * FROM v_body_comp_daily WHERE date = '2026-08-01';
 SELECT * FROM body_composition  WHERE date = '2026-08-01';
 ```
 
-`SELECT weight_unit, count(*) FROM workouts` returning `lbs | 249` unchanged is
+`SELECT weight_unit, count(*) FROM workouts` returning `lbs | 9292` unchanged is
 the clearest signal this plan did what it should: the largest table is not
-involved.
+involved. *(An earlier draft said 249 here — a stale figure from before the
+full history was imported.)*
 
 Tests needing updates are limited to body composition:
 `backend/tests/test_repositories_body_comp.py`,

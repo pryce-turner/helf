@@ -99,11 +99,6 @@ const BodyComposition = () => {
           }))
         : [];
 
-    const kgToLbs = (kg: number | null) => {
-        if (kg === null) return null;
-        return kg * 2.20462;
-    };
-
     return (
         <>
             <Navigation />
@@ -125,19 +120,12 @@ const BodyComposition = () => {
                     ) : stats ? (
                         <>
                             <div className="grid grid-cols-2 lg:grid-cols-4 section" style={{ gap: 'var(--space-3)' }}>
+                                {/* Weight is stored in lbs (ADR-0003) - no conversion. */}
                                 <StatCard
                                     title="Current Weight"
-                                    value={
-                                        stats.latest_weight
-                                            ? kgToLbs(stats.latest_weight)
-                                            : null
-                                    }
+                                    value={stats.latest_weight}
                                     unit="lbs"
-                                    change={
-                                        stats.weight_change
-                                            ? kgToLbs(stats.weight_change)
-                                            : null
-                                    }
+                                    change={stats.weight_change}
                                     icon={Weight}
                                     trendDirection="neutral"
                                 />
@@ -149,19 +137,15 @@ const BodyComposition = () => {
                                     icon={TrendingDown}
                                     trendDirection="down-good"
                                 />
+                                {/* `muscle_mass` is a PERCENTAGE despite the name - openScale
+                                    reports muscle as a fraction of body mass. It used to be run
+                                    through kgToLbs, rendering 39.1% as "86.2 lbs", which looked
+                                    plausible for a ~195 lb man and so went unnoticed. */}
                                 <StatCard
-                                    title="Muscle Mass"
-                                    value={
-                                        stats.latest_muscle_mass
-                                            ? kgToLbs(stats.latest_muscle_mass)
-                                            : null
-                                    }
-                                    unit="lbs"
-                                    change={
-                                        stats.muscle_mass_change
-                                            ? kgToLbs(stats.muscle_mass_change)
-                                            : null
-                                    }
+                                    title="Muscle"
+                                    value={stats.latest_muscle_mass}
+                                    unit="%"
+                                    change={stats.muscle_mass_change}
                                     icon={TrendingUp}
                                     trendDirection="up-good"
                                 />
@@ -240,7 +224,7 @@ const BodyComposition = () => {
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
                                                             domain={['auto', 'auto']}
-                                                            tickFormatter={(v) => (v * 2.20462).toFixed(0)}
+                                                            tickFormatter={(v) => v.toFixed(0)}
                                                             padding={{ top: 10, bottom: 10 }}
                                                         />
                                                         <Tooltip
@@ -253,7 +237,7 @@ const BodyComposition = () => {
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
                                                             formatter={(value: number | undefined) => {
                                                                 if (value == null) return ["N/A", "Weight"];
-                                                                return [kgToLbs(value)?.toFixed(1) + " lbs", "Weight"];
+                                                                return [value.toFixed(1) + " lbs", "Weight"];
                                                             }}
                                                         />
                                                         <Line
@@ -329,7 +313,7 @@ const BodyComposition = () => {
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
                                                 <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-                                                    Muscle Mass
+                                                    Muscle %
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
@@ -346,7 +330,7 @@ const BodyComposition = () => {
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
                                                             domain={['auto', 'auto']}
-                                                            tickFormatter={(v) => (v * 2.20462).toFixed(0)}
+                                                            tickFormatter={(v) => v.toFixed(0)}
                                                             padding={{ top: 10, bottom: 10 }}
                                                         />
                                                         <Tooltip
@@ -358,8 +342,8 @@ const BodyComposition = () => {
                                                             }}
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
                                                             formatter={(value: number | undefined) => {
-                                                                if (value == null) return ["N/A", "Muscle Mass"];
-                                                                return [kgToLbs(value)?.toFixed(1) + " lbs", "Muscle Mass"];
+                                                                if (value == null) return ["N/A", "Muscle %"];
+                                                                return [value.toFixed(1) + " %", "Muscle %"];
                                                             }}
                                                         />
                                                         <Line

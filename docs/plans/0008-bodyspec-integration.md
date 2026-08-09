@@ -1,6 +1,6 @@
 # Plan 0008: BodySpec DEXA integration
 
-**Status:** In progress
+**Status:** Implemented (2026-08-09)
 **Auth:** interactive paste-a-token, never persisted (§3)
 **Prerequisites:** Plan 0002 (Alembic) ✓, Plan 0003 (`metric`) ✓, `document` — **created by this plan**, see §12
 **Related:** ADR-0003
@@ -790,6 +790,46 @@ ADR-0001's premise.
 - `height_cm` appeared twice in the §5 promotion table.
 - §8's `v_daily_summary` extension targets a view Plan 0005 has not created. It
   stays specified here and is **out of scope for this plan**.
+
+### Verified against the live API (2026-08-09)
+
+One scan imported into the production database. Everything §2 and §8 assert
+about the payload holds, checked rather than assumed:
+
+| Claim | Result |
+|---|---|
+| Token lifetime is exactly 3600s | ✓ from the JWT claims |
+| `has_more: false`, one scan only | ✓ — §11's open question confirmed |
+| `fat + lean + bone = total` | ✓ 14.51 + 69.61 + 3.55 = 87.67 exactly |
+| Cunningham back-solves to FFM, not lean mass | ✓ 2110 → 73.18 ≈ `total − fat` 73.16 |
+| `tissue_fat_pct` ≠ `region_fat_pct` | ✓ 17.25 vs 16.55 |
+| Percentiles benchmark on the *region* figure | ✓ `total_body_fat_pct` 16.6 |
+| `body_weight_lb` round-trips to the raw kg | ✓ 193.2793 lb → 87.67 kg |
+| `ffm_kg` is not `lean_mass_kg` | ✓ 73.16, not 69.61 |
+| RMR is Katch-McArdle over FFM | ✓ 1950.256, not 1874 |
+| Second sync is a no-op | ✓ `imported: 0, skipped: 1` |
+| A bad token is a clean 401 | ✓ not a 500 |
+| Token absent from logs and `helf.db` | ✓ zero occurrences of both |
+
+**`acquire_time` carries an offset** (`2026-03-10T11:48:21-07:00`), so the
+"location timezone" wording resolves to a real Pacific instant and
+`observation.date` lands on `2026-03-10` correctly.
+
+#### The instrument gap, now measured
+
+The scan shares a day with an openScale reading, which makes §4a's calibration
+query answerable for the first time:
+
+| | DEXA | openScale | bias |
+|---|---|---|---|
+| Body fat | 17.25% | 23.40% | **+6.15 pp** |
+| Weight | 193.28 lb | 190.37 lb | −2.91 lb |
+
+Six percentage points, on the same body, hours apart. That is the number the
+old `get_stats` would have differenced and reported as fat lost. `body_fat_change`
+still reads the openScale series' own −2.8 after the import, and
+`primary_source` reads `openscale` — the read-path fix working on real data
+rather than on a fixture.
 
 ### What did *not* change
 

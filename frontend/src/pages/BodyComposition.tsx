@@ -155,7 +155,7 @@ const BodySpecSync = () => {
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
                     Paste an access token from{" "}
                     <a
-                        href="https://app.bodyspec.com/docs"
+                        href="https://app.bodyspec.com/docs#description/introduction"
                         target="_blank"
                         rel="noreferrer"
                         style={{ color: 'var(--accent)' }}

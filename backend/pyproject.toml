@@ -18,11 +18,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Only the MCP server needs this, and the API image should not carry it - the
+# two are separate processes that share a file, not a code path (ADR-0002).
+mcp = [
+    "mcp>=2.0.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "httpx>=0.27.0",
     "ruff>=0.8.0",
+    "mcp>=2.0.0",
 ]
 
 [build-system]

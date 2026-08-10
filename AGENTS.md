@@ -97,6 +97,8 @@ helf/
 │   │   ├── presets/          # Built-in workout programs
 │   │   │   ├── wendler_531.liftoscript
 │   │   │   └── stronglifts_5x5.liftoscript
+│   │   ├── mcp/
+│   │   │   └── qs_mcp.py     # Stdio MCP server (read-only by default)
 │   │   ├── config.py         # Pydantic BaseSettings (env vars)
 │   │   ├── database.py       # SQLAlchemy engine/session, pragmas, init_db
 │   │   └── main.py           # FastAPI app, lifespan, CORS, SPA routing
@@ -520,6 +522,29 @@ Earlier choices, predating the ADR practice:
 5. **shadcn/ui**: Customizable components without heavy dependencies
 6. **dnd-kit**: Modern drag-and-drop library with accessibility support
 7. **Liftoscript**: Custom DSL for defining workout programs, simpler than full programming languages
+
+## The agent reads this database over MCP, read-only by default
+
+`backend/app/mcp/qs_mcp.py` is a stdio MCP server that opens `data/helf.db`
+directly — a second process on the same file, not a second code path
+(ADR-0002). It imports nothing from `app` except `config`, and even that is
+deferred: a stdio server is launched with an arbitrary working directory, and
+`Settings` reads a relative `.env` and creates `../data` on import.
+
+```bash
+cd backend && QS_DB_PATH=../data/helf.db .venv/bin/python -m app.mcp.qs_mcp
+```
+
+- **`QS_MCP_MODE` defaults to `read-only`**, and gating works by *not
+  registering* the write tools. A tool that does not exist cannot be attempted
+  or argued with; one that answers "not permitted" invites retries.
+- **`query` always runs on a `mode=ro` connection**, in either mode. The
+  privilege boundary is the connection, not the tool name (ADR-0004).
+- Tool functions are plain functions; `build_server()` assembles the server.
+  That is what makes the write path testable without an MCP client.
+- Server instructions live in `docs/design/mcp-instructions.md` and are loaded
+  at startup. Missing is fatal — an agent without them misreads this database
+  confidently.
 
 ## Mutations are audited by triggers, and the log cannot be rewritten
 

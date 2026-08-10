@@ -1,4 +1,18 @@
 """
+SUPERSEDED — the running server is `backend/app/mcp/qs_mcp.py`.
+
+This is the original reference implementation, kept as the record of what was
+designed before the schema existed. It is **not** wired to anything and its SQL
+does not match the database: it writes `metric.observed_at`/`metric.source`
+(Plan 0003 moved both onto `observation`), upserts on a constraint that no
+longer exists, and assumes `workout`/`exercise_set` tables that were never
+built (Plan 0004 is deferred). Plan 0006 §2 enumerates every gap; the real
+implementation closes all seven.
+
+Read it for the design; do not run it.
+
+---
+
 qs_mcp.py — MCP server exposing the quantified-self SQLite DB to Hermes.
 
 Design (see plan.md):

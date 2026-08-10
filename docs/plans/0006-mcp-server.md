@@ -1,7 +1,9 @@
 # Plan 0006: MCP server
 
-**Status:** Proposed
-**Prerequisites:** Plans 0002, 0003, 0005 (0007 strongly recommended first)
+**Status:** Implemented (2026-08-09) — `backend/app/mcp/qs_mcp.py`, shipping
+**read-only**; see §8
+**Prerequisites:** Plans 0002 ✓, 0003 ✓, 0005 ✓, 0007 ✓ (landed first, as
+recommended)
 **Related:** ADR-0002, ADR-0004
 
 Wires `reference/qs_mcp.py` to the real database as a **client-agnostic MCP
@@ -208,5 +210,112 @@ Then, with the app running to force concurrency:
 
 Remove the `mcpServers` entry from the client's config. The server is a separate
 process holding no state; stopping it affects nothing in the app. Reverting to
-read-only is a one-line `tools.include` edit — which is the reason to configure
-the tool list explicitly rather than exposing everything by default.
+read-only is unsetting `QS_MCP_MODE` — the default.
+
+## 8. What actually landed (2026-08-09)
+
+`backend/app/mcp/qs_mcp.py`, packaging option **A** as recommended. All seven
+gaps in §2 are closed; four of them turned out to be worse than the table said.
+
+### The structure that made it testable
+
+The tool functions are **plain functions with no decorators**, and the server
+is assembled in `build_server()`. The whole write path is therefore exercisable
+without an MCP client and without `mcp` installed — which matters because every
+interesting failure here is in the SQL or the privilege boundary, not in the
+protocol. 29 tests in `backend/tests/test_mcp_server.py`.
+
+### G3 needed more than an error message
+
+`add_metric` checks `metric_def` up front and returns the **valid vocabulary**
+in the same response, rather than catching an FK violation. An agent that gets
+"FOREIGN KEY constraint failed" retries; an agent that gets the list of legal
+names fixes itself in one turn. `get_metric_names()` exists as a read tool for
+the same reason and reads `v_metric_coverage`, not `metric_def`, so `n_rows =
+0` distinguishes "never recorded" from "unchanged".
+
+Idempotency had to be rebuilt, not adjusted: the reference upserts on
+`UNIQUE (observed_at, name, source)`, which Plan 0003 deleted. It is now
+find-or-create on `observation` (unique on `observed_at`, `source`) plus
+`ON CONFLICT (observation_id, name)`. Two instruments reading at the same
+instant stay two observations, which is the property that keeps a bioimpedance
+estimate from overwriting a DEXA scan.
+
+### G6 is worse than "three exercises"
+
+`exercises.name` is UNIQUE, but SQLite's default collation is case-sensitive,
+so the constraint would not have caught `bench press` either — the agent would
+have created a second exercise, a second progression chart, and a silently
+halved history. Matching is `COLLATE NOCASE`, and `exercises_created` comes
+back in the response so a typo that has just become permanent is visible.
+
+### An import that had to be deferred
+
+`from app.config import settings` at module scope is unsafe here. A stdio
+server is launched by a client with an arbitrary working directory, and
+`Settings` reads a *relative* `.env` and **creates `../data` on import**. Run
+from the repository root it dies parsing `CORS_ORIGINS=*`; run from elsewhere
+it scatters empty data directories. The import is now inside
+`_default_db_path()` and is reached only when `QS_DB_PATH` is unset.
+
+### `FastMCP` is `MCPServer` now
+
+mcp 2.0 renamed the class. Same `.tool()` and `.run()`. The dependency is
+`mcp>=2.0.0`, as an extra so the API image does not carry it.
+
+### Weights are pounds
+
+`log_workout` takes `weight_lb`. Plan 0004 §4's adapter sketch says
+`s.weight_kg`, which contradicts ADR-0003 and the data — `workouts` is
+uniformly pounds. The adapter is otherwise as written: N flat rows sharing a
+date, `order` continuing from whatever is already on that day rather than
+restarting at 1 and colliding with the PWA's rows.
+
+### Client configuration
+
+```json
+{
+  "mcpServers": {
+    "helf": {
+      "command": "/Users/pryceturner/Desktop/projects/helf/backend/.venv/bin/python",
+      "args": ["-m", "app.mcp.qs_mcp"],
+      "cwd": "/Users/pryceturner/Desktop/projects/helf/backend",
+      "env": {
+        "QS_DB_PATH": "/Users/pryceturner/Desktop/projects/helf/data/helf.db",
+        "QS_MCP_MODE": "read-only"
+      }
+    }
+  }
+}
+```
+
+`cwd` is not decoration — `python -m app.mcp.qs_mcp` needs `backend` on the
+path.
+
+### Verification
+
+§6's list, run against `data/helf.db` with the app running:
+
+| Check | Result |
+|---|---|
+| `get_schema()` includes the views | yes, 11,160 chars |
+| `daily_summary` over a real week | 2026-07-08: 13 sets, 13,720 lb, target 2730 |
+| `query("UPDATE workouts SET weight = 0")` | `attempt to write a readonly database` |
+| `query("SELECT * FROM workouts")` | 1000 rows, `truncated: true` |
+| runaway recursive CTE | `interrupted` after 5.0s |
+| unknown metric name | clean error + the 18 valid names |
+| tools registered in read-only mode | `daily_summary, get_metric_names, get_schema, query` — no writers |
+
+**Concurrency**, against a `.backup` copy of production with uvicorn serving
+it: 25 workout POSTs from the API, 25 `log_workout` calls and 60 `query` calls,
+all in parallel. **Zero errors**, 50 rows landed, and the audit log separated
+them correctly — the API's exercise auto-create recorded as `app`, the agent's
+`add_metric` as `agent`. Without WAL and `busy_timeout` this is exactly where
+`database is locked` appears.
+
+### Still open
+
+- **Writes are not enabled.** `QS_MCP_MODE` defaults to `read-only` and the
+  documented config sets it explicitly. Everything needed to turn them on is
+  built and tested; turning them on is a separate, deliberate act.
+- The coaching tone brief (design doc §6) remains out, as §5 said.

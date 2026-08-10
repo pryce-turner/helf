@@ -25,7 +25,7 @@ table.
 
 | # | Plan | Status | Landed in | What's left |
 |---|------|--------|-----------|-------------|
-| 0001 | [Integration roadmap](0001-integration-roadmap.md) | Living | — | The sequencing argument. Its gap table predates 0002/0003/0008 landing |
+| 0001 | [Integration roadmap](0001-integration-roadmap.md) | Living | — | Refreshed 2026-08-09: the gap is closed except the deferred regrain |
 | 0002 | [Schema foundation](0002-schema-foundation.md) | Implemented 2026-08-08 | `ac2fc3529985` | — |
 | 0003 | [Units and metrics](0003-units-and-metrics.md) | Implemented 2026-08-08 | through `e96bd4b90873` | — (`body_composition` retired by 0010) |
 | 0004 | [Workout session regrain](0004-workout-session-regrain.md) | **Deferred** | — | Deliberate. The highest-risk migration in the roadmap for the least benefit; §1 argues it should stay deferred |
@@ -37,6 +37,11 @@ table.
 | 0010 | [Retire `body_composition`](0010-retire-body-composition.md) | Implemented 2026-08-09 | `86c8bbc9e2d7` | — |
 
 ## Where things stand
+
+Every plan is landed except 0004, which is deferred on purpose. Two things are
+built, tested, and deliberately **not switched on**: agent write tools
+(`QS_MCP_MODE=read-write`) and a notes UI. Both are decisions, not omissions —
+0006 §8 and 0005 §7.
 
 **Commands, not numbers.** Everything below is derivable in a second and goes
 stale the moment it is written down, so this section deliberately records how to

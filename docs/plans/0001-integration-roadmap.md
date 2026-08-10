@@ -8,11 +8,18 @@ The design doc describes a target system as if built fresh. Helf already exists,
 in production, with data in it. This plan is the bridge: what differs, in what
 order to close the gap, and what can go wrong.
 
+> **Refreshed 2026-08-09, and the gap is closed.** Every phase below has
+> landed except the workout regrain, which stays deferred on purpose. The
+> tables and risk register are kept rather than deleted — the reasoning is what
+> was worth writing down, and a roadmap that erases its own history stops being
+> checkable. Rows now carry where they ended up. [README.md](README.md) remains
+> the per-plan status of record.
+
 ---
 
 ## 1. Where the two schemas disagree
 
-### What exists (`backend/app/db/models.py`)
+### What existed when this was written
 
 ```
 categories ──< exercises ──< workouts            (flat: one row per logged entry)
@@ -29,24 +36,42 @@ metric_def ──< metric                             (tall: one row per measure
 document, note
 ```
 
+### What exists now (`backend/app/db/models.py`)
+
+```
+categories ──< exercises ──< workouts            (still flat — 0004 deferred)
+                        └──< upcoming_workouts
+metric_def ──< metric >── observation             (tall; `observation` is the
+                    └──── document                 act of measuring)
+food ──< food_log
+note
+audit_actor, audit_log                            (mutation history, append-only)
+```
+
+`observation` is the one structure the design doc did not anticipate. A
+"measurement" is several `metric` rows — a scale reports weight, fat, muscle
+and water in one step off — and without a parent there is nothing to give a
+stable id to and no way to say which instrument produced them. It is also what
+made retiring the wide table possible (Plan 0003 §9, Plan 0010).
+
 ### Gap table
 
-| Concern | Today | Target | Migration cost |
-|---------|-------|--------|----------------|
-| Workout grain | Flat. `workouts` row = one logged entry, ordered by `(date, order)`. No session entity | `workout` session parent → `exercise_set` children | **High** — see §4 |
-| Body comp | Wide, 9 nullable columns (`db/models.py:105-124`) | Tall `metric` rows + `metric_def` | Medium — mechanical, reversible via view. **A single BodySpec DEXA scan carries 100+ scalars, which the wide table cannot hold at any price** |
-| Units | Per-row `weight_unit`; training 9,292/9,292 lbs, scale labelled kg | lbs canonical for mass, no unit column | Low — training data untouched (ADR-0003) |
-| `date` | Stored `String(10)`, set by the app | Generated `substr(ts,1,10)`, indexed | Low, but needs table rebuild |
-| Food | Absent | `food` + `food_log` | **None** — purely additive |
-| Notes | `workouts.comment` free text only | First-class `note` with `kind` + `source` — also the journal for unshaped data | Low — additive |
-| `reps` | `String(16)`, for AMRAP notation never used in 9,252 rows | `Integer` | Low — verified lossless (ADR-0005) |
-| Documents | Absent | `document` with `json_valid` check | None — additive |
-| Views | None | `v_daily_summary`, `v_body_comp_daily`, `v_blood_results` | Low — additive, no data risk |
-| Data access | SQLAlchemy + repositories | "No ORM" | **None** — scoping resolved in ADR-0002 |
-| Agent surface | None | MCP server, 2 connections | Medium, mostly new code |
-| Migrations | **None.** `create_all()` only | Required for all of the above | **Blocking** — see §3 |
-| Pragmas | **None set.** FKs off, rollback journal | `foreign_keys=ON`, WAL | **Blocking** |
-| Audit log | Absent | Absent from the design doc too | Additive (§7) |
+| Concern | When written | Where it landed |
+|---------|--------------|-----------------|
+| Workout grain | Flat. `workouts` row = one logged entry, ordered by `(date, order)`. No session entity | **Still flat, deliberately.** 0004 deferred; the MCP write path adapts a session-shaped tool onto flat rows (0004 §4, 0006 §8) |
+| Body comp | Wide, 9 nullable columns | Tall `metric` + `observation` + `metric_def`. Table **dropped** in `86c8bbc9e2d7` (0010) after eight months of being written and never read |
+| Units | Per-row `weight_unit`; training 9,292/9,292 lbs, scale labelled kg | Unit columns dropped (`e96bd4b90873`); units live in metric names (ADR-0003) |
+| `date` | Stored `String(10)`, set by the app | Generated `substr(...,1,10)` STORED and indexed on `observation`, `food_log`, `note`. `workouts.date` is still app-set — it was never a timestamp to derive from |
+| Food | Absent | `food` + `food_log` (`12fed2487b4e`), plus a page (ADR-0006) |
+| Notes | `workouts.comment` free text only | `note` with `kind` + `source` (`12fed2487b4e`). API only — no UI, see 0005 §7 |
+| `reps` | `String(16)`, for AMRAP notation never used in 9,252 rows | `Integer` (`fd709c41eb19`, ADR-0005) |
+| Documents | Absent | `document` with the `json_valid` check (`61ccf127e583`), holding four DEXA payloads |
+| Views | None | `v_daily_summary`, `v_body_comp_measurements`, `v_body_comp_daily`, `v_body_comp_series`, `v_metric_coverage`. **`v_blood_results` is not built** — still no data source |
+| Data access | SQLAlchemy + repositories | Unchanged. ADR-0002 scoped "no ORM" to the agent's path |
+| Agent surface | None | `backend/app/mcp/qs_mcp.py`, stdio, two connections, **read-only by default** (0006) |
+| Migrations | **None.** `create_all()` only | Alembic; tests run `upgrade head` rather than `create_all()` (0002) |
+| Pragmas | **None set.** FKs off, rollback journal | `foreign_keys=ON`, WAL, `busy_timeout` on both writers (0002, 0006) |
+| Audit log | Absent | `audit_log`, trigger-populated and trigger-enforced append-only (`7e8f2b1ca79b`, 0007) |
 
 ---
 
@@ -55,6 +80,9 @@ document, note
 Both were discovered reading the code, and neither appears in the design doc.
 
 ### There is no migration framework
+
+*(Both findings are fixed; kept because they are why the phase order is what it
+is.)*
 
 `backend/app/database.py:27-31` creates schema exclusively through
 `Base.metadata.create_all(bind=engine)`. That function creates *missing* tables.
@@ -102,16 +130,21 @@ Phase 0 ── Schema foundation          plans/0002    BLOCKING
               └── Phase 5 ── Workout regrain       plans/0004    DEFERRED
 ```
 
-| Phase | Plan | Why here | Risk |
-|-------|------|----------|------|
-| 0 | 0002 | Nothing else is possible without it | Low |
-| 1 | 0003 | Unit labels must be correct before any cross-domain query. Gated on verifying what openScale actually sends | Medium |
-| 2 | 0009 | `reps` → integer. Small, lossless, and removes a silent-wrong-answer class before the agent can query. Cheapest while zero AMRAP rows exist | Low |
-| 2 | 0005 | Purely additive, no migration, delivers the calorie tracking that motivated this — plus the journal for unshaped data | Low |
-| 3 | 0007 | Wanted *before* the agent gets write access, not after | Low |
-| 4 | 0008 | BodySpec DEXA import — needs `metric` (1) and `document` (2); supplies the RMR target that makes food tracking actionable | Medium |
-| 5 | 0006 | Needs the schema and views from 1–4 to be worth querying | Medium |
-| 6 | 0004 | High cost, low immediate value — see below | **High** |
+| Phase | Plan | Why here | Risk | Landed |
+|-------|------|----------|------|--------|
+| 0 | 0002 | Nothing else is possible without it | Low | ✓ 08-08 |
+| 1 | 0003 | Unit labels must be correct before any cross-domain query. Gated on verifying what openScale actually sends | Medium | ✓ 08-08 |
+| 2 | 0009 | `reps` → integer. Small, lossless, and removes a silent-wrong-answer class before the agent can query. Cheapest while zero AMRAP rows exist | Low | ✓ 08-08 |
+| 2 | 0005 | Purely additive, no migration, delivers the calorie tracking that motivated this — plus the journal for unshaped data | Low | ✓ 08-09 |
+| 3 | 0007 | Wanted *before* the agent gets write access, not after | Low | ✓ 08-09 |
+| 4 | 0008 | BodySpec DEXA import — needs `metric` (1) and `document` (2); supplies the RMR target that makes food tracking actionable | Medium | ✓ 08-09 |
+| 5 | 0006 | Needs the schema and views from 1–4 to be worth querying | Medium | ✓ 08-09 |
+| — | 0010 | Not foreseen here. Retiring the wide table is the tail of phase 1, and only became safe once the mirror had been exact for a while | Low | ✓ 08-09 |
+| 6 | 0004 | High cost, low immediate value — see below | **High** | **Deferred** |
+
+The order held. 0007 landing before 0006 is the one dependency that paid off
+visibly: the MCP server's first concurrency run separated the API's writes from
+the agent's in the audit log with nothing extra to build.
 
 ### Why food comes before the agent
 
@@ -143,24 +176,29 @@ when there's a feature that needs it, not as a prerequisite.
 | R1 | ~~Unit backfill halves all training weights~~ | **Retired** | ADR-0003 chose lbs; `workouts` is already 9,292/9,292 lbs and is no longer migrated at all |
 | R1a | ~~Body-comp relabelled without checking the payload~~ | **Retired** | Measured: weight is kg (84.9–92.2, mean 88.4). `plans/0003` §1 |
 | R1b | `muscle_mass` is a **percentage** (r = −0.985 vs weight), not a mass | **Confirmed real** | Seeds as `muscle_pct` and is never converted. Also a live display bug — `plans/0003` §2 |
-| R2 | `foreign_keys=ON` surfaces existing orphans, app starts failing | High | Run the integrity check *before* enabling; fix or delete orphans as a data migration |
-| R3 | Two processes contend on SQLite | High | WAL + `busy_timeout` in Phase 0, before the MCP server exists |
-| R4 | Agent-authored SQL breaks silently after a schema change | Medium | `get_schema` tool reads live DDL; prefer views as a stable interface |
-| R5 | Agent reads sensitive `note` rows | Medium | ADR-0004 — read-only ≠ confidential; restrict via views and `tools.include` |
-| R6 | Regrain breaks reorder/drag-drop in a 1,626-line component | High | Deferred (Phase 5); adapter in MCP write path instead |
-| R7 | `schema.sql` never recovered, DDL details lost | Medium | Reconstruct from the design doc's prose and `reference/qs_mcp.py`'s queries — every table it touches is inferable |
-| R8 | Docker/stdio transport mismatch | Medium | Unresolved — decide transport in Plan 0006 before building |
+| R2 | ~~`foreign_keys=ON` surfaces existing orphans~~ | **Retired** | The integrity check ran clean before enabling. Plan 0002 |
+| R3 | ~~Two processes contend on SQLite~~ | **Retired** | WAL + `busy_timeout` on both. Measured: 25 API POSTs, 25 agent writes and 60 agent reads in parallel, zero errors (0006 §8) |
+| R4 | Agent-authored SQL breaks silently after a schema change | Medium | **Live.** `get_schema` reads live DDL, and the server instructions push the model at the views. Unfixable in general — it is why the views exist |
+| R5 | Agent reads sensitive `note` rows | Medium | **Live, and now real** — `note` exists and the agent can read it. ADR-0004: read-only is not confidentiality. Nothing secret goes in `helf.db` |
+| R6 | Regrain breaks reorder/drag-drop in a 1,626-line component | High | Deferred (Phase 5); the adapter in the MCP write path shipped instead (0006 §8) |
+| R7 | `schema.sql` never recovered, DDL details lost | Medium | **Retired by irrelevance.** The schema was rebuilt from the design doc's prose and is now defined by eleven Alembic revisions |
+| R8 | ~~Docker/stdio transport mismatch~~ | **Retired** | stdio, with the server running on the host against the bind-mounted file. HTTP deliberately not built (0006 §1) |
+| R9 | An audit log that was never tested for immutability | Medium | **Retired at birth.** The migration probes its own triggers and refuses to complete if an UPDATE or DELETE is permitted (0007 §9) |
 
 ### Backup, before any of this
 
 The database is a single file. There is no reason not to copy it before each
-migration:
+migration — but **not with `cp`**. WAL has been on since Plan 0002, so the
+`-wal` file holds committed pages the `.db` file does not, and a plain copy is
+a torn one. This was written before WAL and was wrong from the moment 0002
+landed:
 
 ```bash
-cp "$HELF_DATA_PATH/helf.db" "$HELF_DATA_PATH/helf.db.bak-$(date +%Y%m%d-%H%M%S)"
+sqlite3 "$HELF_DATA_PATH/helf.db" ".backup '$HELF_DATA_PATH/helf.db.bak-$(date +%Y%m%d-%H%M%S)'"
 ```
 
-This is the real mitigation for R1 and R2. Everything else is secondary.
+This is the real mitigation for everything above. Everything else is
+secondary.
 
 ---
 
@@ -169,8 +207,13 @@ This is the real mitigation for R1 and R2. Everything else is secondary.
 - **Rewriting the backend to drop SQLAlchemy.** ADR-0002 — the design doc's "no
   ORM" is scoped to the agent's path.
 - **Replacing the REST API.** It serves the PWA and is unaffected.
-- **Blood work import** (`v_blood_results`). Still no data source. DEXA is no
-  longer in this category — see `plans/0008-bodyspec-integration.md`.
+- **Blood work import** (`v_blood_results`). Still no data source, so the view
+  is not built — a view over nothing would tell the agent a series exists.
+  DEXA is no longer in this category — see `plans/0008-bodyspec-integration.md`.
+- **Agent writes.** Every write tool is built and tested, and
+  `QS_MCP_MODE=read-write` turns them on. It is not turned on. That is a
+  separate, deliberate act, and the audit log is what makes it a reversible
+  one.
 - **The coaching loop** (design doc §6) — morning/evening/weekly prompts and the
   tone brief. **Dropped for now.** The focus is getting the data model right; a
   coaching layer built on a schema still in motion would have to be rebuilt

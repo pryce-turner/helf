@@ -60,16 +60,21 @@ too, but it is **gitignored** — this is the copy a fresh clone gets.
 
 Work that is finished but under-checked. Not bugs; things nobody has looked at.
 
-- **The Food and Supplements pages have never been seen by a human.** They are
-  now *mounted* under test (`npm test`, jsdom) — which catches render crashes,
-  wrong groupings and missing states — but nothing has checked how they look.
-  Layout, spacing and colour are still unverified.
 - **No supplement editor.** A typo in a supplement's serving text or macros is
   permanent from the UI — `PUT /api/food/{id}` exists and nothing calls it.
+- **Only the Body section has been looked at in a browser.** Calendar,
+  Progression and Exercises were glanced at; `/day/:date` (the 1,626-line
+  WorkoutSession) and `/upcoming` have not been opened since the Tailwind fix,
+  and they are the two most layout-heavy pages.
 - **Audit-log volume wants a check after a month of real use** (0007 §4).
 
 Recently paid down:
 
+- ~~Nobody has looked at the Food and Supplements pages~~ — done, and it found
+  the biggest bug of the session: **Tailwind v4 was running v3 directives, so
+  no variant generated any CSS and the desktop navigation had never rendered
+  at any width.** Also two layout bugs on Supplements. Both pages are now
+  mounted under test as well (`npm test`).
 - ~~No CI~~ — `.github/workflows/ci.yml` runs ruff, pytest, `alembic check`,
   a full `downgrade base` / `upgrade head` round trip, eslint, the jsdom tests
   and the build. **The round-trip step found a real bug on its first run**: the

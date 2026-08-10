@@ -2,9 +2,23 @@
 @import url("https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&f[]=satoshi@400,500,600,700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind **v4** entrypoint. This was three `@tailwind base/components/
+   utilities` directives — v3 syntax — while `@tailwindcss/postcss` v4 was
+   doing the compiling.
+
+   That combination fails in a way that looks like it works: plain utilities
+   (`hidden`, `flex`, `grid-cols-3`) are still emitted, but the theme is never
+   loaded, so **no variant generates any CSS at all** — not `md:`, not `lg:`,
+   not `hover:`. The built stylesheet contained zero `md\:` rules.
+
+   The visible consequence: `nav-desktop` is `hidden md:block` and `nav-mobile`
+   is `md:hidden`, so the desktop sidebar has never rendered at any width and
+   the mobile bottom bar has always been shown, on desktop included.
+
+   `@config` keeps the existing v3 `tailwind.config.js` — the shadcn colour
+   tokens live there — rather than migrating it to `@theme` in the same change. */
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
     :root {
@@ -912,7 +926,13 @@
        Body and Food are one loop (intake against a measured target), and the
        mobile bar is already at capacity at five. */
     .section-tabs {
-        display: inline-flex;
+        /* `flex` + `fit-content`, not `inline-flex`. An inline-level strip puts
+           whatever follows it on the same line, which made the Supplements
+           page's "New group" button render flush against the tabs and read as
+           a fourth one. Same visual, but a block box, so the next element
+           starts a new line. */
+        display: flex;
+        width: fit-content;
         gap: var(--space-1);
         padding: 3px;
         border-radius: var(--radius-full);
@@ -1386,6 +1406,11 @@
     .empty-state__text {
         color: var(--text-secondary);
         margin-bottom: var(--space-6);
+        /* An empty state is centred prose, and centred prose across a 1400px
+           desktop is unreadable — the Supplements copy was running to 1100px
+           on two ragged lines. */
+        max-width: 52ch;
+        margin-inline: auto;
     }
 
     /* Workout checkbox button */

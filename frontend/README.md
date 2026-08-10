@@ -137,6 +137,12 @@ No client-side state management library (Redux, Zustand, etc.) is used. Local UI
 
 ## Design System
 
+**Tailwind v4.** `src/index.css` starts with `@import "tailwindcss"` plus
+`@config "../tailwind.config.js"`. It must: with the v3 `@tailwind` directives,
+v4 emits plain utilities but no *variants* at all, which is how the desktop
+navigation came to be invisible at every width. See `AGENTS.md`.
+
+
 Defined in `src/index.css` via CSS custom properties:
 
 ### Colors

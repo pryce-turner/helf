@@ -547,6 +547,16 @@ model section above.*
 
 The app follows a dark-first design philosophy with an orange accent.
 
+> **Tailwind is v4, and `index.css` must start with `@import "tailwindcss"`.**
+> It previously used the v3 `@tailwind base/components/utilities` directives,
+> which v4 accepts and half-honours: plain utilities are still emitted, but the
+> theme never loads, so **no variant generates any CSS** — no `md:`, no `lg:`,
+> no `hover:`, no `disabled:`, no `focus:`. The built stylesheet had zero of
+> them. Consequence: `nav-desktop` is `hidden md:block`, so the desktop nav had
+> never rendered at any width, and the mobile bottom bar showed on desktop.
+> `@config "../tailwind.config.js"` keeps the v3 config (the shadcn colour
+> tokens) loaded. Do not "modernise" this back.
+
 ### Colors (CSS Variables in `frontend/src/index.css`)
 - Backgrounds: `--bg-base` (#09090b), `--bg-primary`, `--bg-secondary`, `--bg-tertiary`, `--bg-hover`, `--bg-active`
 - Text: `--text-primary` (#fafafa), `--text-secondary` (#a1a1a6), `--text-muted` (#5c5c5e)

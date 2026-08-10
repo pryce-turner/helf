@@ -723,13 +723,55 @@ the API.
 
 ## 11. Open questions
 
-1. **The API returns only one scan** (`2026-03-10`, `has_more: false`), but there
-   are four `DXAReport*.pdf` files in `~/Documents`. So the API is *not* a
-   complete history — the other three predate it, or sit under a different
-   account. Either the earlier scans are accepted as lost to the structured
-   model, or they need PDF extraction into `document` as a one-off backfill.
-   Worth asking `dev-support@bodyspec.com` whether older results can be exposed
-   before writing a parser.
+1. ~~**The API returns only one scan** but there are four `DXAReport*.pdf`
+   files in `~/Documents`.~~ **Resolved — and the premise was wrong.**
+
+   The older reports are not BodySpec at all. They are **DexaFit** (DexaFit
+   Seattle), a different provider with a different scanner. Nothing was missing
+   from the API and there is nothing to ask `dev-support@bodyspec.com` about:
+   `has_more: false` was the complete BodySpec history all along.
+
+   There are also only **three** distinct scans, not four — `DXAReport2.pdf`
+   and `DXAReport4.pdf` are byte-identical (same MD5).
+
+   | Date | Total | Body fat | Lean | VAT | Source file |
+   |---|---|---|---|---|---|
+   | 2024-05-21 | 200 lb | 18.4% | 156 lb | 0.24 lb | `DXAReport3.pdf` |
+   | 2024-09-10 | 191 lb | 15.1% | 154 lb | 0 lb | `DXAReport2.pdf` |
+   | 2025-03-31 | 218 lb | 22.6% | 161 lb | 0.82 lb | `DXAReport.pdf` |
+
+   Backfilled 2026-08-09 by a **one-off script kept outside the repo**, under
+   `source = 'dexafit'` and `document.kind = 'dexa_dexafit'`. Deliberately no
+   application code: there is no DexaFit API, no further scans are coming, and
+   every metric name it writes was already in `metric_def`, so it needed no
+   migration either. Three points of history are not worth a permanent
+   integration.
+
+   Three things about that data are worth knowing before querying it:
+
+   - **It is a third source, not more BodySpec.** Different provider and
+     scanner, so `observation.source` distinguishes it for the same reason
+     openScale and BodySpec are distinguished. Do not merge them.
+   - **The conversion runs the other way.** DexaFit reports in *pounds*, so
+     `body_weight_lb` needs no conversion at all, while `fat_mass_kg`,
+     `lean_mass_kg`, `ffm_kg` and `vat_mass_kg` are converted *into* kg — the
+     opposite direction from §2. They are converted rather than given new
+     lb-suffixed names so one quantity stays one series across providers.
+   - **The values were read by eye.** The PDFs have no text layer; every number
+     is a rasterised image, so they were transcribed from pages rendered at
+     150dpi rather than parsed. `document.raw` records
+     `transcribed_by_eye: true`, the source filename and its MD5. The importer
+     refused any scan where `fat / total` disagreed with the printed body-fat
+     percentage by more than 0.6pp, or where `total − fat − lean` fell outside
+     4–12 lb of bone; both guards were provoked with deliberately corrupted
+     values before the run. Masses are printed rounded to whole pounds, and no
+     time of day is recorded — `observed_at` uses `00:00:00`, which is not a
+     midnight measurement.
+
+   One consequence: these scans predate the `/trends` 365-day cap, so they
+   appear in the measurement list and in `/stats` (which now reports a range
+   starting 2024-05-21) but not on the trend charts.
+
 *Resolved: authentication (§3) — interactive paste-a-token, never stored.*
 *Resolved: `tissue_fat_pct` is the canonical body fat source (§5).*
 *Resolved: BodySpec supplements openScale; both retained (§7).*

@@ -66,7 +66,9 @@ helf/
 │   │   │   ├── exercises.py
 │   │   │   ├── progression.py
 │   │   │   ├── upcoming.py
-│   │   │   └── body_comp.py
+│   │   │   ├── body_comp.py
+│   │   │   ├── food.py
+│   │   │   └── notes.py
 │   │   ├── db/
 │   │   │   └── models.py     # SQLAlchemy ORM models (tables)
 │   │   ├── models/           # Pydantic request/response schemas
@@ -74,12 +76,16 @@ helf/
 │   │   │   ├── exercise.py
 │   │   │   ├── progression.py
 │   │   │   ├── upcoming.py
-│   │   │   └── body_composition.py
+│   │   │   ├── body_composition.py
+│   │   │   ├── food.py
+│   │   │   └── note.py
 │   │   ├── repositories/     # SQLAlchemy data access layer
 │   │   │   ├── workout_repo.py
 │   │   │   ├── exercise_repo.py
 │   │   │   ├── upcoming_repo.py
-│   │   │   └── body_comp_repo.py
+│   │   │   ├── body_comp_repo.py
+│   │   │   ├── food_repo.py
+│   │   │   └── note_repo.py
 │   │   ├── services/         # Business logic
 │   │   │   ├── progression_service.py
 │   │   │   ├── mqtt_service.py
@@ -106,6 +112,8 @@ helf/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Navigation.tsx         # Desktop sidebar + mobile bottom bar
+│   │   │   ├── SectionTabs.tsx        # Sibling routes sharing one nav entry
+│   │   │   ├── BodySectionTabs.tsx    # Composition + Food (ADR-0006)
 │   │   │   ├── LiftoscriptEditor.tsx  # Script editor for workout programs
 │   │   │   ├── PresetSelector.tsx     # Dropdown for built-in presets
 │   │   │   ├── PWA/
@@ -119,6 +127,7 @@ helf/
 │   │   │   ├── useProgression.ts      # 1RM data, main lifts
 │   │   │   ├── useBodyComposition.ts  # Measurements, trends, stats
 │   │   │   ├── useUpcoming.ts         # Sessions, Liftoscript, presets
+│   │   │   ├── useFood.ts             # Day, summary, catalog search, logging
 │   │   │   └── usePWA.ts             # Online status, install prompt
 │   │   ├── lib/
 │   │   │   └── api.ts        # Axios instance + all API functions
@@ -128,6 +137,7 @@ helf/
 │   │   │   ├── Progression.tsx        # 1RM charts
 │   │   │   ├── Upcoming.tsx           # Session planner + Liftoscript
 │   │   │   ├── BodyComposition.tsx    # Trends + stats
+│   │   │   ├── Food.tsx               # Daily log vs measured kcal target
 │   │   │   └── Exercises.tsx          # Exercise catalog
 │   │   ├── types/            # TypeScript type definitions
 │   │   │   ├── workout.ts, exercise.ts
@@ -252,6 +262,22 @@ docker-compose up -d
 - `POST /` - Create measurement (manual or from MQTT)
 - `DELETE /{id}` - Delete measurement
 
+### Food (`/api/food`)
+- `GET /day?date=` - One day's totals *and* entries, read together
+- `GET /log?date=` - Entries for a day
+- `GET /log/summary?start&end` - Daily kcal + macro totals (days with nothing logged are absent, not zero)
+- `POST /log` - Log a consumption event (by `food_id`, or name a food to create it)
+- `DELETE /log/{id}`
+- `GET /?q=` - Search the catalog
+- `POST /` - Create a food
+- `GET /{id}` / `PUT /{id}` - Read / edit macros (**retroactive** — rewrites every past entry)
+
+### Notes (`/api/notes`)
+- `GET /?kind=&start=&end=` - Notes, most recent first
+- `GET /kinds` - Counts and date spans per kind, across notes and documents
+- `POST /` - Write a note
+- `GET /{id}` / `DELETE /{id}`
+
 ### System
 - `GET /api/health` - Health check
 - `GET /api/mqtt/status` - MQTT connection status
@@ -265,7 +291,8 @@ docker-compose up -d
 | `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete |
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
-| `/body-composition` | BodyComposition | Trends, stats, manual entry |
+| `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
+| `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Body section (ADR-0006) |
 | `/upcoming` | Upcoming | Session planner, Liftoscript editor, presets |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category |
 
@@ -295,6 +322,18 @@ docker-compose up -d
 - Linear progression: `progress: lp(5lb)`
 - Multi-cycle generation
 - One-click transfer to historical data
+
+### Food and the calorie loop
+- `food` carries macros per serving; `food_log` carries consumption events, and
+  a serving's numbers are **derived at read time** — correcting a food corrects
+  every past entry
+- `v_daily_summary` is the cross-domain join: volume, intake, macros, body
+  weight, mood, notes and `kcal_target` on one day spine
+- **`kcal_target` is measured, not assumed** — the last DEXA scan's
+  Katch-McArdle RMR on or before that day, times 1.4. NULL before the first
+  scan, deliberately: a target no measurement supports is worse than a blank
+- Macro totals COALESCE unknown macros to zero, so `foods_missing_macros`
+  reports how many entries are understating the day
 
 ### Body Composition
 - MQTT integration with smart scales (openScale-sync format)
@@ -470,6 +509,7 @@ read the ADR before proposing a change to what it covers.
 | [0003](docs/decisions/0003-pounds-as-canonical-unit.md) | **Pounds are canonical for body mass**; units live in metric *names*; no row carries a unit column |
 | [0004](docs/decisions/0004-mcp-server-over-rest-for-agent-access.md) | MCP over REST for agent access — and read-only is **not** a confidentiality control, so nothing secret goes in `helf.db` |
 | [0005](docs/decisions/0005-no-amrap-in-the-data-model.md) | No AMRAP notation; `reps` is an integer |
+| [0006](docs/decisions/0006-food-is-a-tab-under-body-not-a-sixth-nav-item.md) | The mobile nav bar is **full at five**; a new destination is a tab beside an existing one |
 
 Earlier choices, predating the ADR practice:
 

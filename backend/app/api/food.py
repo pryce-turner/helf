@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.models.food import (
     Food,
     FoodCreate,
+    FoodDay,
     FoodDaySummary,
     FoodLogCreate,
     FoodLogEntry,
@@ -16,8 +17,14 @@ from app.utils.date_helpers import get_current_date
 router = APIRouter()
 
 
-# Log endpoints are declared before `/{food_id}` so "log" is never captured as
+# `/day` and `/log` are declared before `/{food_id}` so neither is captured as
 # a food id.
+@router.get("/day", response_model=FoodDay)
+def get_food_day(date: str | None = None):
+    """Everything the food page needs for one day. Defaults to today."""
+    return FoodLogRepository().day(date or get_current_date())
+
+
 @router.get("/log", response_model=list[FoodLogEntry])
 def get_food_log(date: str | None = None):
     """Entries for one day. Defaults to today."""

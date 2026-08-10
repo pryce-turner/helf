@@ -1,8 +1,14 @@
 # Plan 0005: Food and notes
 
-**Status:** Proposed — **partially landed**: `document` was created by Plan 0008, see below
-**Prerequisites:** Plan 0002 (Alembic)
-**Related:** Plan 0001 §3
+**Status:** Implemented (2026-08-09) — revision `12fed2487b4e`; see §7 for what
+landed differently
+**Prerequisites:** Plan 0002 (Alembic) ✓
+**Related:** Plan 0001 §3, Plan 0008 §8 (`kcal_target`), ADR-0006 (where the
+Food page lives)
+
+> **§7 records where the implementation diverged from this document.** Three
+> places, all because the plan predates the schema it landed on. The text below
+> is left as written; §7 is the correction.
 
 Adds calorie/macro tracking, first-class notes, and the `document` table. All
 three are **purely additive** — new tables, no migration of existing data, no
@@ -322,5 +328,78 @@ the one piece of real logic here.
 
 ## 6. Rollback
 
-`DROP TABLE food_log, food, note, document` and drop the view. No existing data
-is touched by this plan, so rollback is complete and safe.
+`DROP TABLE food_log, food, note` and drop the view. **Not `document`** — it
+belongs to Plan 0008 and holds live DEXA payloads. No existing data is touched
+by this plan, so rollback is otherwise complete and safe.
+
+## 7. What actually landed (2026-08-09, revision `12fed2487b4e`)
+
+Three divergences, all forced by the schema having moved since this was
+written, plus two decisions the plan deferred.
+
+### `v_daily_summary` reads `observation`, not `metric.date`
+
+§3's draft selects `date` from `metric` and unions it into the day spine.
+`metric` has no `date` column — Plan 0003 moved `date` and `source` onto
+`observation`, so every metric column in the view joins through it. The spine
+unions `observation.date` instead.
+
+The same paragraph's `CAST(REPLACE(w.reps,'+','') AS INTEGER)` is gone too:
+ADR-0005 made `reps` an integer, so `training_volume_lb` is plain
+`SUM(w.weight * w.reps)`.
+
+### `food.brand` is `NOT NULL DEFAULT ''`
+
+§1's note recommended this and the recommendation was taken, so
+`UNIQUE (name, brand)` is a real constraint rather than an advisory one.
+`docs/reference/qs_mcp.py:219` loses its `brand IS ?` lookup for a plain `=`,
+with a `brand = brand or ""` normalisation above it.
+
+### `note.source` arrives at creation, not as an `ALTER`
+
+§1a describes adding it afterwards. There was no "afterwards" — the table did
+not exist yet, so the column is in the `CREATE`.
+
+### `v_daily_summary` carries more than §3 specified
+
+`protein_g`, `carb_g`, `fat_g` and `foods_missing_macros` (the same COALESCE
+argument §2 makes for the summary endpoint, applied where the agent will read
+it), `body_weight_source` (so a cross-source weight read is visible rather than
+hidden), `notes`, and `kcal_target`.
+
+**`kcal_target` closes Plan 0008 §8** — the open item this plan's row in the
+index carried. It is `ROUND(rmr_kcal_per_day × 1.4)` taken from the last DEXA
+scan **on or before that day**, not the newest scan overall: a January target
+must not be computed from a body composition measured in March. It is NULL
+before the first scan; there is deliberately no default, because a target no
+measurement supports is worse than a blank.
+
+### Endpoints
+
+As §2, with two additions and one omission:
+
+- `GET /api/food/day?date=` — totals *and* entries in one response, read
+  server-side at one instant so the running total cannot disagree with the list
+  under it. Unlike `/log/summary` it always answers, because the page needs the
+  target before anything is logged, which is exactly when it is most useful.
+- `/log/summary` **omits days with nothing logged** rather than zeroing them.
+  An unlogged day and a fasted day are different facts.
+- Notes got their API (`/api/notes`, plus `/api/notes/kinds` implementing §1a's
+  journal review query) but **no UI**. Nothing in this plan asked for one, and
+  guessing at a notes interface before the coaching loop exists would be
+  building the wrong thing.
+
+### The navigation question §4 refused to answer
+
+Settled as **ADR-0006**: Food is a tab beside Body, not a sixth nav item. The
+mobile bar is at capacity at five and four commits have already been spent on
+its spacing; `kcal_target` makes intake and body composition one loop anyway.
+Both keep their own URL, so `/food` is still bookmarkable and installable.
+
+### Verification
+
+`v_daily_summary`'s `SUM(training_volume_lb)` equals `SUM(weight*reps)` over
+`workouts` exactly (6,483,192 lb across 638 days), days with a body weight
+equals `COUNT(DISTINCT observation.date)` exactly (110), and 2026-03-10's
+`kcal_target` is 2730 — which is 1950 × 1.4, matching the Katch-McArdle figure
+Plan 0008 §8 worked out by hand from the real scan.

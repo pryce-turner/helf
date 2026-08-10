@@ -22,19 +22,52 @@ from app.utils.date_helpers import format_timestamp, get_current_datetime
 # The EXISTS excludes days with nothing logged: the view's spine is every day
 # *anything* happened, and a day with three workouts and no food is not a
 # zero-calorie day, it is an unlogged one.
-DAILY_TOTALS_SQL = text(
-    """
+_DAILY_TOTALS_COLUMNS = """
     SELECT s.date,
            s.kcal,
            s.protein_g,
            s.carb_g,
            s.fat_g,
            s.foods_missing_macros,
+           s.kcal_target,
            (SELECT COUNT(*) FROM food_log fl WHERE fl.date = s.date) AS entries
     FROM v_daily_summary s
+"""
+
+DAILY_TOTALS_SQL = text(
+    _DAILY_TOTALS_COLUMNS
+    + """
     WHERE s.date BETWEEN :start AND :end
       AND EXISTS (SELECT 1 FROM food_log fl WHERE fl.date = s.date)
     ORDER BY s.date
+    """
+)
+
+# One named day, whether or not the view has a row for it. The view's spine is
+# every day something happened, and "today, so far" is routinely not one of
+# them - a page opened before the first meal would otherwise show no target at
+# exactly the moment the target is worth reading.
+#
+# `kcal_target` falls back to the most recent day that has one, which is
+# correct because the view already carries it forward from the last scan. The
+# multiplier stays in the view and is not duplicated here.
+ONE_DAY_TOTALS_SQL = text(
+    """
+    SELECT :date AS date,
+           s.kcal,
+           s.protein_g,
+           s.carb_g,
+           s.fat_g,
+           COALESCE(s.foods_missing_macros, 0) AS foods_missing_macros,
+           COALESCE(
+               s.kcal_target,
+               (SELECT p.kcal_target FROM v_daily_summary p
+                 WHERE p.date <= :date AND p.kcal_target IS NOT NULL
+                 ORDER BY p.date DESC LIMIT 1)
+           ) AS kcal_target,
+           (SELECT COUNT(*) FROM food_log fl WHERE fl.date = :date) AS entries
+    FROM (SELECT 1) one
+    LEFT JOIN v_daily_summary s ON s.date = :date
     """
 )
 
@@ -195,6 +228,19 @@ class FoodLogRepository:
             session.commit()
             return result.rowcount > 0
 
+    @staticmethod
+    def _totals(row) -> dict:
+        return {
+            "date": row.date,
+            "kcal": row.kcal,
+            "protein_g": row.protein_g,
+            "carb_g": row.carb_g,
+            "fat_g": row.fat_g,
+            "entries": row.entries,
+            "foods_missing_macros": row.foods_missing_macros,
+            "kcal_target": row.kcal_target,
+        }
+
     def summary(self, start: str, end: str) -> list[dict]:
         """Daily kcal and macro totals over a date range, inclusive.
 
@@ -205,15 +251,20 @@ class FoodLogRepository:
             rows = session.execute(
                 DAILY_TOTALS_SQL, {"start": start, "end": end}
             ).all()
-            return [
-                {
-                    "date": row.date,
-                    "kcal": row.kcal,
-                    "protein_g": row.protein_g,
-                    "carb_g": row.carb_g,
-                    "fat_g": row.fat_g,
-                    "entries": row.entries,
-                    "foods_missing_macros": row.foods_missing_macros,
-                }
-                for row in rows
-            ]
+            return [self._totals(row) for row in rows]
+
+    def day(self, date: str) -> dict:
+        """Totals and entries for one day, read together.
+
+        One query pair rather than two endpoints, so the running total on
+        screen cannot disagree with the list below it. Unlike `summary` this
+        always returns a day: the page needs the kcal target before anything
+        has been logged, which is exactly when it is most useful.
+        """
+        with database.SessionLocal() as session:
+            row = session.execute(ONE_DAY_TOTALS_SQL, {"date": date}).one()
+        return {
+            "date": date,
+            "totals": self._totals(row),
+            "entries": self.get_by_date(date),
+        }

@@ -29,10 +29,10 @@ table.
 | 0002 | [Schema foundation](0002-schema-foundation.md) | Implemented 2026-08-08 | `ac2fc3529985` | — |
 | 0003 | [Units and metrics](0003-units-and-metrics.md) | Implemented 2026-08-08 | through `e96bd4b90873` | Retiring `body_composition` entirely — write-only now, needs its own plan (§9) |
 | 0004 | [Workout session regrain](0004-workout-session-regrain.md) | **Deferred** | — | Deliberate. The highest-risk migration in the roadmap for the least benefit; §1 argues it should stay deferred |
-| 0005 | [Food and notes](0005-food-and-notes.md) | Proposed — partially landed | `61ccf127e583` (`document` only) | `food`, `food_log`, `note`, `v_daily_summary`. **Must not re-create `document`** |
+| 0005 | [Food and notes](0005-food-and-notes.md) | Implemented 2026-08-09 | `12fed2487b4e` | Notes have an API but no UI — deliberate, see §7 |
 | 0006 | [MCP server](0006-mcp-server.md) | Proposed | — | Gap G3: `qs_mcp.py` must return a useful error on an unknown metric name, now that the FK rejects it |
 | 0007 | [Append-only audit log](0007-audit-log.md) | Proposed | — | Recommended before 0006 enables agent **write** tools |
-| 0008 | [BodySpec DEXA integration](0008-bodyspec-integration.md) | Implemented 2026-08-09 | through `70709fd96184` | `v_daily_summary.kcal_target` (§8) — belongs to 0005, which owns that view |
+| 0008 | [BodySpec DEXA integration](0008-bodyspec-integration.md) | Implemented 2026-08-09 | through `70709fd96184` | — (`kcal_target` landed with 0005) |
 | 0009 | [Drop AMRAP notation](0009-drop-amrap-notation.md) | Implemented 2026-08-08 | `fd709c41eb19` | — |
 
 ## Where things stand
@@ -93,6 +93,8 @@ Recorded so they are not re-litigated. Full reasoning in `../decisions/`.
 
 - **Pounds are canonical for body mass** (ADR-0003), units live in metric
   *names*, and no row carries a unit column.
+- **The mobile nav bar is full at five items** (ADR-0006). A new destination is
+  a tab beside an existing one, not a sixth entry.
 - **SQLAlchemy for the app, raw SQL for the agent** (ADR-0002).
 - **MCP over REST for agent access**, and read-only is not a confidentiality
   control (ADR-0004) — nothing secret goes in `helf.db`.

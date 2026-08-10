@@ -18,6 +18,13 @@ import type {
     BodyCompositionTrend,
     BodySpecSyncResult,
 } from "../types/bodyComposition";
+import type {
+    Food,
+    FoodCreate,
+    FoodDaySummary,
+    FoodLogCreate,
+    FoodLogEntry,
+} from "../types/food";
 import type { ProgressionResponse } from "../types/progression";
 import type {
     UpcomingWorkout,
@@ -214,6 +221,42 @@ export const bodyCompositionApi = {
             null,
             { headers: { Authorization: `Bearer ${token}` } },
         ),
+};
+
+// Food
+export const foodApi = {
+    /**
+     * One day's totals and entries, read together server-side so the running
+     * total on screen cannot disagree with the list beneath it.
+     */
+    getDay: (date: string) =>
+        api.get<{
+            date: string;
+            totals: FoodDaySummary;
+            entries: FoodLogEntry[];
+        }>("/api/food/day", { params: { date } }),
+
+    getSummary: (start: string, end: string) =>
+        api.get<FoodDaySummary[]>("/api/food/log/summary", {
+            params: { start, end },
+        }),
+
+    search: (q?: string, limit: number = 50) =>
+        api.get<Food[]>("/api/food/", { params: { q, limit } }),
+
+    create: (food: FoodCreate) => api.post<Food>("/api/food/", food),
+
+    /**
+     * Retroactive by design: macros live on the food, not the log entry, so
+     * this corrects every past entry that used it.
+     */
+    update: (id: number, food: Partial<FoodCreate>) =>
+        api.put<Food>(`/api/food/${id}`, food),
+
+    log: (entry: FoodLogCreate) =>
+        api.post<FoodLogEntry>("/api/food/log", entry),
+
+    deleteLog: (id: number) => api.delete(`/api/food/log/${id}`),
 };
 
 // System

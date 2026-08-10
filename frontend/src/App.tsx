@@ -6,6 +6,7 @@ import Progression from "./pages/Progression";
 import BodyComposition from "./pages/BodyComposition";
 import Upcoming from "./pages/Upcoming";
 import Exercises from "./pages/Exercises";
+import Food from "./pages/Food";
 import { InstallPrompt } from "./components/PWA/InstallPrompt";
 import { usePWA } from "./hooks/usePWA";
 import { WifiOff } from "lucide-react";
@@ -53,6 +54,7 @@ function App() {
                             path="/body-composition"
                             element={<BodyComposition />}
                         />
+                        <Route path="/food" element={<Food />} />
                         <Route path="/upcoming" element={<Upcoming />} />
                         <Route path="/exercises" element={<Exercises />} />
                     </Routes>

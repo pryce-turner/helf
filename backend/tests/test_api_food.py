@@ -86,3 +86,25 @@ def test_delete_log_entry(client):
 
     assert client.delete(f"/api/food/log/{log_id}").status_code == 200
     assert client.delete(f"/api/food/log/{log_id}").status_code == 404
+
+
+def test_day_endpoint_returns_totals_and_entries_together(client):
+    food_id = client.post("/api/food/", json=EGG).json()["doc_id"]
+    client.post(
+        "/api/food/log",
+        json={"food_id": food_id, "servings": 2, "consumed_at": "2026-08-07T08:00:00"},
+    )
+
+    day = client.get("/api/food/day", params={"date": "2026-08-07"}).json()
+    assert day["totals"]["kcal"] == 156
+    assert len(day["entries"]) == 1
+
+
+def test_day_endpoint_answers_for_a_day_with_nothing_on_it(client):
+    """The page needs the kcal target before anything is logged, which is
+    exactly when it is most useful."""
+    day = client.get("/api/food/day", params={"date": "2026-08-07"}).json()
+    assert day["date"] == "2026-08-07"
+    assert day["totals"]["kcal"] is None
+    assert day["totals"]["kcal_target"] is None
+    assert day["entries"] == []

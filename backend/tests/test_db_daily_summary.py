@@ -92,3 +92,17 @@ def test_a_day_with_no_food_reports_null_kcal_not_zero():
     row = _row("2026-08-07")
     assert row.kcal is None
     assert row.foods_missing_macros == 0
+
+
+def test_the_day_endpoint_still_has_a_target_before_anything_is_logged():
+    """The view's spine only carries days something happened on, and "today,
+    so far" is routinely not one of them - which is exactly when the target is
+    worth reading."""
+    from app.repositories.food_repo import FoodLogRepository
+
+    _observe("2026-03-10 09:00:00", "bodyspec", rmr_kcal_per_day=1950.0)
+
+    day = FoodLogRepository().day("2026-08-09")
+    assert _row("2026-08-09") is None      # not in the view at all
+    assert day["totals"]["kcal"] is None
+    assert day["totals"]["kcal_target"] == 2730.0

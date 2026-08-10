@@ -4,10 +4,20 @@ import { Calendar, TrendingUp, Weight, ListTodo, Dumbbell } from "lucide-react";
 const Navigation = () => {
     const location = useLocation();
 
+    // Routes that belong to a nav item without being under its path. Without
+    // this the whole bar reads as unselected while the user is on /food, which
+    // is inside the Body section but not beneath its URL
+    // (docs/decisions/0006-food-is-a-tab-under-body-not-a-sixth-nav-item.md).
+    const sectionAliases: Record<string, string[]> = {
+        "/body-composition": ["/food"],
+    };
+
     const isActive = (path: string) => {
         if (path === "/" && location.pathname === "/") return true;
         if (path !== "/" && location.pathname.startsWith(path)) return true;
-        return false;
+        return (sectionAliases[path] ?? []).some((alias) =>
+            location.pathname.startsWith(alias),
+        );
     };
 
     const navItems = [

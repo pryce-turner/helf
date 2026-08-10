@@ -105,6 +105,11 @@ class FoodDaySummary(BaseModel):
     `foods_missing_macros` exists because the totals COALESCE NULL macros to
     zero. Without it a day containing one food with unknown protein reports a
     protein total that is simply too low, with nothing on screen to say so.
+
+    `kcal_target` is the day's Katch-McArdle RMR times the activity multiplier,
+    carried forward from the last DEXA scan on or before it (Plan 0008 §8). It
+    is NULL before the first scan - there is no default to fall back on, and
+    inventing one would put a target on screen that no measurement supports.
     """
 
     date: str
@@ -114,3 +119,17 @@ class FoodDaySummary(BaseModel):
     fat_g: float | None = None
     entries: int = 0
     foods_missing_macros: int = 0
+    kcal_target: float | None = None
+
+
+class FoodDay(BaseModel):
+    """Everything the food page needs for one day, in one request.
+
+    Deliberately composite rather than three endpoints: the totals and the
+    entries are read from the same instant, so the running total on screen can
+    never disagree with the list underneath it.
+    """
+
+    date: str
+    totals: FoodDaySummary
+    entries: list[FoodLogEntry]

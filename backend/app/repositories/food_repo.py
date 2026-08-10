@@ -7,10 +7,11 @@ happens to name this module; a test that gets it wrong writes to
 `data/helf.db`, which has happened here before.
 """
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import IntegrityError
 
 from app import database
-from app.db.models import Food, FoodLog
+from app.db.models import Food, FoodLog, Stack, StackItem
 from app.models.food import FoodCreate, FoodLogCreate, FoodUpdate
 from app.utils.date_helpers import format_timestamp, get_current_datetime
 
@@ -72,6 +73,10 @@ ONE_DAY_TOTALS_SQL = text(
     LEFT JOIN v_daily_summary s ON s.date = :date
     """
 )
+
+
+class DuplicateFoodError(Exception):
+    """A rename collided with UNIQUE (name, brand)."""
 
 
 def _entry(log: FoodLog, food: Food) -> dict:
@@ -177,8 +182,44 @@ class FoodRepository:
             session.refresh(resolved)
             return self._serialize(resolved)
 
+    def usage(self, food_id: int) -> dict | None:
+        """How much history an edit to this food would rewrite."""
+        with database.SessionLocal() as session:
+            if session.get(Food, food_id) is None:
+                return None
+            entries, first, last = session.execute(
+                select(
+                    func.count(FoodLog.id),
+                    func.min(FoodLog.date),
+                    func.max(FoodLog.date),
+                ).where(FoodLog.food_id == food_id)
+            ).one()
+            stacks = (
+                session.execute(
+                    select(Stack.name)
+                    .join(StackItem, StackItem.stack_id == Stack.id)
+                    .where(StackItem.food_id == food_id)
+                    .order_by(Stack.order, Stack.name)
+                )
+                .scalars()
+                .all()
+            )
+        return {
+            "food_id": food_id,
+            "entries": entries,
+            "first_logged": first,
+            "last_logged": last,
+            "stacks": list(stacks),
+        }
+
     def update(self, food_id: int, changes: FoodUpdate) -> dict | None:
-        """Edit a food. Retroactively changes every past entry's totals."""
+        """Edit a food. Retroactively changes every past entry's totals.
+
+        Raises `DuplicateFoodError` when the new `(name, brand)` already belongs to
+        something else. Without the catch that surfaces as an uncaught
+        IntegrityError and a 500, which tells the user their edit crashed the
+        app rather than that the name is taken.
+        """
         with database.SessionLocal() as session:
             food = session.get(Food, food_id)
             if food is None:
@@ -188,7 +229,14 @@ class FoodRepository:
                 if field == "brand" and value is None:
                     value = ""
                 setattr(food, field, value)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError as exc:
+                session.rollback()
+                raise DuplicateFoodError(
+                    f"'{food.name}' already exists"
+                    + (f" under brand '{food.brand}'" if food.brand else "")
+                ) from exc
             session.refresh(food)
             return self._serialize(food)
 

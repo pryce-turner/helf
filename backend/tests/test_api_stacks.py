@@ -205,3 +205,102 @@ def test_stack_referencing_a_missing_food_is_422(client):
 
 def test_log_of_an_unknown_stack_is_404(client):
     assert client.post("/api/stacks/9999/log").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Editing a supplement — the catalog entry, not the group
+# --------------------------------------------------------------------------
+def test_usage_reports_what_an_edit_would_rewrite(client):
+    """Editing macros is retroactive, so the size of the blast radius has to be
+    available *before* the edit, not discoverable after it."""
+    stack_id = _morning(client).json()["doc_id"]
+    omega = next(
+        i for i in client.get(f"/api/stacks/{stack_id}").json()["items"]
+        if i["name"] == "Omega-3"
+    )["food_id"]
+
+    client.post("/api/stacks/", json={"name": "Evening", "items": [{"food_id": omega}]})
+    for day in ("2026-08-03", "2026-08-07", "2026-08-09"):
+        client.post(
+            "/api/food/log",
+            json={"food_id": omega, "servings": 1, "consumed_at": f"{day}T07:00:00"},
+        )
+
+    usage = client.get(f"/api/food/{omega}/usage").json()
+    assert usage["entries"] == 3
+    assert usage["first_logged"] == "2026-08-03"
+    assert usage["last_logged"] == "2026-08-09"
+    # Named, so you can see what you are about to change.
+    assert usage["stacks"] == ["Morning", "Evening"]
+
+
+def test_usage_of_an_untouched_supplement_is_empty_not_missing(client):
+    food_id = client.post(
+        "/api/food/", json={"name": "Zinc", "kind": "supplement"}
+    ).json()["doc_id"]
+
+    usage = client.get(f"/api/food/{food_id}/usage").json()
+    assert usage == {
+        "food_id": food_id,
+        "entries": 0,
+        "first_logged": None,
+        "last_logged": None,
+        "stacks": [],
+    }
+
+
+def test_usage_of_an_unknown_food_is_404(client):
+    assert client.get("/api/food/9999/usage").status_code == 404
+
+
+def test_editing_a_supplement_rewrites_past_totals(client):
+    """The whole reason the editor has to warn. Whey's calories are derived, so
+    correcting them corrects history — which is right, and surprising."""
+    stack_id = client.post(
+        "/api/stacks/",
+        json={"name": "Post-workout", "items": [{"food": WHEY, "servings": 2}]},
+    ).json()["doc_id"]
+    client.post(f"/api/stacks/{stack_id}/log", json={"consumed_at": "2026-08-07T17:00:00"})
+
+    before = client.get("/api/food/day", params={"date": "2026-08-07"}).json()
+    assert before["totals"]["kcal"] == 240
+
+    whey = before["entries"][0]["food_id"]
+    edited = client.put(f"/api/food/{whey}", json={"kcal_per_serving": 130})
+    assert edited.status_code == 200
+
+    after = client.get("/api/food/day", params={"date": "2026-08-07"}).json()
+    assert after["totals"]["kcal"] == 260
+
+
+def test_editing_serving_text_leaves_the_stack_membership_alone(client):
+    """`serving_desc` is a property of the food; `servings` is a property of the
+    membership. Correcting one must not disturb the other."""
+    stack_id = _morning(client).json()["doc_id"]
+    omega = next(
+        i for i in client.get(f"/api/stacks/{stack_id}").json()["items"]
+        if i["name"] == "Omega-3"
+    )
+
+    client.put(
+        f"/api/food/{omega['food_id']}",
+        json={"serving_desc": "1 softgel, 1200mg EPA"},
+    )
+
+    after = next(
+        i for i in client.get(f"/api/stacks/{stack_id}").json()["items"]
+        if i["food_id"] == omega["food_id"]
+    )
+    assert after["serving_desc"] == "1 softgel, 1200mg EPA"
+    assert after["servings"] == 2
+
+
+def test_a_supplement_cannot_be_renamed_onto_another(client):
+    """UNIQUE (name, brand) — and the API should say so rather than 500."""
+    _morning(client)
+    zinc = client.post(
+        "/api/food/", json={"name": "Zinc", "kind": "supplement"}
+    ).json()["doc_id"]
+
+    response = client.put(f"/api/food/{zinc}", json={"name": "Omega-3"})
+    assert response.status_code == 409

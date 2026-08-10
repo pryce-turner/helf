@@ -440,9 +440,10 @@ docker-compose up -d
 - `GET /log/summary?start&end` - Daily kcal + macro totals (days with nothing logged are absent, not zero)
 - `POST /log` - Log a consumption event (by `food_id`, or name a food to create it)
 - `DELETE /log/{id}`
-- `GET /?q=` - Search the catalog
+- `GET /?q=&kind=` - Search the catalog; `kind` is `food` or `supplement`
+- `GET /{id}/usage` - How much history an edit would rewrite: entry count, date span, and the stacks using it
 - `POST /` - Create a food
-- `GET /{id}` / `PUT /{id}` - Read / edit macros (**retroactive** — rewrites every past entry)
+- `GET /{id}` / `PUT /{id}` - Read / edit macros (**retroactive** — rewrites every past entry). 409 if the new `(name, brand)` is taken
 
 ### Stacks (`/api/stacks`)
 - `GET /` - All stacks, each with `taken_today` and `last_taken`

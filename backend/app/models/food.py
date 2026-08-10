@@ -65,6 +65,26 @@ class Food(FoodBase):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
+class FoodUsage(BaseModel):
+    """What an edit to this food would reach.
+
+    Editing macros is retroactive — a serving's numbers are derived at read
+    time, so a correction rewrites every past entry's totals (Plan 0005 §1).
+    That is the intended behaviour, and it is also the kind of thing a person
+    should be told the size of *before* they do it rather than after. An
+    abstract "this affects past entries" is ignorable; "this changes 47 entries
+    going back to 1 March" is not.
+    """
+
+    food_id: int
+    entries: int = 0
+    first_logged: str | None = None
+    last_logged: str | None = None
+    # Named, not counted: "it is in Morning and Evening" tells you what you are
+    # about to change; "2 stacks" does not.
+    stacks: list[str] = []
+
+
 class FoodLogCreate(BaseModel):
     """Model for logging a consumption event.
 

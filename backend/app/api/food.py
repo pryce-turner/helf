@@ -10,8 +10,13 @@ from app.models.food import (
     FoodLogCreate,
     FoodLogEntry,
     FoodUpdate,
+    FoodUsage,
 )
-from app.repositories.food_repo import FoodLogRepository, FoodRepository
+from app.repositories.food_repo import (
+    DuplicateFoodError,
+    FoodLogRepository,
+    FoodRepository,
+)
 from app.utils.date_helpers import get_current_date
 
 router = APIRouter()
@@ -89,6 +94,19 @@ def get_food(food_id: int):
     return food
 
 
+@router.get("/{food_id}/usage", response_model=FoodUsage)
+def get_food_usage(food_id: int):
+    """How much history an edit to this food would rewrite.
+
+    Read before offering an edit form. Macros are derived at read time, so a
+    correction is retroactive across every entry listed here.
+    """
+    usage = FoodRepository().usage(food_id)
+    if usage is None:
+        raise HTTPException(status_code=404, detail="Food not found")
+    return usage
+
+
 @router.put("/{food_id}", response_model=Food)
 def update_food(food_id: int, changes: FoodUpdate):
     """Edit a food's macros.
@@ -97,7 +115,10 @@ def update_food(food_id: int, changes: FoodUpdate):
     every past entry using it changes too. That is intended - it means fixing a
     wrong calorie count fixes history rather than leaving it wrong.
     """
-    updated = FoodRepository().update(food_id, changes)
+    try:
+        updated = FoodRepository().update(food_id, changes)
+    except DuplicateFoodError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=404, detail="Food not found")
     return updated

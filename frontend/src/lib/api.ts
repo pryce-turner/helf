@@ -24,6 +24,7 @@ import type {
     FoodDaySummary,
     FoodLogCreate,
     FoodLogEntry,
+    FoodUsage,
 } from "../types/food";
 import type { ProgressionResponse } from "../types/progression";
 import type {
@@ -253,9 +254,13 @@ export const foodApi = {
 
     create: (food: FoodCreate) => api.post<Food>("/api/food/", food),
 
+    /** How much history an edit to this food would rewrite. */
+    usage: (id: number) => api.get<FoodUsage>(`/api/food/${id}/usage`),
+
     /**
      * Retroactive by design: macros live on the food, not the log entry, so
-     * this corrects every past entry that used it.
+     * this corrects every past entry that used it. 409 when the new
+     * (name, brand) is already taken.
      */
     update: (id: number, food: Partial<FoodCreate>) =>
         api.put<Food>(`/api/food/${id}`, food),

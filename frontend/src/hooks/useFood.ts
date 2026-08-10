@@ -40,6 +40,32 @@ export function useFoodSearch(q: string, kind?: string) {
     });
 }
 
+/**
+ * What an edit would rewrite. Fetched when the editor opens, not with the
+ * catalog list — it is one query per food and only matters once.
+ */
+export function useFoodUsage(id: number | null) {
+    return useQuery({
+        queryKey: ["food", "usage", id],
+        queryFn: async () => (await foodApi.usage(id!)).data,
+        enabled: id != null,
+        staleTime: 0,
+    });
+}
+
+/**
+ * The whole supplement catalog, including entries no group uses.
+ *
+ * Separate from `useFoodSearch`, which is a typeahead and stays disabled below
+ * two characters — this one always returns everything.
+ */
+export function useSupplementCatalog() {
+    return useQuery({
+        queryKey: ["food", "catalog", "supplement"],
+        queryFn: async () => (await foodApi.search(undefined, 500, "supplement")).data,
+    });
+}
+
 export function useLogFood() {
     const queryClient = useQueryClient();
     return useMutation({

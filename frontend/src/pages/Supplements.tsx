@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import { Check, Pencil, Pill, Plus, Trash2, X } from "lucide-react";
+import SupplementEditor from "@/components/SupplementEditor";
 import Navigation from "@/components/Navigation";
 import BodySectionTabs from "@/components/BodySectionTabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useFoodSearch } from "@/hooks/useFood";
+import { useFoodSearch, useSupplementCatalog } from "@/hooks/useFood";
 import {
     useCreateStack,
     useDeleteStack,
@@ -14,6 +15,7 @@ import {
     useStacks,
     useUpdateStack,
 } from "@/hooks/useStacks";
+import type { Food } from "@/types/food";
 import type { Stack, StackItem, StackItemCreate } from "@/types/stack";
 
 /** A row being edited: either an existing catalog entry or a new one. */
@@ -91,7 +93,7 @@ const ItemRow = ({
                     autoComplete="off"
                 />
                 {draft.food_id == null && matches && matches.length > 0 && (
-                    <div className="food-suggestions">
+                    <div className="food-suggestions" data-testid="food-suggestions">
                         {matches.slice(0, 5).map((food) => (
                             <button
                                 key={food.doc_id}
@@ -385,6 +387,61 @@ const StackCard = ({ stack }: { stack: Stack }) => {
     );
 };
 
+/**
+ * Every supplement, not just the ones in a group.
+ *
+ * The groups above are how you *log*; this is how you fix what a supplement
+ * is. They are separate because `serving_desc` and macros belong to the
+ * catalog entry while `servings` belongs to a membership — and because a
+ * supplement you have stopped taking still needs to be reachable.
+ */
+const Catalog = () => {
+    const [editing, setEditing] = useState<Food | null>(null);
+    const { data: supplements } = useSupplementCatalog();
+
+    if (!supplements || supplements.length === 0) return null;
+
+    return (
+        <>
+            <div className="section-heading">All supplements</div>
+            {editing && (
+                <SupplementEditor food={editing} onDone={() => setEditing(null)} />
+            )}
+            <Card className="animate-in">
+                <CardContent style={{ padding: "var(--space-2)" }}>
+                    {supplements.map((food) => (
+                        <div key={food.doc_id} className="catalog-row">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="catalog-row__name">
+                                    {food.name}
+                                    {food.brand && (
+                                        <span style={{ color: "var(--text-muted)" }}>
+                                            {" "}· {food.brand}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="catalog-row__meta">
+                                    {food.serving_desc ?? "no serving described"}
+                                    {food.kcal_per_serving != null &&
+                                        ` · ${food.kcal_per_serving} kcal`}
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="action-btn"
+                                aria-label={`Edit ${food.name}`}
+                                onClick={() => setEditing(food)}
+                            >
+                                <Pencil style={{ width: "15px", height: "15px" }} />
+                            </button>
+                        </div>
+                    ))}
+                </CardContent>
+            </Card>
+        </>
+    );
+};
+
 const Supplements = () => {
     const [creating, setCreating] = useState(false);
     const { data: stacks, isLoading } = useStacks();
@@ -436,6 +493,8 @@ const Supplements = () => {
                             {(stacks ?? []).map((stack) => (
                                 <StackCard key={stack.doc_id} stack={stack} />
                             ))}
+
+                            <Catalog />
 
                             {stacks && stacks.length === 0 && !creating && (
                                 <div className="empty-state animate-in">

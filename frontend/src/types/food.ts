@@ -62,6 +62,22 @@ export interface FoodLogEntry {
     fat_g: number | null;
 }
 
+/**
+ * What an edit to a food would reach.
+ *
+ * Read before showing an edit form. Macros are derived at read time, so a
+ * correction rewrites every past entry's totals — intended, and worth stating
+ * the size of beforehand rather than leaving to be discovered.
+ */
+export interface FoodUsage {
+    food_id: number;
+    entries: number;
+    first_logged: string | null;
+    last_logged: string | null;
+    /** Named, so you can see which groups you are about to change. */
+    stacks: string[];
+}
+
 export interface FoodLogCreate {
     food_id?: number;
     food?: FoodCreate;

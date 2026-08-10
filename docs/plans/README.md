@@ -60,8 +60,6 @@ too, but it is **gitignored** — this is the copy a fresh clone gets.
 
 Work that is finished but under-checked. Not bugs; things nobody has looked at.
 
-- **No supplement editor.** A typo in a supplement's serving text or macros is
-  permanent from the UI — `PUT /api/food/{id}` exists and nothing calls it.
 - **Only the Body section has been looked at in a browser.** Calendar,
   Progression and Exercises were glanced at; `/day/:date` (the 1,626-line
   WorkoutSession) and `/upcoming` have not been opened since the Tailwind fix,
@@ -70,6 +68,10 @@ Work that is finished but under-checked. Not bugs; things nobody has looked at.
 
 Recently paid down:
 
+- ~~No supplement editor~~ — `/supplements` now has an "All supplements"
+  catalog with an editor per entry, and `GET /api/food/{id}/usage` tells it how
+  much history an edit would rewrite so the warning carries a real number.
+  Renaming onto an existing `(name, brand)` was a 500; it is a 409 now.
 - ~~Nobody has looked at the Food and Supplements pages~~ — done, and it found
   the biggest bug of the session: **Tailwind v4 was running v3 directives, so
   no variant generated any CSS and the desktop navigation had never rendered

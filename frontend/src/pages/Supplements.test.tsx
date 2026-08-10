@@ -161,7 +161,10 @@ describe("Supplements page", () => {
         await user.type(screen.getByLabelText("Group name"), "Evening");
         await user.type(screen.getByPlaceholderText("Supplement name"), "ome");
 
-        await user.click(await screen.findByRole("button", { name: /Omega-3/ }));
+        // Scoped to the typeahead: the catalog list below now renders an
+        // "Edit Omega-3" button too, and an unscoped name match finds both.
+        const suggestions = await screen.findByTestId("food-suggestions");
+        await user.click(within(suggestions).getByRole("button", { name: /Omega-3/ }));
         await user.click(screen.getByRole("button", { name: "Create group" }));
 
         await waitFor(() =>

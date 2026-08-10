@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "helf": {
+      "command": "backend/.venv/bin/python",
+      "args": ["-m", "app.mcp.qs_mcp"],
+      "env": {
+        "PYTHONPATH": "backend",
+        "QS_DB_PATH": "data/helf.db",
+        "QS_MCP_MODE": "read-only"
+      }
+    }
+  }
+}

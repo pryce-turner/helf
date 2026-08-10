@@ -169,8 +169,25 @@ Against a `.backup` copy of production, with the real stacks:
 
 ## 7. Rollback
 
-`downgrade()` drops `stack_item`, `stack` and the audit triggers, rebuilds
-`v_daily_summary` without `supplements_taken` and without the `kind` filter,
-and drops `food.kind` — which turns supplements back into ordinary foods rather
-than deleting them, since the log rows referencing them are real consumption
-events either way.
+`downgrade()` drops `stack_item`, `stack` and the audit triggers, drops
+`food.kind` — which turns supplements back into ordinary foods rather than
+deleting them, since the log rows referencing them are real consumption events
+either way — and rebuilds `v_daily_summary` without `supplements_taken` and
+without the `kind` filter.
+
+**The order in that sentence is load-bearing, and the first version got it
+wrong.** Dropping `food.kind` needs batch mode, because SQLite refuses
+`DROP COLUMN` for a column named in a `CHECK`, so Alembic copies the table and
+renames it into place. That rename fails while any view still references
+`food`:
+
+```
+error in view v_daily_summary: no such table: main.food
+[SQL: ALTER TABLE _alembic_tmp_food RENAME TO food]
+```
+
+The original downgrade recreated the view *before* the column drop and was
+therefore broken from the moment it was written. Caught by adding
+`alembic downgrade base && alembic upgrade head` to CI — which is the entire
+argument for that step, since a rollback nobody exercises is a rollback that
+does not work when it is needed.

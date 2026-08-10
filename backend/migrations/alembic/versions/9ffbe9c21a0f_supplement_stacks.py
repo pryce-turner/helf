@@ -236,8 +236,18 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Order matters, and getting it wrong fails loudly but late.
+    #
+    # Dropping `food.kind` needs batch mode: SQLite refuses DROP COLUMN for a
+    # column named in a CHECK, so Alembic copies the table and renames it into
+    # place. That rename fails while any view still references `food`:
+    #
+    #     error in view v_daily_summary: no such table: main.food
+    #     [SQL: ALTER TABLE _alembic_tmp_food RENAME TO food]
+    #
+    # So the view comes down first and goes back up last, with the table
+    # rebuild in between.
     op.execute("DROP VIEW IF EXISTS v_daily_summary")
-    op.execute(_daily_summary("", ""))
 
     for table in AUDITED:
         op.execute(f"DROP TRIGGER IF EXISTS audit_{table}_update")
@@ -251,3 +261,5 @@ def downgrade() -> None:
     # log rows referencing them are real consumption events either way.
     with op.batch_alter_table("food") as batch:
         batch.drop_column("kind")
+
+    op.execute(_daily_summary("", ""))

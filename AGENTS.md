@@ -599,9 +599,11 @@ pytest --cov=app                             # coverage
 .venv/bin/alembic check                      # drift between ORM and migrations
 .venv/bin/alembic upgrade head
 
-# Frontend lint
+# Frontend lint, page tests, type check + build
 cd frontend
 npm run lint
+npm test        # jsdom mounts of the pages
+npm run build   # includes tsc
 
 # Type check + build
 npm run build  # Includes tsc

@@ -60,16 +60,25 @@ too, but it is **gitignored** — this is the copy a fresh clone gets.
 
 Work that is finished but under-checked. Not bugs; things nobody has looked at.
 
-- **The Food and Supplements pages have never been rendered in a browser.**
-  Type-checked, endpoints exercised end-to-end against real data, but unseen.
-- **The MCP server is not registered with any client.** It runs correctly from
-  the command line; no `mcpServers` entry points at it (0006 §8 has the JSON).
+- **The Food and Supplements pages have never been seen by a human.** They are
+  now *mounted* under test (`npm test`, jsdom) — which catches render crashes,
+  wrong groupings and missing states — but nothing has checked how they look.
+  Layout, spacing and colour are still unverified.
 - **No supplement editor.** A typo in a supplement's serving text or macros is
   permanent from the UI — `PUT /api/food/{id}` exists and nothing calls it.
 - **Audit-log volume wants a check after a month of real use** (0007 §4).
-- **There is no CI.** `pytest`, `ruff check`, `alembic check`, `npm run lint`
-  and `npm run build` are all clean and all run by hand. `alembic check` is the
-  one that matters most — nothing else catches ORM/migration drift.
+
+Recently paid down:
+
+- ~~No CI~~ — `.github/workflows/ci.yml` runs ruff, pytest, `alembic check`,
+  a full `downgrade base` / `upgrade head` round trip, eslint, the jsdom tests
+  and the build. **The round-trip step found a real bug on its first run**: the
+  0011 downgrade rebuilt `food` while `v_daily_summary` still referenced it, so
+  the rollback had never worked (0011 §7).
+- ~~The MCP server is registered with no client~~ — `.mcp.json` at the repo
+  root, project-scoped and read-only. Verified over real stdio JSON-RPC: four
+  read tools visible, instructions delivered, and `UPDATE` through `query`
+  refused by the engine.
 
 **Commands, not numbers.** Everything below is derivable in a second and goes
 stale the moment it is written down, so this section deliberately records how to

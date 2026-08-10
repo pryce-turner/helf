@@ -205,7 +205,7 @@ cd backend && pytest          # 302 tests
 ruff check .
 .venv/bin/alembic check       # ORM vs migrations drift
 
-cd frontend && npm run lint && npm run build
+cd frontend && npm run lint && npm test && npm run build
 ```
 
 Test fixtures build the database **by running the real migrations** against a

@@ -1,0 +1,89 @@
+name: CI
+
+# Every check here was already clean and run by hand. That is exactly the
+# problem: `alembic check` is the only thing that catches the ORM drifting from
+# the migration history, and a check nobody is obliged to run is a check that
+# eventually is not run.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Tests
+        # Fixtures build their own database by running the real migrations
+        # against a temp file, so nothing here needs a database of its own.
+        run: pytest -q
+
+      - name: Migrations apply cleanly to an empty database
+        env:
+          DATA_DIR: ${{ runner.temp }}/helf-data
+        run: alembic upgrade head
+
+      - name: ORM matches the migration history
+        # The check that justifies this workflow. It fails when a model is
+        # edited without a revision, which no other check catches and which
+        # only shows up later as a production migration that does not apply.
+        env:
+          DATA_DIR: ${{ runner.temp }}/helf-data
+        run: alembic check
+
+      - name: Migrations are reversible
+        # Down to the baseline and back. Several revisions carry real backfills
+        # in `downgrade()` — Plan 0010 rebuilds a dropped table from
+        # observation/metric — and a rollback nobody exercises is a rollback
+        # that does not work when it is needed.
+        env:
+          DATA_DIR: ${{ runner.temp }}/helf-data
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        # jsdom mounts of the pages. `tsc` cannot catch a hook called
+        # conditionally or an undefined access inside a `.map`; these can.
+        run: npm test
+
+      - name: Type check and build
+        run: npm run build

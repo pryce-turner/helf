@@ -1,6 +1,6 @@
 # Plan 0010: Retire `body_composition`
 
-**Status:** Implemented (2026-08-09) — revision `9a4c05d7f31e`
+**Status:** Implemented (2026-08-09) — revision `86c8bbc9e2d7`
 **Prerequisites:** Plan 0003 ✓ (read path on the views), Plan 0007 ✓ (the
 audit log, so a deletion is not the last word on what a row held)
 **Related:** ADR-0003, Plan 0003 §4 and §9

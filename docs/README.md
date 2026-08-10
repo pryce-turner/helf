@@ -37,23 +37,43 @@ wrong, write a new ADR — don't quietly rewrite history.
 - [ADR-0003](decisions/0003-pounds-as-canonical-unit.md) — Pounds as the canonical unit for body mass
 - [ADR-0004](decisions/0004-mcp-server-over-rest-for-agent-access.md) — Expose the DB to the agent over MCP, not REST
 - [ADR-0005](decisions/0005-no-amrap-in-the-data-model.md) — No AMRAP notation in the data model; `reps` is an integer
+- [ADR-0006](decisions/0006-food-is-a-tab-under-body-not-a-sixth-nav-item.md) — The mobile nav bar is full at five; a new destination is a tab, not an entry
 
 ### Design
 - [Quantified-Self App — Architecture & Build Plan](design/quantified-self-plan.md) — the source design doc
+- [MCP server instructions](design/mcp-instructions.md) — loaded verbatim at startup by the MCP server; the shortest orientation to the schema's conventions
 
 ### Plans
-- [0001 — Integration roadmap](plans/0001-integration-roadmap.md) — gap analysis, phase order, risk register **(start here)**
-- [0002 — Schema foundation](plans/0002-schema-foundation.md) — Alembic, pragmas, WAL — **Done**
+
+**[`plans/README.md`](plans/README.md) is the status of record** — read it
+first. Status is deliberately not repeated here; it was, and the two copies
+drifted.
+
+- [0001 — Integration roadmap](plans/0001-integration-roadmap.md) — gap analysis, phase order, risk register
+- [0002 — Schema foundation](plans/0002-schema-foundation.md) — Alembic, pragmas, WAL
 - [0003 — Units and metrics](plans/0003-units-and-metrics.md) — kg normalization, wide→tall body comp
 - [0004 — Workout session regrain](plans/0004-workout-session-regrain.md) — flat rows → session/set hierarchy
-- [0005 — Food and notes](plans/0005-food-and-notes.md) — new tables, new surface
-- [0006 — MCP server](plans/0006-mcp-server.md) — wiring `reference/qs_mcp.py` to the real DB
+- [0005 — Food and notes](plans/0005-food-and-notes.md) — `food`, `food_log`, `note`, `v_daily_summary`
+- [0006 — MCP server](plans/0006-mcp-server.md) — the agent's read path
 - [0007 — Audit log](plans/0007-audit-log.md) — append-only change history
 - [0008 — BodySpec DEXA integration](plans/0008-bodyspec-integration.md) — API-sourced body composition
-- [0009 — Drop AMRAP notation](plans/0009-drop-amrap-notation.md) — `reps` TEXT → INTEGER — **Done**
+- [0009 — Drop AMRAP notation](plans/0009-drop-amrap-notation.md) — `reps` TEXT → INTEGER
+- [0010 — Retire `body_composition`](plans/0010-retire-body-composition.md) — the wide table, dropped
 
 ### Reference
-- [`reference/qs_mcp.py`](reference/qs_mcp.py) — MCP server implementation from the design doc. **Not packaged or imported**; targets the design doc's schema, not the current one. Plan 0006 covers wiring it up.
+- [`reference/qs_mcp.py`](reference/qs_mcp.py) — **Superseded.** The original MCP server from the design doc, kept as the record of what was designed. Its SQL does not match the database. The running server is `backend/app/mcp/qs_mcp.py`.
+
+## Where the schema is described
+
+Deliberately nowhere in prose, in one place. `AGENTS.md` says why: a written
+schema goes stale and is then believed. In order of usefulness:
+
+| Want | Look at |
+|---|---|
+| What each table is *for* | `backend/app/db/models.py` — every table carries a docstring, and `alembic check` fails if it drifts from the migrations |
+| Why a table is shaped that way | The plan that created it — 0002 baseline, 0003 `metric`/`observation`/`metric_def`, 0005 `food`/`food_log`/`note`, 0007 `audit_log`, 0008 `document` |
+| The authoritative current DDL | `sqlite3 data/helf.db .schema`, or `get_schema()` over MCP |
+| The short orientation | [`design/mcp-instructions.md`](design/mcp-instructions.md) — written for an agent, and the fastest read for a person |
 
 ## Provenance
 

@@ -50,7 +50,12 @@ app/
 │   ├── exercises.py
 │   ├── progression.py
 │   ├── upcoming.py
-│   └── body_comp.py
+│   ├── body_comp.py
+│   ├── food.py
+│   ├── notes.py
+│   └── stacks.py
+├── mcp/
+│   └── qs_mcp.py        # Stdio MCP server — separate process, read-only
 ├── db/
 │   └── models.py        # SQLAlchemy ORM models (tables)
 ├── models/              # Pydantic request/response schemas
@@ -58,20 +63,29 @@ app/
 │   ├── exercise.py
 │   ├── progression.py
 │   ├── upcoming.py
-│   └── body_composition.py
+│   ├── body_composition.py
+│   ├── food.py
+│   ├── note.py
+│   └── stack.py
 ├── repositories/        # Data access layer (SQLAlchemy queries)
 │   ├── workout_repo.py
 │   ├── exercise_repo.py
 │   ├── upcoming_repo.py
-│   └── body_comp_repo.py
+│   ├── body_comp_repo.py
+│   ├── food_repo.py
+│   ├── note_repo.py
+│   └── stack_repo.py
 ├── services/            # Business logic
 │   ├── progression_service.py
 │   ├── mqtt_service.py
 │   ├── wendler_service.py
-│   └── liftoscript_service.py
+│   ├── liftoscript_service.py
+│   ├── bodyspec_client.py
+│   └── bodyspec_sync.py
 ├── utils/               # Pure helper functions
 │   ├── calculations.py
-│   └── date_helpers.py
+│   ├── date_helpers.py
+│   └── units.py
 └── presets/              # Built-in workout program scripts
     ├── wendler_531.liftoscript
     └── stronglifts_5x5.liftoscript
@@ -82,8 +96,18 @@ app/
 - **API routes** (`api/`): HTTP handling, request parsing, response formatting. No business logic.
 - **Services** (`services/`): Business logic, calculations, external integrations (MQTT).
 - **Repositories** (`repositories/`): Database queries via SQLAlchemy. Auto-creates exercises/categories on reference.
-- **Models** (`models/`): Pydantic schemas for validation. Separate from ORM models.
-- **DB models** (`db/models.py`): SQLAlchemy table definitions with relationships.
+- **Models** (`models/`): Pydantic schemas for validation. **Deliberately
+  separate from the ORM models** — they are the HTTP contract, not the storage
+  shape, and the two have diverged. The body-composition response has no table
+  behind it at all; it is assembled from a view over the tall `metric` store,
+  which is why dropping the old wide table changed nothing for the frontend.
+- **DB models** (`db/models.py`): SQLAlchemy table definitions. Every table
+  carries a docstring explaining what it is for and why it is shaped that way —
+  this is the closest thing to a schema reference, and `alembic check` fails if
+  it drifts from the migrations.
+- **MCP server** (`mcp/qs_mcp.py`): **not** part of these layers. It is a
+  separate process that opens the same SQLite file with raw SQL (ADR-0002) and
+  imports nothing from the app but `config`.
 
 ## API Endpoints
 
@@ -148,9 +172,41 @@ app/
 | GET | `/` | List measurements (optional date range filter) |
 | GET | `/latest` | Most recent measurement |
 | GET | `/stats` | Summary statistics (totals, changes, date range) |
-| GET | `/trends?days=30` | Trend arrays for charting (1-365 days) |
+| GET | `/trends?days=30&source=` | Trend arrays for charting (1-365 days); omit `source` to get every point with a parallel `sources` array |
 | POST | `/` | Create measurement (manual or from MQTT) |
-| DELETE | `/{id}` | Delete measurement |
+| POST | `/sync/bodyspec` | Import DEXA scans. Token in the `Authorization` header, used for one request and stored nowhere |
+| DELETE | `/{id}` | Delete measurement. **`{id}` is an `observation.id`** — what the read path returns |
+
+### Food `/api/food`
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/day?date=` | One day's totals *and* entries, read together so the running total cannot disagree with the list |
+| GET | `/log?date=` | Entries for a day |
+| GET | `/log/summary?start&end` | Daily kcal and macro totals. Days with nothing logged are **absent, not zero** |
+| POST | `/log` | Log a consumption event, by `food_id` or by naming the food |
+| DELETE | `/log/{id}` | Delete a logged entry |
+| GET | `/?q=&kind=` | Search the catalog; `kind` is `food` or `supplement` |
+| POST | `/` | Create a food, or return the existing `(name, brand)` match |
+| GET / PUT | `/{id}` | Read / edit macros. **Editing is retroactive** across every past entry |
+
+### Stacks `/api/stacks`
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | All stacks, each with `taken_today` and `last_taken` |
+| POST | `/` | Create a stack; items naming an unknown food create it |
+| GET / PUT / DELETE | `/{id}` | `items` on PUT **replaces** the membership wholesale |
+| POST | `/{id}/log` | Write one `food_log` row per item, at one instant |
+
+### Notes `/api/notes`
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/?kind=&start=&end=` | Notes, most recent first |
+| GET | `/kinds` | Counts and date spans per kind, across notes and documents |
+| POST | `/` | Write a note |
+| GET / DELETE | `/{id}` | Read / delete one |
 
 ### System
 
@@ -162,82 +218,36 @@ app/
 
 ## Database Schema
 
-SQLite database at `{DATA_DIR}/helf.db` with 5 tables:
+**Not written out here, on purpose.** A schema in prose goes stale and is then
+believed — this section used to document five tables with `weight_unit` columns
+and a `reps TEXT` holding AMRAP notation, none of which had existed for several
+revisions. There are now thirteen tables and five views.
 
-### `categories`
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER | Primary key |
-| name | TEXT | Unique |
-| created_at | TEXT | ISO timestamp |
+| Want | Look at |
+|---|---|
+| What each table is *for* | `app/db/models.py` — a docstring per table, kept honest by `alembic check` |
+| Why it is shaped that way | The plan that created it, in `../docs/plans/` |
+| The authoritative DDL | `sqlite3 $DATA_DIR/helf.db .schema` |
+| A short orientation | `../docs/design/mcp-instructions.md` |
 
-### `exercises`
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER | Primary key |
-| name | TEXT | Unique, indexed |
-| category_id | INTEGER | FK -> categories |
-| notes | TEXT | Optional |
-| last_used | TEXT | Date string |
-| use_count | INTEGER | Default 0 |
-| created_at | TEXT | ISO timestamp |
+The shape, which does not go stale:
 
-### `workouts`
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER | Primary key |
-| date | TEXT | Indexed (YYYY-MM-DD) |
-| exercise_id | INTEGER | FK -> exercises |
-| category_id | INTEGER | FK -> categories |
-| weight | REAL | Optional |
-| weight_unit | TEXT | "lbs" or "kg" |
-| reps | TEXT | Supports AMRAP notation ("5+") |
-| distance | REAL | Optional |
-| distance_unit | TEXT | Optional |
-| time | TEXT | Optional |
-| comment | TEXT | Optional |
-| order | INTEGER | For drag-reorder |
-| completed_at | TEXT | Optional completion timestamp |
-| created_at | TEXT | ISO timestamp |
-| updated_at | TEXT | ISO timestamp |
-
-Composite index on `(date, order)`.
-
-### `upcoming_workouts`
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER | Primary key |
-| session | INTEGER | Indexed (groups workouts into sessions) |
-| exercise_id | INTEGER | FK -> exercises |
-| category_id | INTEGER | FK -> categories |
-| weight | REAL | Optional |
-| weight_unit | TEXT | "lbs" or "kg" |
-| reps | TEXT | Optional |
-| distance | REAL | Optional |
-| distance_unit | TEXT | Optional |
-| time | TEXT | Optional |
-| comment | TEXT | Optional |
-| created_at | TEXT | ISO timestamp |
-
-### `body_composition`
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER | Primary key |
-| timestamp | TEXT | Unique (ISO timestamp) |
-| date | TEXT | Date portion |
-| weight | REAL | Required |
-| weight_unit | TEXT | "kg" or "lbs" |
-| body_fat_pct | REAL | Optional |
-| muscle_mass | REAL | Optional |
-| bmi | REAL | Optional |
-| water_pct | REAL | Optional |
-| bone_mass | REAL | Optional |
-| visceral_fat | REAL | Optional |
-| metabolic_age | REAL | Optional |
-| protein_pct | REAL | Optional |
-| created_at | TEXT | ISO timestamp |
-
-Composite index on `(date, timestamp)`.
+- **Training is flat.** A `workouts` row is one logged set; a session is the
+  rows sharing a `date`, ordered by `order`. `reps` is an `INTEGER` and there is
+  no AMRAP notation anywhere in the data model (ADR-0005).
+- **Everything measured is tall.** An `observation` is one act of measuring — a
+  time and an instrument — carrying `metric` rows whose names come from a fixed
+  vocabulary in `metric_def`. Adding a quantity is a row, not a migration.
+  Adding a *name* is a migration, on purpose.
+- **Units live in names.** `body_weight_lb`, `bone_mass_kg`. Pounds are
+  canonical for body mass (ADR-0003) and no row carries a unit column.
+- **Intake is `food` + `food_log`**, with supplements stored as foods
+  (`food.kind`) and `stack`/`stack_item` grouping them for one-tap logging.
+  Macros live on the food, so correcting one corrects every past entry.
+- **The journal is `note` + `document`** — prose and raw payloads with no
+  settled shape yet, expected to be promoted into real columns later.
+- **`audit_log` is append-only**, enforced by triggers, and is mutation history
+  rather than a data source.
 
 ## Services
 
@@ -249,10 +259,37 @@ Calculates 1RM estimates from historical workouts and projects future values fro
 - Projects upcoming sessions as future dates (every 2 days)
 
 ### MQTTService
-Listens to `openScaleSync/measurements/last` and `openScaleSync/measurements/all` topics for automatic body composition data from smart scales. Converts timestamps to Pacific timezone. Deduplicates by timestamp.
+Listens to `openScaleSync/measurements/last` and `openScaleSync/measurements/all`
+for body composition from the smart scale. Converts timestamps to Pacific.
+
+Only `weight` is converted from kilograms; every other field is a percentage, an
+index, an age, or — in the case of bone — a mass that is stored in the unit it
+arrived in as `bone_mass_kg`. In particular `muscle` is a **percentage** despite
+being named `muscle_mass` in the API: it correlates with body weight at
+r = −0.985 across the existing 150 rows, which is the signature of a fraction.
+
+Readings are tagged `source='openscale'` and deduplicated per instrument, so a
+manual entry at the same instant is a second measurement rather than a
+collision.
+
+### BodySpec sync (`bodyspec_client.py`, `bodyspec_sync.py`)
+Pulls DEXA scans on demand. The access token arrives in a request header, is
+forwarded upstream, and is written nowhere — no config, no database, no log. It
+exists inside Helf for the duration of one request. The raw payload is kept
+whole in `document`, and thirteen scalars are promoted to `metric` rows with the
+scan's `document_id` for provenance, including a locally computed Katch-McArdle
+RMR that BodySpec does not offer.
 
 ### WendlerService
 Provides estimated 1RM values for the main lifts (Squat, Bench, Deadlift) from the last 10 workouts per exercise. Used by the Liftoscript parser for percentage-based weight calculations.
+
+### MCP server (`app/mcp/qs_mcp.py`)
+**Not a service** — a separate process, run as `python -m app.mcp.qs_mcp`, that
+opens the same SQLite file directly (ADR-0002) and imports nothing from the app
+but `config`. Read tools run on a `mode=ro` connection so the engine itself
+refuses a write; write tools are simply **not registered** unless
+`QS_MCP_MODE=read-write`, because a tool that does not exist cannot be argued
+with. Server instructions load from `../docs/design/mcp-instructions.md`.
 
 ### LiftoscriptParser
 Parses a simplified Liftoscript syntax for defining workout programs:
@@ -314,7 +351,19 @@ pytest tests/test_services_liftoscript.py
 pytest --cov=app
 ```
 
-Tests use an **in-memory SQLite database** (configured in `tests/conftest.py`). Test categories:
+Fixtures build the database **by running the real migrations** against a
+temporary file (`tests/conftest.py`) — not `Base.metadata.create_all()`, and not
+in memory. The read path queries views and `metric_def` carries a seeded
+vocabulary, neither of which exists in ORM metadata, so `create_all()` would
+produce a database the application cannot run against. New tables and seeds must
+therefore arrive via a migration.
+
+One trap worth naming: `from app.database import SessionLocal` at module scope
+binds the *production* engine, and is only safe if `conftest`'s patch list names
+that module. Reference `database.SessionLocal` through the module instead — a
+test that gets this wrong writes to `data/helf.db`.
+
+Test categories:
 
 - `test_api_*.py` - API endpoint integration tests
 - `test_repositories_*.py` - Repository/database layer tests
@@ -322,6 +371,9 @@ Tests use an **in-memory SQLite database** (configured in `tests/conftest.py`). 
 - `test_utils*.py` - Utility function tests (calculations, date helpers)
 - `test_config.py` - Configuration tests
 - `test_migration_script.py` - TinyDB migration test
+- `test_db_*.py` - Schema-level behaviour: the tall `metric` model, the daily
+  summary view, the audit log's append-only triggers
+- `test_mcp_server.py` - The agent's tools and the read-only privilege boundary
 
 ## Migrations
 

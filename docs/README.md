@@ -80,8 +80,15 @@ schema goes stale and is then believed. In order of usefulness:
 
 `design/quantified-self-plan.md` and `reference/qs_mcp.py` came from a
 browser-based Claude conversation and were imported verbatim. The design doc
-references a `schema.sql` that was never downloaded — see the open item in
-`TODO.md`. UI/UX items come from Obsidian (`PryceVault/Lifting/Helf Notes.md`).
+references a `schema.sql` that was never downloaded; it was never recovered and
+is now moot, since the schema is defined by the Alembic revisions.
+
+`TODO.md` at the repo root is a **gitignored** scratch list, so a fresh clone
+does not get it. Anything that needs to survive a clone goes in
+[`plans/README.md`](plans/README.md) instead — its "Deliberately not switched
+on" and "Verification debt" sections are there for that reason.
+
+UI/UX items come from Obsidian (`PryceVault/Lifting/Helf Notes.md`).
 
 ## Agent instructions
 

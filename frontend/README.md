@@ -41,6 +41,8 @@ src/
 ├── index.css                  # Design system (CSS custom properties)
 ├── components/
 │   ├── Navigation.tsx         # Sidebar (desktop) / bottom bar (mobile)
+│   ├── SectionTabs.tsx        # Sibling routes sharing one nav entry
+│   ├── BodySectionTabs.tsx    # Composition / Food / Supplements (ADR-0006)
 │   ├── LiftoscriptEditor.tsx  # Script editor for workout programs
 │   ├── PresetSelector.tsx     # Dropdown for built-in workout presets
 │   ├── PWA/
@@ -58,6 +60,8 @@ src/
 │   ├── useProgression.ts      # 1RM progression data
 │   ├── useBodyComposition.ts  # Body comp measurements & trends
 │   ├── useUpcoming.ts         # Upcoming workouts, Liftoscript, presets
+│   ├── useFood.ts             # Day, range summary, catalog search, logging
+│   ├── useStacks.ts           # Supplement groups, one-tap logging
 │   └── usePWA.ts              # Online status, install prompt
 ├── lib/
 │   └── api.ts                 # Axios instance + all API functions
@@ -66,14 +70,18 @@ src/
 │   ├── WorkoutSession.tsx     # Day view: log exercises, drag-reorder, complete
 │   ├── Progression.tsx        # 1RM charts with moving average + projections
 │   ├── Upcoming.tsx           # Session planner, Liftoscript editor, presets
-│   ├── BodyComposition.tsx    # Trends, stats, manual entry
+│   ├── BodyComposition.tsx    # Trends, stats, DEXA import
+│   ├── Food.tsx               # Daily log against a measured kcal target
+│   ├── Supplements.tsx        # Stacks, logged in one tap
 │   └── Exercises.tsx          # Exercise catalog by category
 └── types/
     ├── workout.ts             # Workout, WorkoutCreate, CalendarResponse
     ├── exercise.ts            # Exercise, Category, SeedExercisesResponse
     ├── progression.ts         # ProgressionDataPoint, ProgressionResponse
     ├── upcoming.ts            # UpcomingWorkout, Liftoscript types, PresetInfo
-    └── bodyComposition.ts     # BodyComposition, Stats, Trend
+    ├── bodyComposition.ts     # BodyComposition, Stats, Trend
+    ├── food.ts                # Food, FoodLogEntry, FoodDaySummary, FoodKind
+    └── stack.ts               # Stack, StackItem, StackLogResult
 ```
 
 ## Routes
@@ -85,8 +93,18 @@ src/
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) charts |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
 | `/upcoming` | Upcoming | Plan future workouts with Liftoscript |
-| `/body-composition` | BodyComposition | Weight/body fat trends and stats |
+| `/body-composition` | BodyComposition | Weight/body fat trends, DEXA import |
+| `/food` | Food | Daily intake against a measured kcal target |
+| `/supplements` | Supplements | Preset groups, logged in one tap |
 | `/exercises` | Exercises | Browse and manage exercise catalog |
+
+`/body-composition`, `/food` and `/supplements` are one **section**: three tabs
+under a single "Body" nav entry, each with its own URL so it stays bookmarkable.
+The mobile bottom bar is full at five items, so a new destination is a tab
+rather than a sixth entry — see
+[ADR-0006](../docs/decisions/0006-food-is-a-tab-under-body-not-a-sixth-nav-item.md).
+`Navigation.tsx` keeps a `sectionAliases` map so "Body" stays lit on the other
+two paths.
 
 ## API Client
 
@@ -97,14 +115,21 @@ All API calls are centralized in `src/lib/api.ts` using Axios. The client groups
 - **`categoriesApi`** - CRUD, list exercises by category
 - **`progressionApi`** - Exercise progression data, main lifts, exercise list
 - **`upcomingApi`** - CRUD, bulk create, session transfer, Liftoscript generation, presets
-- **`bodyCompositionApi`** - CRUD, latest, stats, trends
+- **`bodyCompositionApi`** - CRUD, latest, stats, trends, BodySpec sync
+- **`foodApi`** - Day, range summary, catalog search, logging
+- **`stacksApi`** - Supplement groups and one-tap logging
 
 ## State Management
 
 **TanStack Query (React Query v5)** handles all server state:
 
-- **5-minute stale time** by default (no refetch on window focus)
-- **Optimistic updates** on create/update/delete mutations
+- **5-minute stale time** by default (no refetch on window focus).
+  `useFoodDay` and `useStacks` override this to `0`: logging is a
+  several-times-a-day loop, often from two devices, and a stale "not taken yet"
+  is how you take a morning stack twice
+- **Optimistic updates** on create/update/delete mutations — but *not* on food
+  or stack logging, where macros are resolved server-side from the catalog and
+  an optimistic entry would have to invent the calories
 - **Cache invalidation** on mutation success
 - **Query keys** follow `["resource", ...params]` convention
 

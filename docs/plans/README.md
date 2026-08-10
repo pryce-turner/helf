@@ -44,6 +44,33 @@ built, tested, and deliberately **not switched on**: agent write tools
 (`QS_MCP_MODE=read-write`) and a notes UI. Both are decisions, not omissions —
 0006 §8 and 0005 §7.
 
+### Deliberately not switched on
+
+Recorded here because they look like gaps and are decisions. `TODO.md` says so
+too, but it is **gitignored** — this is the copy a fresh clone gets.
+
+| Thing | Where it is argued |
+|---|---|
+| Agent **write** tools — `QS_MCP_MODE` defaults to `read-only` | 0006 §8 |
+| Notes have an API and no UI | 0005 §7 |
+| `v_blood_results` is not built — no data source | 0001 §5 |
+| Plan 0004, the workout regrain | 0004 §1 |
+
+### Verification debt
+
+Work that is finished but under-checked. Not bugs; things nobody has looked at.
+
+- **The Food and Supplements pages have never been rendered in a browser.**
+  Type-checked, endpoints exercised end-to-end against real data, but unseen.
+- **The MCP server is not registered with any client.** It runs correctly from
+  the command line; no `mcpServers` entry points at it (0006 §8 has the JSON).
+- **No supplement editor.** A typo in a supplement's serving text or macros is
+  permanent from the UI — `PUT /api/food/{id}` exists and nothing calls it.
+- **Audit-log volume wants a check after a month of real use** (0007 §4).
+- **There is no CI.** `pytest`, `ruff check`, `alembic check`, `npm run lint`
+  and `npm run build` are all clean and all run by hand. `alembic check` is the
+  one that matters most — nothing else catches ORM/migration drift.
+
 **Commands, not numbers.** Everything below is derivable in a second and goes
 stale the moment it is written down, so this section deliberately records how to
 ask rather than the answer. A file asserting "177 tests pass" is wrong as soon

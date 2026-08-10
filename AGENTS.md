@@ -174,6 +174,169 @@ helf/
 └── LICENSE
 ```
 
+## The data model, and the invariants that hold it together
+
+**Read this before touching the schema.** The column lists are deliberately not
+written down anywhere — they go stale and are then believed. What follows is the
+*shape*, which does not.
+
+### Two grains
+
+**Training is flat.** A `workouts` row is one logged set; a session is the rows
+sharing a `date`, ordered by `order`. Plan 0004 would make sessions a real
+entity and is **deferred** — the MCP write path adapts a session-shaped tool
+onto flat rows instead.
+
+**Everything measured is tall.** An `observation` is one act of measuring — an
+instant and an instrument — carrying `metric` rows whose names come from a fixed
+vocabulary in `metric_def`. Adding a *quantity* is a row. Adding a *name* is a
+migration, on purpose: the name carries the unit, so `vitamin_d_iu` cannot
+quietly become mcg later.
+
+### Units live in names
+
+Pounds are canonical for body mass (ADR-0003) and **no row carries a unit
+column**. `body_weight_lb`, `bone_mass_kg`. Two traps:
+
+- `muscle_pct` is a **percentage** despite the API calling it `muscle_mass` — it
+  correlates with body weight at r = −0.985, the signature of a fraction.
+- `bone_mass_kg` is kilograms while its neighbours are pounds, because DEXA
+  sub-masses are all kg (Plan 0008) and openScale reports kg. A pounds copy
+  would put one quantity under two names.
+
+### `doc_id` is an `observation.id`
+
+Not a `body_composition.id` — that table is gone (Plan 0010), and the two
+sequences disagreed on 77 of 150 rows, so treating one as the other deleted a
+different measurement than the user asked for. The alias itself is TinyDB
+legacy; FastAPI serialises by alias, so the JSON key is `doc_id`, never `id`.
+
+### Three instruments write body composition, and they disagree
+
+`observation.source` is `openscale`, `bodyspec` or `dexafit`. They measure the
+same quantities with different instruments and **must never be averaged or
+differenced across**. On 2026-03-10 the scale read 6.15 percentage points of
+body fat above the DEXA scan taken hours later — that gap is the instruments,
+not the body.
+
+The read path is source-aware: `BodyCompositionStats.primary_source` names the
+single series its deltas describe, and `/trends` returns a `sources` array
+parallel to `dates` so a chart can keep them as separate marks. See
+`docs/plans/0003-units-and-metrics.md` §4a.
+
+### Intake, and supplements as foods
+
+`food` carries macros per serving; `food_log` carries consumption events, and a
+serving's numbers are **derived at read time** — so correcting a food corrects
+every past entry. That is intended, and it is why `PUT /api/food/{id}` is a
+deliberate act rather than something logging does implicitly.
+
+A **supplement is a `food` row** with `kind = 'supplement'`, not a separate
+table: whey is food by any definition at 120 kcal a scoop, and the boundary is
+not somewhere a schema can put it. `stack` + `stack_item` are the grouping, with
+`servings` on the membership so one product can be taken two ways.
+
+**`food_log` carries no `stack_id`.** A log row records what was consumed; the
+stack is only how it was entered. `taken_today` is derived — every one of the
+stack's foods appears in today's log — so it holds whether the button was tapped
+or the items entered by hand, and editing a stack cannot rewrite the past.
+
+`foods_missing_macros` counts **meals only**. A vitamin has no macros to be
+missing and would otherwise flag every fully logged day forever.
+
+### `v_daily_summary` is the cross-domain join
+
+Volume, intake, macros, body weight, mood, notes and `kcal_target` on one day
+spine. **`kcal_target` is measured, not assumed** — the last DEXA scan's
+Katch-McArdle RMR on or before that day, times 1.4. NULL before the first scan,
+deliberately: a target no measurement supports is worse than a blank.
+
+Adding a column per tracked thing would rebuild the wide table Plan 0010 just
+retired. `supplements_taken` is a count for that reason.
+
+### The journal is not the audit log
+
+| | `note` / `document` | `audit_log` |
+|---|---|---|
+| Records | Observations about the world | Mutations to other tables |
+| Written by | You and the agent | Database triggers |
+| Lifecycle | Staging — *expected* to be restructured | **Immutable forever** |
+
+Prose goes in `note`; raw payloads stay whole in `document.raw` behind a
+`json_valid` check. A named scalar over time is neither — it has a shape
+already and belongs in `metric`. The promotion pathway is
+`docs/plans/0005-food-and-notes.md` §1a.
+
+### Mutations are audited by triggers, and the log cannot be rewritten
+
+`audit_log` records UPDATEs and DELETEs — plus INSERTs on `metric` and
+`exercises`, where an insert can silently replace or invent something — for
+`metric`, `food`, `food_log`, `note`, `workouts`, `exercises`, `stack` and
+`stack_item`. It is populated **by database triggers, not by this application**:
+there are two writers (ADR-0002) and application-level auditing would cover one
+of them. `BEFORE UPDATE`/`BEFORE DELETE` triggers `RAISE(ABORT, 'audit_log is
+append-only')`.
+
+`actor` comes from the one-row `audit_actor` table, which defaults to `'app'`. A
+second writer claims it with `BEGIN IMMEDIATE` **before** setting it and resets
+it inside the same transaction; the write lock is what keeps the claim from
+bleeding onto a concurrent writer's rows. A `TEMP` marker table cannot be used —
+SQLite forbids triggers from reading `temp`, and an unqualified name binds to
+`main` at compile time. See `docs/plans/0007-audit-log.md` §9.
+
+## The agent reads this database over MCP, read-only by default
+
+`backend/app/mcp/qs_mcp.py` is a stdio MCP server that opens `data/helf.db`
+directly — a second process on the same file, not a second code path
+(ADR-0002). It imports nothing from `app` except `config`, and even that is
+deferred: a stdio server is launched with an arbitrary working directory, and
+`Settings` reads a relative `.env` and creates `../data` on import.
+
+```bash
+cd backend && QS_DB_PATH=../data/helf.db .venv/bin/python -m app.mcp.qs_mcp
+```
+
+- **`QS_MCP_MODE` defaults to `read-only`**, and gating works by *not
+  registering* the write tools. A tool that does not exist cannot be attempted
+  or argued with; one that answers "not permitted" invites retries.
+- **`query` always runs on a `mode=ro` connection**, in either mode. The
+  privilege boundary is the connection, not the tool name (ADR-0004).
+- Tool functions are plain functions; `build_server()` assembles the server.
+  That is what makes the write path testable without an MCP client.
+- Server instructions live in `docs/design/mcp-instructions.md` and are loaded
+  at startup. Missing is fatal — an agent without them misreads this database
+  confidently.
+
+## Architecture Layers
+
+### Backend
+1. **API routes** (`api/`): HTTP handling, request parsing, response formatting. No business logic.
+2. **Services** (`services/`): Business logic, calculations, external integrations (MQTT).
+3. **Repositories** (`repositories/`): SQLAlchemy queries. Auto-creates exercises/categories on reference.
+4. **Pydantic models** (`models/`): Request/response validation. **Deliberately
+   separate from the ORM models** — they are the HTTP contract, not the storage
+   shape, and the two have diverged. The body-composition response has no table
+   behind it; it is built from a view over the tall `metric` store, which is why
+   dropping the old wide table changed nothing for the frontend. Repositories
+   return **dicts**, never ORM instances, so sessions can close inside them.
+5. **DB models** (`db/models.py`): SQLAlchemy table definitions. Every table
+   carries a docstring saying what it is for and why it is shaped that way —
+   the closest thing to a schema reference, kept honest by `alembic check`.
+6. **MCP server** (`app/mcp/`): **not** one of these layers. A separate process
+   on the same file, raw SQL, importing only `config` (ADR-0002).
+
+Validation is duplicated on purpose. `meal` is a Pydantic `Literal` *and* a
+SQLite `CHECK`; `food.brand` has a validator *and* `NOT NULL DEFAULT ''`. The
+agent writes raw SQL and never passes through Pydantic, so the constraint is the
+only rule both writers obey.
+
+### Frontend
+1. **Pages** (`pages/`): Route-level components with layout and data fetching.
+2. **Hooks** (`hooks/`): React Query hooks wrapping API calls with optimistic updates.
+3. **API client** (`lib/api.ts`): Axios instance with typed API function groups.
+4. **Types** (`types/`): TypeScript interfaces matching backend Pydantic schemas.
+5. **Components** (`components/`): Reusable UI components (shadcn/ui + custom).
+
 ## Development Setup
 
 ### Backend
@@ -317,7 +480,8 @@ docker-compose up -d
 ### Workout Tracking
 - Calendar view with workout count indicators and training streak
 - Exercise logging with category-based organization
-- Set tracking: weight, reps (including AMRAP notation like "5+")
+- Set tracking: weight, reps (an **integer** — no AMRAP notation in the data
+  model, ADR-0005; `5+` is Liftoscript source only and resolves to a comment)
 - Optional fields: distance, time, comments
 - Drag-to-reorder exercises within sessions (dnd-kit)
 - Move/copy all workouts between dates
@@ -339,40 +503,31 @@ docker-compose up -d
 - Multi-cycle generation
 - One-click transfer to historical data
 
-### Supplements and stacks
-- **A supplement is a `food` row** with `kind = 'supplement'`, not a separate
-  table. Whey is food by any definition at 120 kcal a scoop, and the boundary
-  between "supplement" and "food" is not somewhere a schema can put it
-- `stack` + `stack_item` are the *grouping* — "morning" is omega ×2, vitamin D
-  ×1, CholestOff ×2. `servings` lives on the membership, so one product can be
-  taken two ways
-- **`food_log` carries no `stack_id`.** A log row records what was consumed;
-  the stack is only how it was entered. `taken_today` is derived — every one of
-  the stack's foods appears in today's log — so it holds whether the button was
-  tapped or the items entered by hand, and editing a stack cannot rewrite what
-  a past day claims
-- Dose is prose in `food.serving_desc` ("1 softgel, 1000mg EPA"). Arithmetic on
-  a dose needs `metric_def` + `metric`, where the unit is fixed by the name
+### Food and intake
+- Catalog with macros per serving; log with servings, meal and time
+- Running daily totals against `kcal_target`, which comes from the last DEXA
+  scan's measured resting rate rather than a formula
+- Days with nothing logged are absent from the summary, not zero — an unlogged
+  day and a fasted day are different facts
+- Lives at `/food`, tab 2 of the Body section (ADR-0006)
 
-### Food and the calorie loop
-- `food` carries macros per serving; `food_log` carries consumption events, and
-  a serving's numbers are **derived at read time** — correcting a food corrects
-  every past entry
-- `v_daily_summary` is the cross-domain join: volume, intake, macros, body
-  weight, mood, notes and `kcal_target` on one day spine
-- **`kcal_target` is measured, not assumed** — the last DEXA scan's
-  Katch-McArdle RMR on or before that day, times 1.4. NULL before the first
-  scan, deliberately: a target no measurement supports is worse than a blank
-- Macro totals COALESCE unknown macros to zero, so `foods_missing_macros`
-  reports how many entries are understating the day — **counting meals only**,
-  because a vitamin has no macros to be missing and would otherwise flag every
-  fully logged day forever
+### Supplements and stacks
+- Named groups logged in one tap: "morning" is omega ×2, vitamin D ×1,
+  CholestOff ×2
+- A product can sit in several groups at different servings
+- Adherence shows as "taken today", derived from the log rather than from the
+  button
+- Lives at `/supplements`, tab 3 of the Body section
+
+*Why supplements are `food` rows and why the log has no `stack_id`: see the data
+model section above.*
 
 ### Body Composition
-- MQTT integration with smart scales (openScale-sync format)
-- Metrics: weight, body fat %, muscle mass, BMI, water %, bone mass, visceral fat
-- Trend visualization with configurable periods (1-365 days)
-- Summary statistics with changes over time
+- MQTT ingest from a smart scale (openScale-sync format), near-daily
+- BodySpec DEXA import — paste a token, used for one request and stored nowhere
+- Weight, body fat %, muscle %, water %, plus DEXA masses and a computed RMR
+- Trends with configurable periods; the scale is a line, DEXA is unjoined points
+- Stats name the instrument their deltas describe
 - Manual entry support
 
 ### Exercise Management
@@ -416,22 +571,6 @@ The app follows a dark-first design philosophy with an orange accent.
 - Use `<Card>` component for containers
 - Use `<Select>` component for dropdowns (Radix UI)
 - Navigation: desktop sidebar (`nav-desktop`) + mobile bottom bar (`nav-mobile`)
-
-## Architecture Layers
-
-### Backend
-1. **API routes** (`api/`): HTTP handling, request parsing, response formatting. No business logic.
-2. **Services** (`services/`): Business logic, calculations, external integrations (MQTT).
-3. **Repositories** (`repositories/`): SQLAlchemy queries. Auto-creates exercises/categories on reference.
-4. **Pydantic models** (`models/`): Request/response validation. Separate from ORM models.
-5. **DB models** (`db/models.py`): SQLAlchemy table definitions with relationships.
-
-### Frontend
-1. **Pages** (`pages/`): Route-level components with layout and data fetching.
-2. **Hooks** (`hooks/`): React Query hooks wrapping API calls with optimistic updates.
-3. **API client** (`lib/api.ts`): Axios instance with typed API function groups.
-4. **Types** (`types/`): TypeScript interfaces matching backend Pydantic schemas.
-5. **Components** (`components/`): Reusable UI components (shadcn/ui + custom).
 
 ## Testing
 
@@ -554,79 +693,6 @@ Earlier choices, predating the ADR practice:
 6. **dnd-kit**: Modern drag-and-drop library with accessibility support
 7. **Liftoscript**: Custom DSL for defining workout programs, simpler than full programming languages
 
-## The agent reads this database over MCP, read-only by default
-
-`backend/app/mcp/qs_mcp.py` is a stdio MCP server that opens `data/helf.db`
-directly — a second process on the same file, not a second code path
-(ADR-0002). It imports nothing from `app` except `config`, and even that is
-deferred: a stdio server is launched with an arbitrary working directory, and
-`Settings` reads a relative `.env` and creates `../data` on import.
-
-```bash
-cd backend && QS_DB_PATH=../data/helf.db .venv/bin/python -m app.mcp.qs_mcp
-```
-
-- **`QS_MCP_MODE` defaults to `read-only`**, and gating works by *not
-  registering* the write tools. A tool that does not exist cannot be attempted
-  or argued with; one that answers "not permitted" invites retries.
-- **`query` always runs on a `mode=ro` connection**, in either mode. The
-  privilege boundary is the connection, not the tool name (ADR-0004).
-- Tool functions are plain functions; `build_server()` assembles the server.
-  That is what makes the write path testable without an MCP client.
-- Server instructions live in `docs/design/mcp-instructions.md` and are loaded
-  at startup. Missing is fatal — an agent without them misreads this database
-  confidently.
-
-## Mutations are audited by triggers, and the log cannot be rewritten
-
-`audit_log` records UPDATEs and DELETEs (plus INSERTs on `metric` and
-`exercises`, where an insert can silently replace or invent something) for
-`metric`, `food`, `food_log`, `note`, `workouts` and `exercises`. It is
-populated **by database triggers, not by this application** — there are two
-writers (ADR-0002) and application-level auditing would cover one of them —
-and `BEFORE UPDATE`/`BEFORE DELETE` triggers `RAISE(ABORT, 'audit_log is
-append-only')`.
-
-`actor` comes from the one-row `audit_actor` table, which defaults to `'app'`.
-A second writer claims it with `BEGIN IMMEDIATE` **before** setting it and
-resets it inside the same transaction; the write lock is what keeps the claim
-from bleeding onto a concurrent writer's rows. A `TEMP` marker table cannot be
-used — SQLite forbids triggers from reading `temp`, and an unqualified name
-binds to `main` at compile time. See `docs/plans/0007-audit-log.md` §9.
-
-**This is not the journal.** `note` and `document` hold observations awaiting a
-shape and exist to be restructured; `audit_log` holds mutations and exists to
-be unchangeable.
-
-## Body composition is `observation` + `metric`, not a wide table
-
-The `body_composition` table was retired in `86c8bbc9e2d7` (Plan 0010) after
-eight months of being written and never read. A measurement is now one
-`observation` — an instant, an instrument — with one `metric` row per quantity,
-and the read path queries `v_body_comp_measurements`. There is no dual write
-and no reconciliation left.
-
-`doc_id` in the API is an **`observation.id`**. It was never a
-`body_composition.id`; those sequences disagreed on 77 of 150 rows.
-
-Two units worth knowing: `muscle_pct` is a *percentage* despite the API calling
-it `muscle_mass`, and `bone_mass_kg` is kilograms — DEXA sub-masses are all kg
-(Plan 0008) and openScale reports kg, so bone is not given a second name in
-pounds. Body weight is pounds (ADR-0003).
-
-## Body composition has three sources, and they disagree
-
-`observation.source` is `openscale`, `bodyspec` or `dexafit`. They measure the
-same quantities with different instruments and **must never be averaged or
-differenced across**. On 2026-03-10 the scale read 6.15 percentage points of
-body fat above the DEXA scan taken hours later — that gap is the instruments,
-not the body.
-
-The read path is source-aware: `BodyCompositionStats.primary_source` names the
-single series its deltas describe, and `/trends` returns a `sources` array
-parallel to `dates` so a chart can keep them as separate marks. See
-`docs/plans/0003-units-and-metrics.md` §4a.
-
 ## Migration from v1.x
 
 If migrating from a legacy TinyDB JSON export:
@@ -640,7 +706,7 @@ This converts TinyDB JSON to SQLite while preserving your existing data.
 
 **Version**: 2.0.0
 **Architecture**: FastAPI + React 19 + SQLite
-**Last Updated**: 2026-08-09
+**Last Updated**: 2026-08-10
 
 Current schema and integration state is **not** recorded here — it would go
 stale. See [`docs/plans/README.md`](docs/plans/README.md), which gives the

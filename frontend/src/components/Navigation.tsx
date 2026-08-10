@@ -9,7 +9,7 @@ const Navigation = () => {
     // is inside the Body section but not beneath its URL
     // (docs/decisions/0006-food-is-a-tab-under-body-not-a-sixth-nav-item.md).
     const sectionAliases: Record<string, string[]> = {
-        "/body-composition": ["/food"],
+        "/body-composition": ["/food", "/supplements"],
     };
 
     const isActive = (path: string) => {

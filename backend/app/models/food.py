@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Meal = Literal["breakfast", "lunch", "dinner", "snack"]
+FoodKind = Literal["food", "supplement"]
 
 
 class FoodBase(BaseModel):
@@ -15,6 +16,10 @@ class FoodBase(BaseModel):
     # index, so a nullable brand would make UNIQUE (name, brand) decorative and
     # let unlimited duplicate ('Chicken', NULL) rows accumulate.
     brand: str = ""
+    # A supplement is stored here too - it is a thing with a serving size that
+    # you swallow at a time. `kind` is what keeps a vitamin out of the meal
+    # list and out of the missing-macros warning.
+    kind: FoodKind = "food"
     serving_desc: str | None = None
     kcal_per_serving: float | None = Field(None, ge=0)
     protein_g: float | None = Field(None, ge=0)
@@ -43,6 +48,7 @@ class FoodUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1)
     brand: str | None = None
+    kind: FoodKind | None = None
     serving_desc: str | None = None
     kcal_per_serving: float | None = Field(None, ge=0)
     protein_g: float | None = Field(None, ge=0)
@@ -90,6 +96,7 @@ class FoodLogEntry(BaseModel):
     food_id: int
     name: str
     brand: str
+    kind: FoodKind = "food"
     serving_desc: str | None = None
     kcal: float | None = None
     protein_g: float | None = None
@@ -119,6 +126,7 @@ class FoodDaySummary(BaseModel):
     fat_g: float | None = None
     entries: int = 0
     foods_missing_macros: int = 0
+    supplements_taken: int = 0
     kcal_target: float | None = None
 
 

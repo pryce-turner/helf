@@ -1,4 +1,4 @@
-import { Weight, Utensils } from "lucide-react";
+import { Weight, Utensils, Pill } from "lucide-react";
 import SectionTabs from "./SectionTabs";
 
 /**
@@ -13,6 +13,10 @@ import SectionTabs from "./SectionTabs";
 const BODY_SECTION = [
     { path: "/body-composition", label: "Composition", icon: Weight },
     { path: "/food", label: "Food", icon: Utensils },
+    // The third tab is why `SectionTabs` takes a list. ADR-0006 predicted it:
+    // "the next thing that belongs beside an existing page has somewhere to go
+    // without touching the nav".
+    { path: "/supplements", label: "Supplements", icon: Pill },
 ];
 
 const BodySectionTabs = () => <SectionTabs tabs={BODY_SECTION} />;

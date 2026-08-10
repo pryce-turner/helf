@@ -29,6 +29,7 @@ _DAILY_TOTALS_COLUMNS = """
            s.carb_g,
            s.fat_g,
            s.foods_missing_macros,
+           s.supplements_taken,
            s.kcal_target,
            (SELECT COUNT(*) FROM food_log fl WHERE fl.date = s.date) AS entries
     FROM v_daily_summary s
@@ -59,6 +60,7 @@ ONE_DAY_TOTALS_SQL = text(
            s.carb_g,
            s.fat_g,
            COALESCE(s.foods_missing_macros, 0) AS foods_missing_macros,
+           COALESCE(s.supplements_taken, 0) AS supplements_taken,
            COALESCE(
                s.kcal_target,
                (SELECT p.kcal_target FROM v_daily_summary p
@@ -91,6 +93,7 @@ def _entry(log: FoodLog, food: Food) -> dict:
         "food_id": food.id,
         "name": food.name,
         "brand": food.brand,
+        "kind": food.kind,
         "serving_desc": food.serving_desc,
         "kcal": scaled(food.kcal_per_serving),
         "protein_g": scaled(food.protein_g),
@@ -108,6 +111,7 @@ class FoodRepository:
             "doc_id": food.id,
             "name": food.name,
             "brand": food.brand,
+            "kind": food.kind,
             "serving_desc": food.serving_desc,
             "kcal_per_serving": food.kcal_per_serving,
             "protein_g": food.protein_g,
@@ -116,10 +120,18 @@ class FoodRepository:
             "created_at": food.created_at,
         }
 
-    def search(self, q: str | None = None, limit: int = 50) -> list[dict]:
-        """Search the catalog by name or brand."""
+    def search(
+        self, q: str | None = None, limit: int = 50, kind: str | None = None
+    ) -> list[dict]:
+        """Search the catalog by name or brand, optionally one kind.
+
+        The food page filters to `kind='food'` so a typeahead for "mag" offers
+        mango rather than magnesium; the supplements page does the reverse.
+        """
         with database.SessionLocal() as session:
             stmt = select(Food).order_by(Food.name)
+            if kind:
+                stmt = stmt.where(Food.kind == kind)
             if q:
                 pattern = f"%{q}%"
                 stmt = stmt.where(Food.name.ilike(pattern) | Food.brand.ilike(pattern))
@@ -146,6 +158,7 @@ class FoodRepository:
         created = Food(
             name=food.name,
             brand=food.brand,
+            kind=food.kind,
             serving_desc=food.serving_desc,
             kcal_per_serving=food.kcal_per_serving,
             protein_g=food.protein_g,
@@ -238,6 +251,7 @@ class FoodLogRepository:
             "fat_g": row.fat_g,
             "entries": row.entries,
             "foods_missing_macros": row.foods_missing_macros,
+            "supplements_taken": row.supplements_taken,
             "kcal_target": row.kcal_target,
         }
 

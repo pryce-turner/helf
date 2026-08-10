@@ -1,5 +1,12 @@
 export type Meal = "breakfast" | "lunch" | "dinner" | "snack";
 
+/**
+ * A supplement is a `food` row too — a thing with a serving size that you
+ * swallow at a time. `kind` is what keeps a vitamin out of the meal list and
+ * out of the missing-macros warning. See docs/plans/0011-supplement-stacks.md.
+ */
+export type FoodKind = "food" | "supplement";
+
 export const MEALS: Meal[] = ["breakfast", "lunch", "dinner", "snack"];
 
 /**
@@ -13,6 +20,7 @@ export interface Food {
     doc_id: number;
     name: string;
     brand: string;
+    kind: FoodKind;
     serving_desc: string | null;
     kcal_per_serving: number | null;
     protein_g: number | null;
@@ -24,6 +32,7 @@ export interface Food {
 export interface FoodCreate {
     name: string;
     brand?: string;
+    kind?: FoodKind;
     serving_desc?: string | null;
     kcal_per_serving?: number | null;
     protein_g?: number | null;
@@ -45,6 +54,7 @@ export interface FoodLogEntry {
     food_id: number;
     name: string;
     brand: string;
+    kind: FoodKind;
     serving_desc: string | null;
     kcal: number | null;
     protein_g: number | null;
@@ -76,6 +86,8 @@ export interface FoodDaySummary {
     fat_g: number | null;
     entries: number;
     foods_missing_macros: number;
+    /** Count of supplement doses logged, not one column per supplement. */
+    supplements_taken: number;
     /**
      * The day's Katch-McArdle RMR times the activity multiplier, carried
      * forward from the last DEXA scan on or before it. Null before the first

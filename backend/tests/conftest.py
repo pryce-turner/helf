@@ -11,7 +11,16 @@ import app.repositories.body_comp_repo as body_comp_repo
 import app.repositories.exercise_repo as exercise_repo
 import app.repositories.upcoming_repo as upcoming_repo
 import app.repositories.workout_repo as workout_repo
-from app.api import body_comp, exercises, food, notes, progression, upcoming, workouts
+from app.api import (
+    body_comp,
+    exercises,
+    food,
+    notes,
+    progression,
+    stacks,
+    upcoming,
+    workouts,
+)
 from app.database import apply_sqlite_pragmas
 
 
@@ -90,4 +99,5 @@ def client(db_engine):
     app.include_router(body_comp.router, prefix="/api/body-composition")
     app.include_router(food.router, prefix="/api/food")
     app.include_router(notes.router, prefix="/api/notes")
+    app.include_router(stacks.router, prefix="/api/stacks")
     return TestClient(app)

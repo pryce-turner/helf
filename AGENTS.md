@@ -68,7 +68,8 @@ helf/
 │   │   │   ├── upcoming.py
 │   │   │   ├── body_comp.py
 │   │   │   ├── food.py
-│   │   │   └── notes.py
+│   │   │   ├── notes.py
+│   │   │   └── stacks.py
 │   │   ├── db/
 │   │   │   └── models.py     # SQLAlchemy ORM models (tables)
 │   │   │                     #   No BodyComposition — retired by plan 0010;
@@ -80,14 +81,16 @@ helf/
 │   │   │   ├── upcoming.py
 │   │   │   ├── body_composition.py
 │   │   │   ├── food.py
-│   │   │   └── note.py
+│   │   │   ├── note.py
+│   │   │   └── stack.py
 │   │   ├── repositories/     # SQLAlchemy data access layer
 │   │   │   ├── workout_repo.py
 │   │   │   ├── exercise_repo.py
 │   │   │   ├── upcoming_repo.py
 │   │   │   ├── body_comp_repo.py
 │   │   │   ├── food_repo.py
-│   │   │   └── note_repo.py
+│   │   │   ├── note_repo.py
+│   │   │   └── stack_repo.py
 │   │   ├── services/         # Business logic
 │   │   │   ├── progression_service.py
 │   │   │   ├── mqtt_service.py
@@ -132,6 +135,7 @@ helf/
 │   │   │   ├── useBodyComposition.ts  # Measurements, trends, stats
 │   │   │   ├── useUpcoming.ts         # Sessions, Liftoscript, presets
 │   │   │   ├── useFood.ts             # Day, summary, catalog search, logging
+│   │   │   ├── useStacks.ts           # Preset groups, one-tap logging
 │   │   │   └── usePWA.ts             # Online status, install prompt
 │   │   ├── lib/
 │   │   │   └── api.ts        # Axios instance + all API functions
@@ -142,6 +146,7 @@ helf/
 │   │   │   ├── Upcoming.tsx           # Session planner + Liftoscript
 │   │   │   ├── BodyComposition.tsx    # Trends + stats
 │   │   │   ├── Food.tsx               # Daily log vs measured kcal target
+│   │   │   ├── Supplements.tsx        # Stacks, logged in one tap
 │   │   │   └── Exercises.tsx          # Exercise catalog
 │   │   ├── types/            # TypeScript type definitions
 │   │   │   ├── workout.ts, exercise.ts
@@ -276,6 +281,12 @@ docker-compose up -d
 - `POST /` - Create a food
 - `GET /{id}` / `PUT /{id}` - Read / edit macros (**retroactive** — rewrites every past entry)
 
+### Stacks (`/api/stacks`)
+- `GET /` - All stacks, each with `taken_today` and `last_taken`
+- `POST /` - Create a stack; items naming an unknown food create it
+- `GET /{id}` / `PUT /{id}` / `DELETE /{id}` - `items` on PUT **replaces** the membership
+- `POST /{id}/log` - Write one `food_log` row per item, at one instant
+
 ### Notes (`/api/notes`)
 - `GET /?kind=&start=&end=` - Notes, most recent first
 - `GET /kinds` - Counts and date spans per kind, across notes and documents
@@ -297,6 +308,7 @@ docker-compose up -d
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Body section (ADR-0006) |
+| `/supplements` | Supplements | Preset groups logged in one tap — tab 3 of the Body section |
 | `/upcoming` | Upcoming | Session planner, Liftoscript editor, presets |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category |
 
@@ -327,6 +339,21 @@ docker-compose up -d
 - Multi-cycle generation
 - One-click transfer to historical data
 
+### Supplements and stacks
+- **A supplement is a `food` row** with `kind = 'supplement'`, not a separate
+  table. Whey is food by any definition at 120 kcal a scoop, and the boundary
+  between "supplement" and "food" is not somewhere a schema can put it
+- `stack` + `stack_item` are the *grouping* — "morning" is omega ×2, vitamin D
+  ×1, CholestOff ×2. `servings` lives on the membership, so one product can be
+  taken two ways
+- **`food_log` carries no `stack_id`.** A log row records what was consumed;
+  the stack is only how it was entered. `taken_today` is derived — every one of
+  the stack's foods appears in today's log — so it holds whether the button was
+  tapped or the items entered by hand, and editing a stack cannot rewrite what
+  a past day claims
+- Dose is prose in `food.serving_desc` ("1 softgel, 1000mg EPA"). Arithmetic on
+  a dose needs `metric_def` + `metric`, where the unit is fixed by the name
+
 ### Food and the calorie loop
 - `food` carries macros per serving; `food_log` carries consumption events, and
   a serving's numbers are **derived at read time** — correcting a food corrects
@@ -337,7 +364,9 @@ docker-compose up -d
   Katch-McArdle RMR on or before that day, times 1.4. NULL before the first
   scan, deliberately: a target no measurement supports is worse than a blank
 - Macro totals COALESCE unknown macros to zero, so `foods_missing_macros`
-  reports how many entries are understating the day
+  reports how many entries are understating the day — **counting meals only**,
+  because a vitamin has no macros to be missing and would otherwise flag every
+  fully logged day forever
 
 ### Body Composition
 - MQTT integration with smart scales (openScale-sync format)

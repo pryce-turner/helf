@@ -65,9 +65,13 @@ def delete_food_log(log_id: int):
 
 
 @router.get("/", response_model=list[Food])
-def search_foods(q: str | None = None, limit: int = Query(50, ge=1, le=500)):
-    """Search the catalog by name or brand."""
-    return FoodRepository().search(q, limit)
+def search_foods(
+    q: str | None = None,
+    limit: int = Query(50, ge=1, le=500),
+    kind: str | None = Query(None, description="'food' or 'supplement'"),
+):
+    """Search the catalog by name or brand, optionally restricted to one kind."""
+    return FoodRepository().search(q, limit, kind)
 
 
 @router.post("/", response_model=Food, status_code=201)

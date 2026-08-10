@@ -1023,6 +1023,84 @@
         white-space: nowrap;
     }
 
+    /* Supplement stacks */
+    .stack-card__name {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        flex-wrap: wrap;
+        font-family: var(--font-display);
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .stack-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px var(--space-2);
+        border-radius: var(--radius-full);
+        background: var(--success-subtle);
+        color: var(--success);
+        font-family: var(--font-body);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+
+    .stack-item {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-3);
+        padding: var(--space-2) 0;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .stack-item:last-child {
+        border-bottom: none;
+    }
+
+    .stack-item__name {
+        font-size: 14px;
+        color: var(--text-primary);
+    }
+
+    .stack-item__dose {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--text-muted);
+        text-align: right;
+    }
+
+    .stack-edit-header {
+        display: none;
+        gap: var(--space-2);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: var(--space-2);
+    }
+
+    /* The header only earns its space once the row is one line. Below that the
+       inputs wrap and their placeholders do the labelling. */
+    @media (min-width: 640px) {
+        .stack-edit-header {
+            display: flex;
+        }
+    }
+
+    .stack-edit-row {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--space-2);
+        flex-wrap: wrap;
+        margin-bottom: var(--space-2);
+    }
+
     /* Typeahead results. Rendered inline rather than as a floating popover:
        on a phone a popover fights the keyboard for the same 200px. */
     .food-suggestions {

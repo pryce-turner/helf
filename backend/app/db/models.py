@@ -268,6 +268,15 @@ class Food(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     brand: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    # 'food' or 'supplement'. A vitamin is a thing with a serving size that you
+    # swallow at a time, which is what this table already models - but it has
+    # no macros to be missing, and mixing the two would put creatine in the
+    # meal list and warn that every logged day was understated.
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="food")
+    # Free text, and deliberately so: "1 softgel, 1000mg EPA", "1 tablet,
+    # 5000 IU". A structured dose needs a unit per substance, which is what
+    # `metric` + `metric_def` are for - promote a supplement there when you
+    # want arithmetic on the dose (docs/plans/0005-food-and-notes.md §1a).
     serving_desc: Mapped[str | None] = mapped_column(Text, nullable=True)
     kcal_per_serving: Mapped[float | None] = mapped_column(Float, nullable=True)
     protein_g: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -312,6 +321,60 @@ class FoodLog(Base):
     )
 
     food: Mapped[Food] = relationship("Food", back_populates="logs")
+
+
+class Stack(Base):
+    """A named group of consumables logged in one action.
+
+    "Morning" is omega, vitamin D and CholestOff; "evening" is magnesium and
+    omega. A food may appear in several stacks with different servings - the
+    amount belongs to the membership, not to the food.
+
+    The stack is an *input method*, not a record of what happened. Logging one
+    writes ordinary `food_log` rows and nothing points back here, so editing
+    "morning" tomorrow cannot change what today says was taken.
+    """
+
+    __tablename__ = "stack"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[str] = mapped_column(
+        Text, server_default=text("(datetime('now'))"), nullable=False
+    )
+
+    items: Mapped[list["StackItem"]] = relationship(
+        "StackItem",
+        back_populates="stack",
+        cascade="all, delete-orphan",
+        order_by="StackItem.order",
+    )
+
+
+class StackItem(Base):
+    """One consumable in a stack, with how much of it that stack takes."""
+
+    __tablename__ = "stack_item"
+    __table_args__ = (
+        # Two rows for the same vitamin in one group is always a mistake, and
+        # it would silently double the dose on every log.
+        UniqueConstraint("stack_id", "food_id", name="uq_stack_item_food"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stack_id: Mapped[int] = mapped_column(
+        ForeignKey("stack.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # No cascade, deliberately: removing a food from the catalog must not
+    # silently empty a stack. The FK refuses the delete instead.
+    food_id: Mapped[int] = mapped_column(ForeignKey("food.id"), nullable=False)
+    servings: Mapped[float] = mapped_column(Float, nullable=False, server_default="1.0")
+    order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    stack: Mapped[Stack] = relationship("Stack", back_populates="items")
+    food: Mapped[Food] = relationship("Food")
 
 
 class Note(Base):

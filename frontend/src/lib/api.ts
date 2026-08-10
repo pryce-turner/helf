@@ -27,6 +27,12 @@ import type {
 } from "../types/food";
 import type { ProgressionResponse } from "../types/progression";
 import type {
+    Stack,
+    StackCreate,
+    StackLogResult,
+    StackUpdate,
+} from "../types/stack";
+import type {
     UpcomingWorkout,
     UpcomingWorkoutCreate,
     WendlerCurrentMaxes,
@@ -241,8 +247,9 @@ export const foodApi = {
             params: { start, end },
         }),
 
-    search: (q?: string, limit: number = 50) =>
-        api.get<Food[]>("/api/food/", { params: { q, limit } }),
+    /** `kind` keeps the food page's typeahead from offering magnesium. */
+    search: (q?: string, limit: number = 50, kind?: string) =>
+        api.get<Food[]>("/api/food/", { params: { q, limit, kind } }),
 
     create: (food: FoodCreate) => api.post<Food>("/api/food/", food),
 
@@ -257,6 +264,25 @@ export const foodApi = {
         api.post<FoodLogEntry>("/api/food/log", entry),
 
     deleteLog: (id: number) => api.delete(`/api/food/log/${id}`),
+};
+
+// Stacks — preset groups of consumables
+export const stacksApi = {
+    getAll: () => api.get<Stack[]>("/api/stacks/"),
+
+    create: (stack: StackCreate) => api.post<Stack>("/api/stacks/", stack),
+
+    /** Sending `items` replaces the membership wholesale, not a merge. */
+    update: (id: number, changes: StackUpdate) =>
+        api.put<Stack>(`/api/stacks/${id}`, changes),
+
+    delete: (id: number) => api.delete(`/api/stacks/${id}`),
+
+    /** Writes one `food_log` row per item, all at the same instant. */
+    log: (id: number, consumedAt?: string) =>
+        api.post<StackLogResult>(`/api/stacks/${id}/log`, {
+            consumed_at: consumedAt ?? null,
+        }),
 };
 
 // System

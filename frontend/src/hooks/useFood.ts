@@ -31,10 +31,10 @@ export function useFoodSummary(start: string, end: string) {
  * Disabled below two characters: a one-letter query matches most of the
  * catalog and the result is noise, not a shortlist.
  */
-export function useFoodSearch(q: string) {
+export function useFoodSearch(q: string, kind?: string) {
     return useQuery({
-        queryKey: ["food", "search", q],
-        queryFn: async () => (await foodApi.search(q)).data,
+        queryKey: ["food", "search", q, kind],
+        queryFn: async () => (await foodApi.search(q, 50, kind)).data,
         enabled: q.trim().length >= 2,
         staleTime: 60 * 1000,
     });

@@ -218,7 +218,9 @@ const LogForm = ({ date, onDone }: { date: string; onDone: () => void }) => {
     const [carbs, setCarbs] = useState("");
     const [fat, setFat] = useState("");
 
-    const { data: matches } = useFoodSearch(picked ? "" : name);
+    // Meals only: the supplements tab owns vitamins, and offering them here
+    // would put magnesium in a search for a mango.
+    const { data: matches } = useFoodSearch(picked ? "" : name, "food");
     const log = useLogFood();
 
     const numeric = (value: string) =>
@@ -449,11 +451,16 @@ const FoodPage = () => {
 
     const { data: day, isLoading } = useFoodDay(date);
 
+    // Supplements come out of the meal grouping entirely. They are logged with
+    // no meal — swallowing omega at 7am is not breakfast — so without this they
+    // would all pile into "unsorted" next to genuinely unfiled food.
     const byMeal = useMemo(() => {
         const groups = new Map<string, FoodLogEntry[]>();
-        for (const meal of [...MEALS, "unsorted"]) groups.set(meal, []);
+        for (const meal of [...MEALS, "unsorted", "supplements"]) groups.set(meal, []);
         for (const entry of day?.entries ?? []) {
-            groups.get(entry.meal ?? "unsorted")!.push(entry);
+            const group =
+                entry.kind === "supplement" ? "supplements" : (entry.meal ?? "unsorted");
+            groups.get(group)!.push(entry);
         }
         return [...groups].filter(([, entries]) => entries.length > 0);
     }, [day]);

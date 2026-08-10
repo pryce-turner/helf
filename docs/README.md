@@ -59,6 +59,7 @@ drifted.
 - [0008 — BodySpec DEXA integration](plans/0008-bodyspec-integration.md) — API-sourced body composition
 - [0009 — Drop AMRAP notation](plans/0009-drop-amrap-notation.md) — `reps` TEXT → INTEGER
 - [0010 — Retire `body_composition`](plans/0010-retire-body-composition.md) — the wide table, dropped
+- [0011 — Supplement stacks](plans/0011-supplement-stacks.md) — preset groups of consumables, logged in one action
 
 ### Reference
 - [`reference/qs_mcp.py`](reference/qs_mcp.py) — **Superseded.** The original MCP server from the design doc, kept as the record of what was designed. Its SQL does not match the database. The running server is `backend/app/mcp/qs_mcp.py`.

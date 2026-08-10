@@ -8,7 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import body_comp, exercises, food, notes, progression, upcoming, workouts
+from app.api import (
+    body_comp,
+    exercises,
+    food,
+    notes,
+    progression,
+    stacks,
+    upcoming,
+    workouts,
+)
 from app.config import settings
 from app.database import close_db, init_db
 from app.services.mqtt_service import MQTTService
@@ -62,6 +71,7 @@ app.include_router(upcoming.router, prefix="/api/upcoming", tags=["upcoming"])
 app.include_router(body_comp.router, prefix="/api/body-composition", tags=["body-composition"])
 app.include_router(food.router, prefix="/api/food", tags=["food"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
+app.include_router(stacks.router, prefix="/api/stacks", tags=["stacks"])
 
 
 @app.get("/api/health")
@@ -156,6 +166,10 @@ if static_dir.exists() and static_dir.is_dir():
 
     @app.get("/food")
     async def spa_food():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/supplements")
+    async def spa_supplements():
         return FileResponse(static_dir / "index.html", media_type="text/html")
 
     # Never had one, despite the page existing since merge 1a27a0b: in

@@ -70,7 +70,7 @@ export function useCreateBodyComposition() {
         muscle_mass: newMeasurement.muscle_mass ?? null,
         bmi: newMeasurement.bmi ?? null,
         water_pct: newMeasurement.water_pct ?? null,
-        bone_mass: newMeasurement.bone_mass ?? null,
+        bone_mass_kg: newMeasurement.bone_mass_kg ?? null,
         visceral_fat: newMeasurement.visceral_fat ?? null,
         metabolic_age: newMeasurement.metabolic_age ?? null,
         protein_pct: newMeasurement.protein_pct ?? null,

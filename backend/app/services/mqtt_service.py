@@ -101,13 +101,15 @@ class MQTTService:
                 dt = datetime.fromisoformat(date_str.replace("T", " ").split("-")[0])
                 dt = dt.replace(tzinfo=PACIFIC_TZ)
 
-            # `bone` is a genuine mass and converts; every other optional field
-            # below is a percentage, an index, or an age, and must NOT be scaled.
-            # In particular `muscle` is a *percentage* despite the column being
-            # named muscle_mass - it correlates with body weight at r = -0.985
-            # across the existing 150 rows, which is the signature of a fraction,
-            # not a mass. See docs/plans/0003-units-and-metrics.md §2.
-            bone_kg = payload.get("bone")
+            # Only `weight` is converted. `bone` is a genuine mass but is
+            # stored as `bone_mass_kg`, in the unit openScale sends and the one
+            # `metric_def` already defines for DEXA (Plan 0010 §2) - converting
+            # it would have needed a second name for one quantity. Every other
+            # optional field is a percentage, an index, or an age, and must NOT
+            # be scaled. In particular `muscle` is a *percentage* despite the
+            # field being named muscle_mass - it correlates with body weight at
+            # r = -0.985 across the existing 150 rows, which is the signature of
+            # a fraction, not a mass. See docs/plans/0003-units-and-metrics.md §2.
 
             measurement = BodyCompositionCreate(
                 timestamp=dt,
@@ -117,7 +119,7 @@ class MQTTService:
                 muscle_mass=payload.get("muscle"),
                 bmi=payload.get("bmi"),
                 water_pct=payload.get("water"),
-                bone_mass=bone_kg * KG_TO_LB if bone_kg is not None else None,
+                bone_mass_kg=payload.get("bone"),
                 visceral_fat=payload.get("visceralFat"),
                 metabolic_age=payload.get("metabolicAge"),
                 protein_pct=payload.get("protein"),

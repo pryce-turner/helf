@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, text
 
 from app.database import SessionLocal
-from app.db.models import BodyComposition, Metric, Observation
+from app.db.models import Metric, Observation
 from app.models.body_composition import BodyCompositionCreate
 from app.utils.date_helpers import (
     PACIFIC_TZ,
@@ -17,31 +17,35 @@ from app.utils.units import CANONICAL_WEIGHT_UNIT
 
 logger = logging.getLogger(__name__)
 
-# Wide column -> (metric name, unit). Mirrors the a3 backfill exactly; the two
-# must agree or history and new readings end up under different names.
+# Request field -> (metric name, unit). This *was* the wide table's mirror map
+# (Plan 0003's a3 backfill); with `body_composition` gone it is simply how a
+# measurement is stored (Plan 0010).
 #
 # `muscle_mass` holds a percentage despite its name, so it maps to `muscle_pct`.
+# `bone_mass_kg` is kg and is not converted: `metric_def` already defines it
+# that way for DEXA, openScale reports kg, and one quantity under two names is
+# what ADR-0003's naming rule exists to prevent.
 METRIC_COLUMNS = [
     ("weight", "body_weight_lb", "lb"),
     ("body_fat_pct", "body_fat_pct", "%"),
     ("muscle_mass", "muscle_pct", "%"),
     ("water_pct", "water_pct", "%"),
+    ("bmi", "bmi", "kg/m2"),
+    ("bone_mass_kg", "bone_mass_kg", "kg"),
+    ("visceral_fat", "visceral_fat", "index"),
+    ("metabolic_age", "metabolic_age", "years"),
+    ("protein_pct", "protein_pct", "%"),
 ]
-
-# Sources whose observations mirror a `body_composition` row. `body_composition`
-# does not record which one produced a given measurement, so deletion and
-# reconciliation match on the instant and restrict to these - leaving a DEXA
-# import or a journal entry at the same instant alone.
-MIRROR_SOURCES = ("manual", "openscale")
 
 
 def _observed_at(timestamp: datetime) -> str:
-    """Render a timestamp the way SQLAlchemy's SQLite DATETIME does.
+    """Render a timestamp the way SQLAlchemy's SQLite DATETIME did.
 
-    `metric.observed_at` is TEXT and the backfill copied `body_composition.
-    timestamp` verbatim, so new rows must use byte-identical formatting or they
-    will not line up with history - and the UNIQUE(observed_at, name, source)
-    constraint would stop deduplicating.
+    `observation.observed_at` is TEXT and Plan 0003's backfill copied
+    `body_composition.timestamp` verbatim, so new rows must use byte-identical
+    formatting or they will not line up with eight months of history - and
+    UNIQUE (observed_at, source), which is what deduplicates a re-published
+    MQTT reading, is a textual comparison.
     """
     return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")
 
@@ -49,28 +53,9 @@ def _observed_at(timestamp: datetime) -> str:
 class BodyCompositionRepository:
     """Repository for body composition data operations."""
 
-    def _serialize(self, measurement: BodyComposition, source: str) -> dict:
-        return {
-            "doc_id": measurement.id,
-            "timestamp": measurement.timestamp,
-            "date": measurement.date,
-            "weight": measurement.weight,
-            "weight_unit": CANONICAL_WEIGHT_UNIT,
-            "body_fat_pct": measurement.body_fat_pct,
-            "muscle_mass": measurement.muscle_mass,
-            "bmi": measurement.bmi,
-            "water_pct": measurement.water_pct,
-            "bone_mass": measurement.bone_mass,
-            "visceral_fat": measurement.visceral_fat,
-            "metabolic_age": measurement.metabolic_age,
-            "protein_pct": measurement.protein_pct,
-            "created_at": measurement.created_at,
-            "source": source,
-        }
-
     @staticmethod
     def _from_view(row) -> dict:
-        """Shape a `v_body_comp_measurements` row like `_serialize` does.
+        """Shape a `v_body_comp_measurements` row for the response model.
 
         `observed_at` and `created_at` come back as TEXT because the view is
         over `observation`, whose columns are strings; the response model needs
@@ -87,7 +72,7 @@ class BodyCompositionRepository:
             "muscle_mass": row.muscle_mass,
             "bmi": row.bmi,
             "water_pct": row.water_pct,
-            "bone_mass": row.bone_mass,
+            "bone_mass_kg": row.bone_mass_kg,
             "visceral_fat": row.visceral_fat,
             "metabolic_age": row.metabolic_age,
             "protein_pct": row.protein_pct,
@@ -155,170 +140,76 @@ class BodyCompositionRepository:
     def create(
         self, measurement: BodyCompositionCreate, source: str = "manual"
     ) -> dict | None:
-        """Create a new measurement. Returns None if duplicate timestamp.
+        """Record a measurement. Returns None if this instrument already has one
+        at that instant.
 
-        `source` tags the mirrored `metric` rows so instruments of different
-        accuracy stay distinguishable - a bioimpedance reading and a DEXA scan
-        of the same quantity must never be averaged together. Defaults to
-        "manual"; the MQTT ingest path passes "openscale", matching the
-        backfilled history.
+        One transaction, one table pair. Until Plan 0010 this wrote the wide
+        `body_composition` row first, committed, and mirrored into
+        `observation`/`metric` afterwards in a separate transaction that was
+        deliberately allowed to fail - a lost scale reading is unrecoverable
+        (openScale does not retransmit) while a divergent mirror is not. With
+        the wide table gone there is nothing to be asymmetric about.
+
+        `source` keeps instruments of different accuracy apart, which is what
+        stops a bioimpedance estimate and a DEXA scan of the same quantity from
+        being averaged together. Defaults to "manual"; MQTT passes "openscale",
+        matching the backfilled history.
+
+        Duplicate detection is now per instrument. It used to be
+        `body_composition.timestamp` alone, so a manual entry and a scale
+        reading at the same instant collided and the second was silently
+        dropped; `UNIQUE (observed_at, source)` makes them two observations,
+        which is what they are.
         """
-        timestamp = measurement.timestamp
+        observed_at = _observed_at(measurement.timestamp)
 
         with SessionLocal() as session:
             existing = session.execute(
-                select(BodyComposition).where(BodyComposition.timestamp == timestamp)
+                select(Observation).where(
+                    Observation.observed_at == observed_at,
+                    Observation.source == source,
+                )
             ).scalar_one_or_none()
             if existing:
                 return None
 
-            now = get_current_datetime()
-            measurement_dict = measurement.model_dump(exclude_none=False)
-
-            new_measurement = BodyComposition(
-                timestamp=timestamp,
-                date=measurement_dict["date"],
-                weight=measurement_dict["weight"],
-                body_fat_pct=measurement_dict.get("body_fat_pct"),
-                muscle_mass=measurement_dict.get("muscle_mass"),
-                bmi=measurement_dict.get("bmi"),
-                water_pct=measurement_dict.get("water_pct"),
-                bone_mass=measurement_dict.get("bone_mass"),
-                visceral_fat=measurement_dict.get("visceral_fat"),
-                metabolic_age=measurement_dict.get("metabolic_age"),
-                protein_pct=measurement_dict.get("protein_pct"),
-                created_at=now,
+            observation = Observation(
+                observed_at=observed_at,
+                source=source,
+                created_at=get_current_datetime(),
             )
-            session.add(new_measurement)
-            session.commit()
-            session.refresh(new_measurement)
-            serialized = self._serialize(new_measurement, source)
-
-        # Deliberately AFTER the commit above and in its own transaction.
-        #
-        # `body_composition` is still the source of truth, and a scale reading
-        # that fails to store is gone for good - openScale does not retransmit.
-        # A divergence between the two tables is recoverable (re-run the
-        # backfill); a lost measurement is not. So the mirror is never allowed
-        # to roll back the primary write.
-        self._mirror_to_metric(new_measurement, source)
-        return serialized
-
-    def _mirror_to_metric(self, measurement: BodyComposition, source: str) -> None:
-        """Write the same reading into the tall `metric` table.
-
-        Dual-write window: both tables are maintained until the read path moves
-        onto the views (docs/plans/0003-units-and-metrics.md §4).
-        """
-        observed_at = _observed_at(measurement.timestamp)
-        try:
-            with SessionLocal() as session:
-                observation = Observation(
-                    observed_at=observed_at,
-                    source=source,
-                    created_at=measurement.created_at,
+            for field, metric_name, unit in METRIC_COLUMNS:
+                value = getattr(measurement, field, None)
+                if value is None:
+                    continue
+                observation.metrics.append(
+                    Metric(name=metric_name, value=value, unit=unit)
                 )
-                for column, metric_name, unit in METRIC_COLUMNS:
-                    value = getattr(measurement, column)
-                    if value is None:
-                        continue
-                    observation.metrics.append(
-                        Metric(name=metric_name, value=value, unit=unit)
-                    )
-                session.add(observation)
-                session.commit()
-        except Exception:
-            # Loud, but not fatal: the measurement itself is already safe.
-            logger.exception(
-                "Failed to mirror measurement %s into `metric`; "
-                "body_composition is authoritative and can be re-backfilled",
-                observed_at,
-            )
+            session.add(observation)
+            session.commit()
+            doc_id = observation.id
 
-    def reconcile_mirror(self) -> dict:
-        """Compare `body_composition` against its `metric` mirror.
-
-        The mirror is deliberately non-fatal (see `_mirror_to_metric`), which
-        buys durability for the measurement at the cost of the two tables being
-        able to drift apart silently. This is what makes that drift visible.
-
-        `body_composition` is authoritative, so every difference is expressed as
-        something the mirror is missing or has wrong - never the reverse.
-
-        Returns counts plus a bounded sample, so it is safe to log or expose.
-        """
-        with SessionLocal() as session:
-            measurements = session.execute(select(BodyComposition)).scalars().all()
-
-            expected: dict[tuple[str, str], float] = {}
-            for m in measurements:
-                observed_at = _observed_at(m.timestamp)
-                for column, metric_name, _unit in METRIC_COLUMNS:
-                    value = getattr(m, column)
-                    if value is not None:
-                        expected[(observed_at, metric_name)] = float(value)
-
-            actual = {
-                (observed_at, name): value
-                for observed_at, name, value in session.execute(
-                    select(Observation.observed_at, Metric.name, Metric.value)
-                    .join(Metric, Metric.observation_id == Observation.id)
-                    .where(
-                        Metric.name.in_([n for _c, n, _u in METRIC_COLUMNS]),
-                        # Only observations that mirror a body_composition row.
-                        # A DEXA import writes body_fat_pct too and would
-                        # otherwise be reported as an orphan.
-                        Observation.source.in_(MIRROR_SOURCES),
-                    )
-                ).all()
-            }
-
-        missing = sorted(k for k in expected if k not in actual)
-        # Float comparison with a tolerance: the values round-trip through
-        # SQLite REAL, so exact equality is not guaranteed to survive.
-        mismatched = sorted(
-            k
-            for k, v in expected.items()
-            if k in actual and abs(float(actual[k]) - v) > 1e-9
-        )
-        orphaned = sorted(k for k in actual if k not in expected)
-
-        return {
-            "expected_rows": len(expected),
-            "mirrored_rows": len(actual),
-            "missing": len(missing),
-            "mismatched": len(mismatched),
-            "orphaned": len(orphaned),
-            "in_sync": not (missing or mismatched or orphaned),
-            "sample": {
-                "missing": missing[:5],
-                "mismatched": mismatched[:5],
-                "orphaned": orphaned[:5],
-            },
-        }
+        # Read back through the view rather than assembling a response by hand,
+        # so what the caller receives is what every later read will return.
+        return self.get_by_id(doc_id)
 
     def delete(self, doc_id: int) -> bool:
-        """Delete a measurement and its legacy `body_composition` row.
+        """Delete a measurement.
 
         `doc_id` is an **`observation.id`**, because that is what the read path
-        returns. It is emphatically not a `body_composition.id`: the two
-        sequences disagree for 77 of the 150 existing rows, so treating one as
-        the other deletes a different measurement than the user asked for.
+        returns. It was emphatically not a `body_composition.id`: those two
+        sequences disagreed for 77 of the 150 rows, so treating one as the
+        other deleted a different measurement than the user asked for, silently,
+        about half the time. That hazard retired with the table.
 
-        Metrics go with the observation via ON DELETE CASCADE.
+        Metrics go with the observation via ON DELETE CASCADE, and the audit
+        log records each one, so a deletion is recoverable from `audit_log`
+        rather than final.
         """
         with SessionLocal() as session:
             observation = session.get(Observation, doc_id)
             if observation is None:
                 return False
-
-            # One transaction: unlike create, a failure here loses nothing.
-            # Matched on the instant, since body_composition has no observation
-            # reference and is on its way out anyway.
-            session.execute(
-                text("DELETE FROM body_composition WHERE timestamp = :observed_at"),
-                {"observed_at": observation.observed_at},
-            )
             session.delete(observation)
             session.commit()
             return True

@@ -94,7 +94,8 @@ class TestInitDb:
                 "upcoming_workouts",
                 "exercises",
                 "categories",
-                "body_composition",
+                "observation",
+                "metric",
             } <= tables
             with engine.connect() as conn:
                 assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar()

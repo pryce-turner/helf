@@ -27,13 +27,14 @@ table.
 |---|------|--------|-----------|-------------|
 | 0001 | [Integration roadmap](0001-integration-roadmap.md) | Living | — | The sequencing argument. Its gap table predates 0002/0003/0008 landing |
 | 0002 | [Schema foundation](0002-schema-foundation.md) | Implemented 2026-08-08 | `ac2fc3529985` | — |
-| 0003 | [Units and metrics](0003-units-and-metrics.md) | Implemented 2026-08-08 | through `e96bd4b90873` | Retiring `body_composition` entirely — write-only now, needs its own plan (§9) |
+| 0003 | [Units and metrics](0003-units-and-metrics.md) | Implemented 2026-08-08 | through `e96bd4b90873` | — (`body_composition` retired by 0010) |
 | 0004 | [Workout session regrain](0004-workout-session-regrain.md) | **Deferred** | — | Deliberate. The highest-risk migration in the roadmap for the least benefit; §1 argues it should stay deferred |
 | 0005 | [Food and notes](0005-food-and-notes.md) | Implemented 2026-08-09 | `12fed2487b4e` | Notes have an API but no UI — deliberate, see §7 |
 | 0006 | [MCP server](0006-mcp-server.md) | Implemented 2026-08-09 | `backend/app/mcp/qs_mcp.py` | Shipping **read-only**. Enabling `QS_MCP_MODE=read-write` is built and tested but deliberately not done |
 | 0007 | [Append-only audit log](0007-audit-log.md) | Implemented 2026-08-09 | `7e8f2b1ca79b` | §8's three open questions. The agent-facing read surface belongs to 0006 |
 | 0008 | [BodySpec DEXA integration](0008-bodyspec-integration.md) | Implemented 2026-08-09 | through `70709fd96184` | — (`kcal_target` landed with 0005) |
 | 0009 | [Drop AMRAP notation](0009-drop-amrap-notation.md) | Implemented 2026-08-08 | `fd709c41eb19` | — |
+| 0010 | [Retire `body_composition`](0010-retire-body-composition.md) | Implemented 2026-08-09 | `86c8bbc9e2d7` | — |
 
 ## Where things stand
 

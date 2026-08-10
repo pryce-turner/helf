@@ -196,11 +196,11 @@ def test_body_comp_stats_change_skips_rows_missing_that_metric():
     assert stats["body_fat_change"] == pytest.approx(-2.0)
 
 
-class TestDualWriteToMetric:
-    """Every body_composition write is mirrored into the tall `metric` table.
+class TestWritesLandInTheTallTables:
+    """A measurement is an `observation` plus one `metric` per quantity.
 
-    The dual-write window: both tables are maintained until the read path moves
-    onto the views (docs/plans/0003-units-and-metrics.md §4).
+    This was a *mirror* of `body_composition` until Plan 0010 retired the wide
+    table; it is now simply where a measurement lives.
     """
 
     def test_create_mirrors_all_populated_columns(self, db_session):
@@ -229,12 +229,14 @@ class TestDualWriteToMetric:
             "water_pct": 51.0,
         }
 
-    def test_observed_at_matches_body_composition_timestamp_exactly(self, db_session):
-        """Byte-identical, or new rows will not line up with the backfill.
+    def test_observed_at_keeps_the_legacy_rendering_exactly(self, db_session):
+        """Byte-identical to how history was written, or nothing lines up.
 
-        `metric.observed_at` is TEXT and the a3 backfill copied the stored
-        timestamp verbatim. A different rendering would silently fork the series
-        and stop UNIQUE(observed_at, name, source) from deduplicating.
+        `observation.observed_at` is TEXT and Plan 0003's backfill copied
+        `body_composition.timestamp` verbatim - which is how SQLAlchemy's
+        SQLite DATETIME renders. A different rendering would silently fork the
+        series and stop UNIQUE (observed_at, source) from deduplicating a
+        re-published MQTT reading.
         """
         repo = BodyCompositionRepository()
         ts = datetime(2026, 6, 2, 8, 15, 30, tzinfo=PACIFIC_TZ)
@@ -242,14 +244,11 @@ class TestDualWriteToMetric:
             BodyCompositionCreate(timestamp=ts, date="2026-06-02", weight=190.0)
         )
 
-        stored_ts = db_session.execute(
-            text("SELECT timestamp FROM body_composition")
-        ).scalar()
         observed_at = db_session.execute(
             text("SELECT DISTINCT observed_at FROM observation")
         ).scalar()
 
-        assert observed_at == stored_ts
+        assert observed_at == "2026-06-02 08:15:30.000000"
 
     def test_absent_columns_are_not_mirrored(self, db_session):
         """A missing reading is absent, not zero."""
@@ -289,7 +288,7 @@ class TestDualWriteToMetric:
         )
         assert sources == {"manual": 1, "openscale": 1}
 
-    def test_duplicate_timestamp_mirrors_nothing(self, db_session):
+    def test_a_rejected_duplicate_writes_nothing(self, db_session):
         """A rejected measurement must not leave metric rows behind."""
         repo = BodyCompositionRepository()
         ts = datetime(2026, 6, 6, 7, 0, tzinfo=PACIFIC_TZ)
@@ -300,7 +299,7 @@ class TestDualWriteToMetric:
 
         assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 1
 
-    def test_delete_removes_mirrored_rows(self, db_session):
+    def test_delete_removes_the_metrics_too(self, db_session):
         repo = BodyCompositionRepository()
         ts = datetime(2026, 6, 7, 7, 0, tzinfo=PACIFIC_TZ)
         created = repo.create(
@@ -314,162 +313,83 @@ class TestDualWriteToMetric:
 
         assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 0
 
-    def test_primary_write_commits_before_the_mirror_is_attempted(
-        self, db_session, monkeypatch
-    ):
-        """Ordering: the measurement is durable before mirroring starts.
+    def test_a_write_is_one_transaction(self, db_session, monkeypatch):
+        """No half-written measurement, and no swallowed failure.
 
-        openScale does not retransmit, so a dropped reading is gone for good. A
-        divergence between the two tables is recoverable by re-running the
-        backfill; that asymmetry is why the mirror commits separately.
-        """
-        repo = BodyCompositionRepository()
+        Until Plan 0010 this was deliberately the opposite: `body_composition`
+        committed first and the mirror ran afterwards in its own transaction
+        that was allowed to fail, because a lost scale reading is unrecoverable
+        while a divergent mirror is not. With one place to write, that
+        asymmetry has nothing to trade off, so a failure is a failure.
 
-        def boom(*_args, **_kwargs):
-            raise RuntimeError("metric table is on fire")
-
-        monkeypatch.setattr(repo, "_mirror_to_metric", boom)
-
-        with pytest.raises(RuntimeError):
-            repo.create(
-                BodyCompositionCreate(
-                    timestamp=datetime(2026, 6, 8, 7, 0, tzinfo=PACIFIC_TZ),
-                    date="2026-06-08",
-                    weight=190.0,
-                )
-            )
-
-        assert (
-            db_session.execute(text("SELECT count(*) FROM body_composition")).scalar()
-            == 1
-        )
-
-    def test_real_mirror_failure_is_swallowed_and_logged(
-        self, db_session, monkeypatch, caplog
-    ):
-        """A genuine database error in the mirror must not reach the caller.
-
-        Simulated by pointing the mirror at a metric name `metric_def` does not
-        define, which is a real foreign key violation rather than a stubbed
-        exception.
+        Provoked with a real foreign key violation - a metric name
+        `metric_def` does not define - rather than a stubbed exception.
         """
         import app.repositories.body_comp_repo as repo_module
 
         monkeypatch.setattr(
-            repo_module, "METRIC_COLUMNS", [("weight", "undefined_metric", "lb")]
+            repo_module,
+            "METRIC_COLUMNS",
+            [("weight", "body_weight_lb", "lb"), ("body_fat_pct", "undefined", "%")],
         )
-        repo = BodyCompositionRepository()
 
-        created = repo.create(
-            BodyCompositionCreate(
-                timestamp=datetime(2026, 6, 9, 7, 0, tzinfo=PACIFIC_TZ),
-                date="2026-06-09",
-                weight=190.0,
+        with pytest.raises(Exception):  # noqa: B017 - IntegrityError from the FK
+            BodyCompositionRepository().create(
+                BodyCompositionCreate(
+                    timestamp=datetime(2026, 6, 9, 7, 0, tzinfo=PACIFIC_TZ),
+                    date="2026-06-09",
+                    weight=190.0,
+                    body_fat_pct=23.0,
+                )
             )
-        )
 
-        assert created is not None
-        assert (
-            db_session.execute(text("SELECT count(*) FROM body_composition")).scalar()
-            == 1
-        )
+        assert db_session.execute(text("SELECT count(*) FROM observation")).scalar() == 0
         assert db_session.execute(text("SELECT count(*) FROM metric")).scalar() == 0
-        assert "Failed to mirror measurement" in caplog.text
 
+    def test_two_instruments_at_one_instant_are_two_measurements(self):
+        """Duplicate detection is per instrument now.
 
-class TestMirrorReconciliation:
-    """The drift detector for the non-fatal mirror.
-
-    A check that only ever reports "in sync" is worthless, so each failure mode
-    is provoked rather than assumed.
-    """
-
-    @staticmethod
-    def _measure(repo, day, **fields):
-        ts = datetime(2026, 7, day, 7, 0, tzinfo=PACIFIC_TZ)
-        return repo.create(
-            BodyCompositionCreate(
-                timestamp=ts,
-                date=ts.date().isoformat(),
-                weight=190.0,
-                body_fat_pct=23.0,
-                **fields,
-            )
-        )
-
-    def test_reports_in_sync_after_normal_writes(self):
-        repo = BodyCompositionRepository()
-        self._measure(repo, 1)
-        self._measure(repo, 2)
-
-        report = repo.reconcile_mirror()
-        assert report["in_sync"] is True
-        assert report["expected_rows"] == report["mirrored_rows"] == 4
-
-    def test_detects_a_mirror_that_never_ran(self, db_session):
-        """The exact consequence of a swallowed mirror failure."""
-        repo = BodyCompositionRepository()
-        self._measure(repo, 3)
-        db_session.execute(text("DELETE FROM metric"))
-        db_session.commit()
-
-        report = repo.reconcile_mirror()
-        assert report["in_sync"] is False
-        assert report["missing"] == 2
-        assert report["sample"]["missing"]
-
-    def test_detects_a_diverged_value(self, db_session):
-        repo = BodyCompositionRepository()
-        self._measure(repo, 4)
-        db_session.execute(
-            text("UPDATE metric SET value = 999 WHERE name = 'body_weight_lb'")
-        )
-        db_session.commit()
-
-        report = repo.reconcile_mirror()
-        assert report["in_sync"] is False
-        assert report["mismatched"] == 1
-
-    def test_detects_an_orphaned_metric_row(self, db_session):
-        """A metric row with no measurement behind it - deletion gone wrong."""
-        repo = BodyCompositionRepository()
-        created = self._measure(repo, 5)
-        db_session.execute(
-            text("DELETE FROM body_composition WHERE id = :i"),
-            {"i": created["doc_id"]},
-        )
-        db_session.commit()
-
-        report = repo.reconcile_mirror()
-        assert report["in_sync"] is False
-        assert report["orphaned"] == 2
-
-    def test_ignores_metrics_that_are_not_mirrored_columns(self, db_session):
-        """Rows from other sources are not this check's business.
-
-        A DEXA import or a journal entry writes metrics that have no
-        body_composition row by design; flagging them as orphans would make the
-        check cry wolf.
+        It used to be `body_composition.timestamp` alone, so a manual entry and
+        a scale reading at the same moment collided and the second was silently
+        dropped. `UNIQUE (observed_at, source)` makes them two observations,
+        which is what they are.
         """
         repo = BodyCompositionRepository()
-        self._measure(repo, 6)
-        # `mood` is already defined - the migration seeds it as a reserved
-        # metric awaiting the journal work.
-        db_session.execute(
-            text(
-                "INSERT INTO observation (observed_at, source, created_at) "
-                "VALUES ('2026-07-06 07:00:00.000000', 'journal', '2026-07-06')"
-            )
-        )
-        db_session.execute(
-            text(
-                "INSERT INTO metric (observation_id, name, value, unit) "
-                "SELECT id, 'mood', 7, '1-10' FROM observation WHERE source='journal'"
-            )
-        )
-        db_session.commit()
+        ts = datetime(2026, 6, 10, 7, 0, tzinfo=PACIFIC_TZ)
+        payload = BodyCompositionCreate(timestamp=ts, date="2026-06-10", weight=190.0)
 
-        assert repo.reconcile_mirror()["in_sync"] is True
+        assert repo.create(payload, source="manual") is not None
+        assert repo.create(payload, source="openscale") is not None
+        assert repo.create(payload, source="openscale") is None
+        assert len(repo.get_all()) == 2
+
+    def test_the_five_columns_that_never_had_a_home_now_have_one(self, db_session):
+        """`bmi`, bone, visceral fat, metabolic age and protein were accepted by
+        the API and written to a table nobody read. Plan 0010 §2."""
+        repo = BodyCompositionRepository()
+        repo.create(
+            BodyCompositionCreate(
+                timestamp=datetime(2026, 6, 11, 7, 0, tzinfo=PACIFIC_TZ),
+                date="2026-06-11",
+                weight=190.0,
+                bmi=24.6,
+                bone_mass_kg=3.2,
+                visceral_fat=8,
+                metabolic_age=31,
+                protein_pct=17.4,
+            )
+        )
+
+        rows = dict(
+            db_session.execute(text("SELECT name, value FROM metric")).all()
+        )
+        assert rows["bmi"] == 24.6
+        # kg, unconverted: `metric_def` already defines bone as kg for DEXA.
+        assert rows["bone_mass_kg"] == 3.2
+        assert rows["metabolic_age"] == 31
+
+        # And they come back out, which they never did before.
+        assert repo.get_latest()["bone_mass_kg"] == 3.2
 
 
 class TestReadPathUsesTheViews:
@@ -488,19 +408,19 @@ class TestReadPathUsesTheViews:
             )
         )
 
-    def test_reads_are_served_from_the_view(self, db_session):
-        """Emptying the legacy table must not change what reads return.
-
-        The sharpest available proof that the view is the source: nothing else
-        would survive body_composition being gone.
-        """
+    def test_the_legacy_table_is_gone(self, db_session):
+        """Plan 0010. The strongest form of "reads come from the view" is that
+        there is nothing else left for them to come from."""
         repo = BodyCompositionRepository()
         self._create(repo, 1)
         self._create(repo, 2)
 
-        db_session.execute(text("DELETE FROM body_composition"))
-        db_session.commit()
-
+        assert (
+            db_session.execute(
+                text("SELECT count(*) FROM sqlite_master WHERE name='body_composition'")
+            ).scalar()
+            == 0
+        )
         assert len(repo.get_all()) == 2
         assert repo.get_latest()["weight"] == pytest.approx(192.0)
         assert repo.get_stats()["total_measurements"] == 2
@@ -508,17 +428,14 @@ class TestReadPathUsesTheViews:
     def test_doc_id_round_trips_through_delete(self, db_session):
         """The id a read hands out must be the id delete accepts.
 
-        Reads return `observation.id`; `body_composition.id` is a different
-        sequence that disagreed on 77 of the 150 production rows. Treating one
-        as the other deletes a different measurement than the user asked for.
+        Reads return `observation.id`. `body_composition.id` was a different
+        sequence that disagreed on 77 of the 150 production rows, so treating
+        one as the other deleted a different measurement than the user asked
+        for. Retiring the table retired the hazard; this stays as the guard.
         """
         repo = BodyCompositionRepository()
         self._create(repo, 3)
         self._create(repo, 4)
-
-        # Force the two sequences apart so a coincidental match cannot pass.
-        db_session.execute(text("UPDATE body_composition SET id = id + 500"))
-        db_session.commit()
 
         target = repo.get_latest()
         assert repo.delete(target["doc_id"]) is True

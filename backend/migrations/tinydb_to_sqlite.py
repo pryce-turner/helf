@@ -12,7 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import settings
 from app.database import SessionLocal, init_db
-from app.db.models import BodyComposition, Category, Exercise, UpcomingWorkout, Workout
+from app.db.models import Category, Exercise, Metric, Observation, UpcomingWorkout, Workout
+from app.utils.units import KG_TO_LB
 
 PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
@@ -253,29 +254,49 @@ def main():
             session.add(workout)
             counts["upcoming_workouts"] += 1
 
-        # Body composition
+        # Body composition.
+        #
+        # Rewritten twice since v1.x and both times because the target moved:
+        # `weight_unit` was dropped in `e96bd4b90873` (ADR-0003 put the unit in
+        # the metric *name*), and `body_composition` itself was retired in
+        # `86c8bbc9e2d7` (Plan 0010). This now writes the tall shape directly -
+        # one `observation` per weigh-in, one `metric` per quantity - which is
+        # what every read has queried since Plan 0003.
+        #
+        # TinyDB stored kilograms. Pounds are canonical (ADR-0003), so the
+        # conversion happens here rather than leaving a v1.x import as the one
+        # source of kg rows in a pounds database.
         for row in body_comp_table.values():
             timestamp = parse_datetime(row.get("timestamp"))
-            weight = row.get("weight")
-            if not timestamp or weight is None:
+            weight_kg = row.get("weight")
+            if not timestamp or weight_kg is None:
                 continue
 
-            measurement = BodyComposition(
-                timestamp=timestamp,
-                date=row.get("date"),
-                weight=weight,
-                weight_unit=row.get("weight_unit") or "kg",
-                body_fat_pct=row.get("body_fat_pct"),
-                muscle_mass=row.get("muscle_mass"),
-                bmi=row.get("bmi"),
-                water_pct=row.get("water_pct"),
-                bone_mass=row.get("bone_mass"),
-                visceral_fat=row.get("visceral_fat"),
-                metabolic_age=row.get("metabolic_age"),
-                protein_pct=row.get("protein_pct"),
+            observation = Observation(
+                # Byte-identical to how the a3 backfill wrote history; the
+                # UNIQUE (observed_at, source) that deduplicates is textual.
+                observed_at=timestamp.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                source="openscale",
                 created_at=parse_datetime(row.get("created_at")) or timestamp,
             )
-            session.add(measurement)
+            values = [
+                ("body_weight_lb", weight_kg * KG_TO_LB, "lb"),
+                ("body_fat_pct", row.get("body_fat_pct"), "%"),
+                # A percentage despite the v1.x field name.
+                ("muscle_pct", row.get("muscle_mass"), "%"),
+                ("water_pct", row.get("water_pct"), "%"),
+                ("bmi", row.get("bmi"), "kg/m2"),
+                ("bone_mass_kg", row.get("bone_mass"), "kg"),
+                ("visceral_fat", row.get("visceral_fat"), "index"),
+                ("metabolic_age", row.get("metabolic_age"), "years"),
+                ("protein_pct", row.get("protein_pct"), "%"),
+            ]
+            for name, value, unit in values:
+                if value is not None:
+                    observation.metrics.append(
+                        Metric(name=name, value=value, unit=unit)
+                    )
+            session.add(observation)
             counts["body_composition"] += 1
 
         session.commit()

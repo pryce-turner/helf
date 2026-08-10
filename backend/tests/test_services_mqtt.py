@@ -91,18 +91,25 @@ def test_mqtt_does_not_convert_percentages():
     assert stored.protein_pct == 17.5
 
 
-def test_mqtt_converts_bone_mass_which_is_a_real_mass():
+def test_mqtt_stores_bone_mass_in_kilograms_unconverted():
+    """Bone is a genuine mass, but it is *not* converted (Plan 0010 §2).
+
+    `metric_def` already defines `bone_mass_kg` for DEXA and openScale reports
+    kg; a pounds copy would put one quantity under two names, which is what
+    ADR-0003's naming rule exists to prevent. Only `weight` converts.
+    """
     measurements = _deliver(
         {"date": "2024-01-01T12:00:00", "weight": 70.5, "bone": 3.2}
     )
 
-    assert measurements[0].bone_mass == pytest.approx(3.2 * KG_TO_LB)
+    assert measurements[0].bone_mass_kg == pytest.approx(3.2)
+    assert measurements[0].weight == pytest.approx(70.5 * KG_TO_LB)
 
 
 def test_mqtt_leaves_absent_bone_mass_as_none():
     measurements = _deliver({"date": "2024-01-01T12:00:00", "weight": 70.5})
 
-    assert measurements[0].bone_mass is None
+    assert measurements[0].bone_mass_kg is None
 
 
 def test_mqtt_on_message_skips_when_missing_fields():

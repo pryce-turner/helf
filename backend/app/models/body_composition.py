@@ -15,7 +15,11 @@ class BodyCompositionBase(BaseModel):
     muscle_mass: float | None = None
     bmi: float | None = None
     water_pct: float | None = Field(None, ge=0, le=100)
-    bone_mass: float | None = None
+    # kg, unlike its neighbours, and the name says so. `metric_def` defines
+    # bone as kg for DEXA (Plan 0008) and openScale reports kg; a second name
+    # in pounds would put one quantity under two names, which is what
+    # ADR-0003's naming rule exists to prevent.
+    bone_mass_kg: float | None = None
     visceral_fat: float | None = None
     metabolic_age: int | None = None
     protein_pct: float | None = Field(None, ge=0, le=100)

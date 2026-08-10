@@ -409,29 +409,3 @@ class AuditLog(Base):
     actor: Mapped[str] = mapped_column(Text, nullable=False, server_default="app")
     old_values: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_values: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-class BodyComposition(Base):
-    """Body composition measurement.
-
-    Legacy wide table. Superseded by `metric` but kept and dual-written until the
-    view-backed path is verified against real numbers; dropping it is a later
-    plan (docs/plans/0003-units-and-metrics.md §4).
-    """
-
-    __tablename__ = "body_composition"
-    __table_args__ = (Index("ix_body_composition_date_timestamp", "date", "timestamp"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), unique=True, nullable=False)
-    date: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
-    weight: Mapped[float] = mapped_column(Float, nullable=False)
-    body_fat_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
-    muscle_mass: Mapped[float | None] = mapped_column(Float, nullable=True)
-    bmi: Mapped[float | None] = mapped_column(Float, nullable=True)
-    water_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
-    bone_mass: Mapped[float | None] = mapped_column(Float, nullable=True)
-    visceral_fat: Mapped[float | None] = mapped_column(Float, nullable=True)
-    metabolic_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    protein_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

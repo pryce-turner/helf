@@ -8,7 +8,12 @@ export interface BodyComposition {
   muscle_mass: number | null;
   bmi: number | null;
   water_pct: number | null;
-  bone_mass: number | null;
+  /**
+   * Kilograms, unlike its neighbours — the unit is in the name because
+   * `metric_def` defines bone as kg for DEXA and openScale reports kg. See
+   * docs/plans/0010-retire-body-composition.md §2.
+   */
+  bone_mass_kg: number | null;
   visceral_fat: number | null;
   metabolic_age: number | null;
   protein_pct: number | null;

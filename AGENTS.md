@@ -71,6 +71,8 @@ helf/
 │   │   │   └── notes.py
 │   │   ├── db/
 │   │   │   └── models.py     # SQLAlchemy ORM models (tables)
+│   │   │                     #   No BodyComposition — retired by plan 0010;
+│   │   │                     #   measurements are Observation + Metric
 │   │   ├── models/           # Pydantic request/response schemas
 │   │   │   ├── workout.py
 │   │   │   ├── exercise.py
@@ -566,6 +568,22 @@ binds to `main` at compile time. See `docs/plans/0007-audit-log.md` §9.
 **This is not the journal.** `note` and `document` hold observations awaiting a
 shape and exist to be restructured; `audit_log` holds mutations and exists to
 be unchangeable.
+
+## Body composition is `observation` + `metric`, not a wide table
+
+The `body_composition` table was retired in `86c8bbc9e2d7` (Plan 0010) after
+eight months of being written and never read. A measurement is now one
+`observation` — an instant, an instrument — with one `metric` row per quantity,
+and the read path queries `v_body_comp_measurements`. There is no dual write
+and no reconciliation left.
+
+`doc_id` in the API is an **`observation.id`**. It was never a
+`body_composition.id`; those sequences disagreed on 77 of 150 rows.
+
+Two units worth knowing: `muscle_pct` is a *percentage* despite the API calling
+it `muscle_mass`, and `bone_mass_kg` is kilograms — DEXA sub-masses are all kg
+(Plan 0008) and openScale reports kg, so bone is not given a second name in
+pounds. Body weight is pounds (ADR-0003).
 
 ## Body composition has three sources, and they disagree
 

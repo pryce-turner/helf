@@ -521,6 +521,27 @@ Earlier choices, predating the ADR practice:
 6. **dnd-kit**: Modern drag-and-drop library with accessibility support
 7. **Liftoscript**: Custom DSL for defining workout programs, simpler than full programming languages
 
+## Mutations are audited by triggers, and the log cannot be rewritten
+
+`audit_log` records UPDATEs and DELETEs (plus INSERTs on `metric` and
+`exercises`, where an insert can silently replace or invent something) for
+`metric`, `food`, `food_log`, `note`, `workouts` and `exercises`. It is
+populated **by database triggers, not by this application** — there are two
+writers (ADR-0002) and application-level auditing would cover one of them —
+and `BEFORE UPDATE`/`BEFORE DELETE` triggers `RAISE(ABORT, 'audit_log is
+append-only')`.
+
+`actor` comes from the one-row `audit_actor` table, which defaults to `'app'`.
+A second writer claims it with `BEGIN IMMEDIATE` **before** setting it and
+resets it inside the same transaction; the write lock is what keeps the claim
+from bleeding onto a concurrent writer's rows. A `TEMP` marker table cannot be
+used — SQLite forbids triggers from reading `temp`, and an unqualified name
+binds to `main` at compile time. See `docs/plans/0007-audit-log.md` §9.
+
+**This is not the journal.** `note` and `document` hold observations awaiting a
+shape and exist to be restructured; `audit_log` holds mutations and exists to
+be unchangeable.
+
 ## Body composition has three sources, and they disagree
 
 `observation.source` is `openscale`, `bodyspec` or `dexafit`. They measure the

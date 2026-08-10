@@ -1,7 +1,8 @@
 # Plan 0007: Append-only audit log
 
-**Status:** Proposed
-**Prerequisites:** Plan 0002 (Alembic)
+**Status:** Implemented (2026-08-09) — revision `7e8f2b1ca79b`; **§3's actor
+design is impossible in SQLite and was replaced**, see §9
+**Prerequisites:** Plan 0002 (Alembic) ✓
 **Recommended before:** Plan 0006 enabling agent write tools
 
 > **Provenance note.** Unlike the other plans, this one has no basis in
@@ -212,3 +213,89 @@ enforcement works.
 2. Should `document` inserts be audited, or is that table already append-only by
    convention?
 3. Is per-row UI history wanted, or is agent-queryable enough?
+
+## 9. What actually landed (2026-08-09, revision `7e8f2b1ca79b`)
+
+### §3's option A is not implementable. Neither is option B.
+
+**Option A — a per-connection `TEMP` marker table — cannot be built in SQLite.**
+Two independent failures, both confirmed against a scratch database rather than
+argued from the documentation:
+
+```
+CREATE TRIGGER t AFTER INSERT ON thing BEGIN
+  INSERT INTO log ... (SELECT actor FROM temp.session_actor LIMIT 1) ...
+END;
+-- Error: in prepare, trigger t cannot reference objects in database temp
+```
+
+Dropping the `temp.` qualifier in the hope that a connection's temp table
+shadows the main one does not work either: name resolution binds when the
+trigger is compiled, so a connection that creates `TEMP session_actor` and
+writes still gets the value from `main`. The scratch test wrote `'app'` for a
+connection that had explicitly declared itself `'agent'` — a silent wrong
+answer, which is the worst possible failure for a provenance record.
+
+**Option B — reuse `metric.source` — describes a column that no longer
+exists.** Plan 0003 moved `source` onto `observation`, and it is an
+*instrument* ('openscale', 'bodyspec'), not an actor. Conflating the two would
+make "which of these did the agent write?" unanswerable for exactly the rows
+where it matters.
+
+### What replaced them: a permanent marker plus SQLite's write lock
+
+```sql
+CREATE TABLE audit_actor (
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    actor TEXT NOT NULL DEFAULT 'app'
+);
+```
+
+One row, enforced by the CHECK. The isolation that `TEMP` was supposed to
+provide comes from SQLite's **single-writer** rule instead: a writer that takes
+the write lock *before* claiming the actor cannot have another writer's rows
+attributed to it. `docs/reference/qs_mcp.py`'s `_rw()` is now a context manager
+that does exactly this, in this order:
+
+1. `BEGIN IMMEDIATE` — take the write lock first.
+2. `UPDATE audit_actor SET actor = 'agent'`.
+3. the writes.
+4. `UPDATE audit_actor SET actor = 'app'` **inside the same transaction**, so a
+   crash rolls the claim back with everything else. Without step 4 an aborted
+   agent write would silently misattribute every subsequent write the PWA made.
+
+The default is `'app'` and is never wrong by accident: a writer that says
+nothing is the PWA, and the only other writer has to opt in explicitly.
+
+### The migration tests its own guarantee
+
+`CREATE TRIGGER` being accepted is not evidence that a trigger fires, so the
+migration inserts a probe row, attempts an `UPDATE` and a `DELETE`, and fails
+loudly if either is permitted. The whole probe runs in a savepoint that is
+rolled back — the row could not be cleaned up otherwise, which is precisely
+what is being verified.
+
+### Audited tables
+
+As §2's matrix, unchanged. Column capture is per table, and `workouts`'
+`order` column is quoted in the generated `json_object(...)` — it is a reserved
+word and produces a syntax error otherwise. There is a test for that
+specifically.
+
+Cascaded deletes were the one uncertainty: deleting an `observation` removes
+its metrics by `ON DELETE CASCADE`, and it was not obvious the `AFTER DELETE`
+trigger would fire without `PRAGMA recursive_triggers`. It does, verified both
+in a scratch database and in the suite.
+
+### Verification
+
+`backend/tests/test_db_audit_log.py`, 13 tests. Every case where coverage is
+the point writes through a **raw `sqlite3` connection**, not the ORM — that is
+the path application-level auditing would miss and the reason this is built out
+of triggers at all.
+
+Against `data/helf.db` (backed up to `helf.db.pre-0007.bak` first): 16 triggers
+created, `audit_log` empty, `audit_actor` = 'app'. A probe that claimed the
+agent actor, touched a real workout row, and rolled back produced an audit row
+reading `workouts | UPDATE | agent | 110.0` inside the transaction and left
+zero rows and `actor = 'app'` after the rollback.

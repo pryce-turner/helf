@@ -30,8 +30,8 @@ table.
 | 0003 | [Units and metrics](0003-units-and-metrics.md) | Implemented 2026-08-08 | through `e96bd4b90873` | Retiring `body_composition` entirely — write-only now, needs its own plan (§9) |
 | 0004 | [Workout session regrain](0004-workout-session-regrain.md) | **Deferred** | — | Deliberate. The highest-risk migration in the roadmap for the least benefit; §1 argues it should stay deferred |
 | 0005 | [Food and notes](0005-food-and-notes.md) | Implemented 2026-08-09 | `12fed2487b4e` | Notes have an API but no UI — deliberate, see §7 |
-| 0006 | [MCP server](0006-mcp-server.md) | Proposed | — | Gap G3: `qs_mcp.py` must return a useful error on an unknown metric name, now that the FK rejects it |
-| 0007 | [Append-only audit log](0007-audit-log.md) | Proposed | — | Recommended before 0006 enables agent **write** tools |
+| 0006 | [MCP server](0006-mcp-server.md) | Proposed | — | Gap G3: `qs_mcp.py` must return a useful error on an unknown metric name, now that the FK rejects it. Write tools must use `_rw()`'s actor claim (0007 §9) |
+| 0007 | [Append-only audit log](0007-audit-log.md) | Implemented 2026-08-09 | `7e8f2b1ca79b` | §8's three open questions. The agent-facing read surface belongs to 0006 |
 | 0008 | [BodySpec DEXA integration](0008-bodyspec-integration.md) | Implemented 2026-08-09 | through `70709fd96184` | — (`kcal_target` landed with 0005) |
 | 0009 | [Drop AMRAP notation](0009-drop-amrap-notation.md) | Implemented 2026-08-08 | `fd709c41eb19` | — |
 
@@ -82,6 +82,10 @@ Each of these cost real debugging time at least once.
   name that module. Reference `database.SessionLocal` through the module
   instead — a test that gets this wrong writes to `data/helf.db`, which has
   happened.
+- **A SQLite trigger cannot read a `TEMP` table**, and an unqualified name in
+  a trigger body binds to `main` when the trigger is compiled — a connection's
+  temp shadow is never seen, silently. This killed Plan 0007 §3's actor design;
+  §9 records what replaced it.
 - **Three instruments write body composition** — `openscale`, `bodyspec`,
   `dexafit` — and they disagree by design. On 2026-03-10 the scale read 6.15
   percentage points of body fat above the DEXA scan. Never difference or

@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -48,11 +49,41 @@ def _ro() -> sqlite3.Connection:
     return conn
 
 
-def _rw() -> sqlite3.Connection:
+@contextmanager
+def _rw():
+    """A write transaction that the audit log will attribute to the agent.
+
+    Three things have to happen in this order, and the order is the whole
+    design (docs/plans/0007-audit-log.md):
+
+    1. `BEGIN IMMEDIATE` takes the write lock *first*. `audit_actor` is a
+       permanent one-row table, not a per-connection one — SQLite forbids a
+       trigger from reading `temp` — so the isolation comes from SQLite's
+       single-writer rule instead. Claiming the actor without holding the write
+       lock is what would let the app's concurrent writes be labelled 'agent'.
+    2. The writes happen.
+    3. The actor is put back to 'app' **inside the same transaction**, so a
+       crash or an exception rolls the claim back with everything else. An
+       actor left set to 'agent' would silently misattribute every later write
+       the PWA makes.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    # isolation_level=None would be tidier, but sqlite3's implicit transaction
+    # handling starts a DEFERRED one on the first write; BEGIN IMMEDIATE has to
+    # be explicit either way.
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("UPDATE audit_actor SET actor = 'agent' WHERE id = 1")
+    try:
+        yield conn
+        conn.execute("UPDATE audit_actor SET actor = 'app' WHERE id = 1")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _now() -> str:
@@ -153,8 +184,7 @@ def add_metric(
         return {"ok": False, "error": "provide value or text_value"}
     observed_at = observed_at or _now()
     warnings: list[str] = []
-    conn = _rw()
-    try:
+    with _rw() as conn:
         d = conn.execute(
             "SELECT canonical_unit FROM metric_def WHERE name = ?", (name,)
         ).fetchone()
@@ -174,10 +204,7 @@ def add_metric(
             {"o": observed_at, "n": name, "v": value, "t": text_value,
              "u": unit, "s": source},
         )
-        conn.commit()
         return {"ok": True, "id": cur.lastrowid, "warnings": warnings}
-    finally:
-        conn.close()
 
 
 @mcp.tool()
@@ -185,16 +212,12 @@ def add_note(body: str, kind: Optional[str] = None, noted_at: Optional[str] = No
     """Save free text: kind is e.g. 'intention', 'review', 'journal', 'injury'.
     noted_at defaults to now."""
     noted_at = noted_at or _now()
-    conn = _rw()
-    try:
+    with _rw() as conn:
         cur = conn.execute(
             "INSERT INTO note (noted_at, kind, body) VALUES (?, ?, ?)",
             (noted_at, kind, body),
         )
-        conn.commit()
         return {"ok": True, "id": cur.lastrowid}
-    finally:
-        conn.close()
 
 
 @mcp.tool()
@@ -218,8 +241,7 @@ def log_food(
     # ('Chicken', NULL) rows past UNIQUE (name, brand). With '' the constraint
     # is real and the lookup below is a plain `=` (Plan 0005 §1).
     brand = brand or ""
-    conn = _rw()
-    try:
+    with _rw() as conn:
         row = conn.execute(
             "SELECT id FROM food WHERE name = ? AND brand = ?", (food_name, brand)
         ).fetchone()
@@ -238,10 +260,7 @@ def log_food(
             "INSERT INTO food_log (consumed_at, food_id, servings, meal) VALUES (?, ?, ?, ?)",
             (consumed_at, food_id, servings, meal),
         )
-        conn.commit()
         return {"ok": True, "id": cur.lastrowid, "food_id": food_id, "food_created": created}
-    finally:
-        conn.close()
 
 
 class SetEntry(BaseModel):
@@ -263,8 +282,7 @@ def log_workout(
     not already in the catalog are created automatically. started_at -> now."""
     started_at = started_at or _now()
     created: list[str] = []
-    conn = _rw()
-    try:
+    with _rw() as conn:
         wid = conn.execute(
             "INSERT INTO workout (started_at, notes) VALUES (?, ?)", (started_at, notes)
         ).lastrowid
@@ -285,15 +303,12 @@ def log_workout(
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (wid, eid, s.set_number, s.reps, s.weight_kg, s.rpe),
             )
-        conn.commit()
         return {
             "ok": True,
             "workout_id": wid,
             "sets_logged": len(sets),
             "exercises_created": created,
         }
-    finally:
-        conn.close()
 
 
 if __name__ == "__main__":

@@ -342,6 +342,75 @@ class Note(Base):
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual")
 
 
+class AuditActor(Base):
+    """Who the database should attribute the next write to. Exactly one row.
+
+    Plan 0007 §3 wanted a per-connection `TEMP` marker. SQLite forbids it
+    outright - *"trigger cannot reference objects in database temp"* - and an
+    unqualified name binds to `main` when the trigger is compiled, so a
+    connection's temp shadow is never seen. The marker therefore has to be a
+    real table.
+
+    That is safe only because SQLite has **one writer at a time**: an actor set
+    inside a write transaction cannot have another writer's rows attributed to
+    it, provided the writer takes the write lock up front. A writer that never
+    touches this row is `'app'`, which is the PWA, and stays correct because
+    the only other writer has to opt in explicitly.
+    """
+
+    __tablename__ = "audit_actor"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_audit_actor_single_row"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor: Mapped[str] = mapped_column(Text, nullable=False, server_default="app")
+
+
+class AuditLog(Base):
+    """What changed, when, and who changed it.
+
+    Append-only, enforced by `BEFORE UPDATE`/`BEFORE DELETE` triggers that
+    `RAISE(ABORT)`. Populated by triggers too, not by this application: there
+    are two writers (ADR-0002) and application-level auditing would cover one
+    of them.
+
+    Emphatically **not** the journal. `note` and `document` hold observations
+    awaiting a shape and exist to be restructured; this holds mutations and
+    exists to be unchangeable. Staging data in an append-only table can never
+    be corrected.
+
+    No relationships and no repository writes - it is written by the database
+    and read by the agent over the read-only connection.
+    """
+
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        CheckConstraint("op IN ('INSERT','UPDATE','DELETE')", name="ck_audit_log_op"),
+        CheckConstraint(
+            "old_values IS NULL OR json_valid(old_values)",
+            name="ck_audit_log_old_is_json",
+        ),
+        CheckConstraint(
+            "new_values IS NULL OR json_valid(new_values)",
+            name="ck_audit_log_new_is_json",
+        ),
+        Index("ix_audit_log_table_row", "table_name", "row_id"),
+        Index("ix_audit_log_changed_at", "changed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    changed_at: Mapped[str] = mapped_column(
+        Text, server_default=text("(datetime('now'))"), nullable=False
+    )
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    row_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    op: Mapped[str] = mapped_column(Text, nullable=False)
+    actor: Mapped[str] = mapped_column(Text, nullable=False, server_default="app")
+    old_values: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_values: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class BodyComposition(Base):
     """Body composition measurement.
 

@@ -1,6 +1,6 @@
 # Plan 0004: Workout session regrain
 
-**Status:** Proposed — **deferred, and recommended to stay deferred**
+**Status:** Deferred — designed, and recommended to stay deferred; see §1
 **Prerequisites:** Plans 0002, 0003
 **Related:** Plan 0001 §3
 

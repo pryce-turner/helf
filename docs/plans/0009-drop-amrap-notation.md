@@ -1,6 +1,6 @@
 # Plan 0009: Drop AMRAP notation — `reps` becomes an integer
 
-**Status:** **Done** — implemented 2026-08-08, revision `fd709c41eb19`
+**Status:** Implemented (2026-08-08) — revision `fd709c41eb19`
 **Prerequisites:** Plan 0002 (Alembic) — satisfied
 **Related:** ADR-0005
 **Risk:** Low — verified lossless against production data

@@ -1,6 +1,6 @@
 # Plan 0008: BodySpec DEXA integration
 
-**Status:** Implemented (2026-08-09)
+**Status:** Implemented (2026-08-09) — through revision `70709fd96184`; see §12
 **Auth:** interactive paste-a-token, never persisted (§3)
 **Prerequisites:** Plan 0002 (Alembic) ✓, Plan 0003 (`metric`) ✓, `document` — **created by this plan**, see §12
 **Related:** ADR-0003

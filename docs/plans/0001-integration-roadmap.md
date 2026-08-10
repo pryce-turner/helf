@@ -1,6 +1,6 @@
 # Plan 0001: Integration roadmap
 
-**Status:** Proposed
+**Status:** Living — the sequencing document; see [README.md](README.md) for current state
 **Prerequisites:** none — this is the entry point
 **Related:** ADR-0002, ADR-0003, ADR-0004; `design/quantified-self-plan.md`
 

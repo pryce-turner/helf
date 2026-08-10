@@ -1,6 +1,6 @@
 # Plan 0003: Units and metrics
 
-**Status:** **Complete** (2026-08-08)
+**Status:** Implemented (2026-08-08) — through revision `e96bd4b90873`; see §9, §10
 **Prerequisites:** Plan 0002 (Alembic + pragmas) — satisfied
 **Related:** ADR-0003
 

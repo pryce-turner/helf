@@ -1,6 +1,6 @@
 # Plan 0005: Food and notes
 
-**Status:** Proposed
+**Status:** Proposed — **partially landed**: `document` was created by Plan 0008, see below
 **Prerequisites:** Plan 0002 (Alembic)
 **Related:** Plan 0001 §3
 
@@ -53,14 +53,32 @@ CREATE TABLE note (
 );
 CREATE INDEX ix_note_date_kind ON note(date, kind);
 
+-- ALREADY EXISTS. Created by Plan 0008 (revision 61ccf127e583) with one extra
+-- column; do NOT create it again. See the note below.
 CREATE TABLE document (
     id           INTEGER PRIMARY KEY,
     imported_at  TEXT NOT NULL DEFAULT (datetime('now')),
     kind         TEXT NOT NULL,
     source       TEXT,
+    external_id  TEXT,                 -- added by 0008: upstream identity
     raw          TEXT NOT NULL CHECK (json_valid(raw))
 );
+CREATE UNIQUE INDEX ux_document_kind_external ON document(kind, external_id);
 ```
+
+> **`document` has already landed.** Plan 0008 needed it before this plan was
+> scheduled — for DEXA payload retention and for `result_id` idempotency — so it
+> created the table to this spec, plus `external_id` and the unique index over
+> `(kind, external_id)`, and added `metric.document_id`. Revision
+> `61ccf127e583`.
+>
+> This plan must therefore **not** create `document`, and its migration should
+> guard on the table already existing rather than assume a clean slate. There
+> are live rows in it: four DEXA documents as of 2026-08-09.
+>
+> `external_id` is nullable and SQLite treats NULLs as distinct in a unique
+> index, so the notes and food imports this plan describes — which have no
+> upstream identity — coexist freely under the constraint.
 
 ### Notes on the shape
 

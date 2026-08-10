@@ -1,6 +1,6 @@
 # Plan 0002: Schema foundation
 
-**Status:** **Done** — implemented 2026-08-08, baseline revision `ac2fc3529985`
+**Status:** Implemented (2026-08-08) — baseline revision `ac2fc3529985`
 **Prerequisites:** none
 **Blocks:** every other plan
 **Related:** ADR-0002, ADR-0004

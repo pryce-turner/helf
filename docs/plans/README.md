@@ -1,0 +1,99 @@
+# Plans — current state
+
+One row per plan. **This file is the entry point for a new session**: read it
+before opening any individual plan, and update it when a plan's status changes.
+
+The plans themselves hold the reasoning and the record of what actually
+happened; this is only the index over them.
+
+## Status vocabulary
+
+Six values, used exactly. The `**Status:**` line at the top of each plan carries
+the same word, so `grep -m1 '^\*\*Status:\*\*' docs/plans/0*.md` reproduces this
+table.
+
+| Value | Meaning |
+|---|---|
+| `Living` | Never "done" — a sequencing document that stays current |
+| `Proposed` | Designed, not started |
+| `In progress` | Partially landed; the plan says how far |
+| `Implemented` | Done, with the revision it landed in |
+| `Deferred` | Deliberately not being done now, with a reason |
+| `Superseded` | Replaced by a later plan |
+
+## The plans
+
+| # | Plan | Status | Landed in | What's left |
+|---|------|--------|-----------|-------------|
+| 0001 | [Integration roadmap](0001-integration-roadmap.md) | Living | — | The sequencing argument. Its gap table predates 0002/0003/0008 landing |
+| 0002 | [Schema foundation](0002-schema-foundation.md) | Implemented 2026-08-08 | `ac2fc3529985` | — |
+| 0003 | [Units and metrics](0003-units-and-metrics.md) | Implemented 2026-08-08 | through `e96bd4b90873` | Retiring `body_composition` entirely — write-only now, needs its own plan (§9) |
+| 0004 | [Workout session regrain](0004-workout-session-regrain.md) | **Deferred** | — | Deliberate. The highest-risk migration in the roadmap for the least benefit; §1 argues it should stay deferred |
+| 0005 | [Food and notes](0005-food-and-notes.md) | Proposed — partially landed | `61ccf127e583` (`document` only) | `food`, `food_log`, `note`, `v_daily_summary`. **Must not re-create `document`** |
+| 0006 | [MCP server](0006-mcp-server.md) | Proposed | — | Gap G3: `qs_mcp.py` must return a useful error on an unknown metric name, now that the FK rejects it |
+| 0007 | [Append-only audit log](0007-audit-log.md) | Proposed | — | Recommended before 0006 enables agent **write** tools |
+| 0008 | [BodySpec DEXA integration](0008-bodyspec-integration.md) | Implemented 2026-08-09 | through `70709fd96184` | `v_daily_summary.kcal_target` (§8) — belongs to 0005, which owns that view |
+| 0009 | [Drop AMRAP notation](0009-drop-amrap-notation.md) | Implemented 2026-08-08 | `fd709c41eb19` | — |
+
+## Where things stand
+
+**Commands, not numbers.** Everything below is derivable in a second and goes
+stale the moment it is written down, so this section deliberately records how to
+ask rather than the answer. A file asserting "177 tests pass" is wrong as soon
+as someone adds a test, and worse than silence because it will be believed.
+
+```bash
+cd backend
+.venv/bin/alembic current      # current revision
+.venv/bin/alembic check        # drift between ORM and migrations
+.venv/bin/pytest -q            # test suite
+ruff check .                   # lint
+git log --oneline -15          # what landed recently, and why
+```
+
+```bash
+# what the database actually holds, by instrument
+sqlite3 data/helf.db "
+  SELECT o.source, count(DISTINCT o.id) observations, count(m.id) metrics
+  FROM observation o JOIN metric m ON m.observation_id = o.id
+  GROUP BY o.source;"
+
+# which quantities are defined vs actually recorded
+sqlite3 data/helf.db "SELECT name, n_rows, first_seen, last_seen FROM v_metric_coverage ORDER BY n_rows DESC;"
+```
+
+## Things a cold session gets wrong
+
+Each of these cost real debugging time at least once.
+
+- **The plans predate the schema.** 0008 was written against a `metric` table
+  that had `source` and `observed_at` columns; 0003 moved both onto
+  `observation` and dropped the `UNIQUE (observed_at, name, source)` constraint
+  that 0008's idempotency design assumed. **Re-derive against the live schema
+  before implementing any plan**, and when the data contradicts the plan, trust
+  the data and fix the plan. 0008 §12 is the worked example.
+- **`data/helf.db` is a live copy of production**, on local disk, bind-mounted
+  into the container. WAL is on, so `cp` is not a consistent copy — use
+  `sqlite3 … ".backup …"`. Back up before every migration.
+- **Tests run the real migrations** (`conftest` does `upgrade head`), so new
+  tables and seeds must arrive via a migration, not `create_all()`.
+- **`from app.database import SessionLocal` at module scope binds the
+  production engine.** It is only safe if `conftest`'s patch list happens to
+  name that module. Reference `database.SessionLocal` through the module
+  instead — a test that gets this wrong writes to `data/helf.db`, which has
+  happened.
+- **Three instruments write body composition** — `openscale`, `bodyspec`,
+  `dexafit` — and they disagree by design. On 2026-03-10 the scale read 6.15
+  percentage points of body fat above the DEXA scan. Never difference or
+  average across `observation.source`.
+
+## Decisions that are settled
+
+Recorded so they are not re-litigated. Full reasoning in `../decisions/`.
+
+- **Pounds are canonical for body mass** (ADR-0003), units live in metric
+  *names*, and no row carries a unit column.
+- **SQLAlchemy for the app, raw SQL for the agent** (ADR-0002).
+- **MCP over REST for agent access**, and read-only is not a confidentiality
+  control (ADR-0004) — nothing secret goes in `helf.db`.
+- **No AMRAP notation**; `reps` is an integer (ADR-0005).

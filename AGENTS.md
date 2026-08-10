@@ -1,5 +1,26 @@
 # Helf - Health & Fitness Tracker
 
+> ## Start here
+>
+> **[`docs/plans/README.md`](docs/plans/README.md) is the entry point for any
+> session doing schema or integration work.** It carries the status of every
+> plan, what is left in each, the commands that report current state, and a
+> list of things a cold session reliably gets wrong. Read it before opening an
+> individual plan.
+>
+> Two conventions that matter more than they look:
+>
+> - **The plans predate the schema.** Several were written against a shape that
+>   has since changed. Re-derive against the live database before implementing
+>   one, and when the data contradicts the plan, trust the data and fix the
+>   plan. `docs/plans/0008-bodyspec-integration.md` §12 is the worked example.
+> - **`data/helf.db` is a live copy of production.** WAL is on, so `cp` is not
+>   a consistent copy — use `sqlite3 … ".backup …"`, and back up before every
+>   migration.
+>
+> Settled decisions live in [`docs/decisions/`](docs/decisions/) as ADRs. They
+> record *why*, and are not to be re-litigated without new evidence.
+
 ## Project Overview
 
 Helf is a modern Progressive Web App (PWA) for tracking workouts, monitoring body composition, and planning training sessions. Refactored from a NiceGUI monolith to a FastAPI + React architecture.
@@ -118,8 +139,16 @@ helf/
 │   ├── public/               # PWA icons, static assets
 │   ├── package.json
 │   └── vite.config.ts        # Vite + PWA + proxy config
+├── docs/
+│   ├── plans/
+│   │   ├── README.md         # ← START HERE: status of every plan, what's left
+│   │   └── 000N-*.md         # One plan per change; carries its own record of
+│   │                         #   what landed and what was wrong with it
+│   └── decisions/            # ADRs — settled decisions and why
 ├── data/                     # Data storage (gitignored)
-│   └── helf.db
+│   ├── helf.db               # Live copy of production. WAL on: back up with
+│   │                         #   `sqlite3 ... ".backup ..."`, never `cp`
+│   └── *.bak                 # Pre-migration backups
 ├── Dockerfile                # Multi-stage build (Node 20 + Python 3.12)
 ├── docker-compose.yml
 ├── .env.example
@@ -334,13 +363,30 @@ The app follows a dark-first design philosophy with an orange accent.
 
 ## Testing
 
+Fixtures build the database by **running the real migrations** (`conftest` does
+`upgrade head`) against a temporary file — not `Base.metadata.create_all()`, and
+not in memory. The read path queries views and `metric_def` carries a seeded
+vocabulary, neither of which exists in metadata, so `create_all()` produces a
+database the application cannot run against. **New tables and seeds must
+therefore arrive via a migration.**
+
+One trap worth naming: `from app.database import SessionLocal` at module scope
+binds the *production* engine, and is only safe if `conftest`'s patch list
+happens to name that module. Reference `database.SessionLocal` through the
+module instead. A test that gets this wrong writes to `data/helf.db`.
+
 ```bash
-# Backend tests (pytest with in-memory SQLite)
+# Backend tests
 cd backend
 pytest
 pytest -v                                    # verbose
 pytest tests/test_services_liftoscript.py    # specific file
 pytest --cov=app                             # coverage
+
+# Migrations
+.venv/bin/alembic current                    # current revision
+.venv/bin/alembic check                      # drift between ORM and migrations
+.venv/bin/alembic upgrade head
 
 # Frontend lint
 cd frontend
@@ -394,10 +440,14 @@ npm run build  # Includes tsc
 ## Git Workflow
 
 ### Branches
-- `main` - Production-ready code
+- `main` - Production-ready code. **Commit directly to it; do not branch first.**
 
 ### Commits
 - Use conventional commit messages
+- **Lead with why the old state was wrong**, not just what changed. The commit
+  log is the record of what was learned; `git log` on this repo is worth reading
+- Record verification in the message — counts *and* checksums against the real
+  database, not just "tests pass"
 - Include Claude Code attribution when AI-assisted
 
 ### Ignored Files
@@ -410,6 +460,19 @@ npm run build  # Includes tsc
 
 ## Architecture Decisions
 
+Formal ADRs live in [`docs/decisions/`](docs/decisions/) and are **settled** —
+read the ADR before proposing a change to what it covers.
+
+| ADR | Decision |
+|---|---|
+| [0001](docs/decisions/0001-record-architecture-decisions.md) | Record decisions, because the reasoning is what's worth keeping |
+| [0002](docs/decisions/0002-sqlalchemy-for-app-raw-sql-for-agent.md) | SQLAlchemy for the app, raw SQL for the agent |
+| [0003](docs/decisions/0003-pounds-as-canonical-unit.md) | **Pounds are canonical for body mass**; units live in metric *names*; no row carries a unit column |
+| [0004](docs/decisions/0004-mcp-server-over-rest-for-agent-access.md) | MCP over REST for agent access — and read-only is **not** a confidentiality control, so nothing secret goes in `helf.db` |
+| [0005](docs/decisions/0005-no-amrap-in-the-data-model.md) | No AMRAP notation; `reps` is an integer |
+
+Earlier choices, predating the ADR practice:
+
 1. **SQLite over TinyDB**: Better performance and query flexibility for growing datasets
 2. **Repository Pattern**: Clean separation between data access and business logic
 3. **React Query over Redux**: Better suited for server state management with optimistic updates
@@ -417,6 +480,19 @@ npm run build  # Includes tsc
 5. **shadcn/ui**: Customizable components without heavy dependencies
 6. **dnd-kit**: Modern drag-and-drop library with accessibility support
 7. **Liftoscript**: Custom DSL for defining workout programs, simpler than full programming languages
+
+## Body composition has three sources, and they disagree
+
+`observation.source` is `openscale`, `bodyspec` or `dexafit`. They measure the
+same quantities with different instruments and **must never be averaged or
+differenced across**. On 2026-03-10 the scale read 6.15 percentage points of
+body fat above the DEXA scan taken hours later — that gap is the instruments,
+not the body.
+
+The read path is source-aware: `BodyCompositionStats.primary_source` names the
+single series its deltas describe, and `/trends` returns a `sources` array
+parallel to `dates` so a chart can keep them as separate marks. See
+`docs/plans/0003-units-and-metrics.md` §4a.
 
 ## Migration from v1.x
 
@@ -431,4 +507,8 @@ This converts TinyDB JSON to SQLite while preserving your existing data.
 
 **Version**: 2.0.0
 **Architecture**: FastAPI + React 19 + SQLite
-**Last Updated**: February 2026
+**Last Updated**: 2026-08-09
+
+Current schema and integration state is **not** recorded here — it would go
+stale. See [`docs/plans/README.md`](docs/plans/README.md), which gives the
+commands that report it.

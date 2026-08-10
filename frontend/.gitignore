@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# vite-plugin-pwa writes this on every `npm run dev`, so it dirtied the tree
+# on every dev session. Build output, not source.
+dev-dist

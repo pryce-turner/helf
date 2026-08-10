@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import body_comp, exercises, progression, upcoming, workouts
+from app.api import body_comp, exercises, food, notes, progression, upcoming, workouts
 from app.config import settings
 from app.database import close_db, init_db
 from app.services.mqtt_service import MQTTService
@@ -60,6 +60,8 @@ app.include_router(exercises.router, prefix="/api/exercises", tags=["exercises"]
 app.include_router(progression.router, prefix="/api/progression", tags=["progression"])
 app.include_router(upcoming.router, prefix="/api/upcoming", tags=["upcoming"])
 app.include_router(body_comp.router, prefix="/api/body-composition", tags=["body-composition"])
+app.include_router(food.router, prefix="/api/food", tags=["food"])
+app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 
 
 @app.get("/api/health")
@@ -150,6 +152,16 @@ if static_dir.exists() and static_dir.is_dir():
 
     @app.get("/body-composition")
     async def spa_body_composition():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/food")
+    async def spa_food():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    # Never had one, despite the page existing since merge 1a27a0b: in
+    # production a hard refresh on /exercises fell through to the 404 handler.
+    @app.get("/exercises")
+    async def spa_exercises():
         return FileResponse(static_dir / "index.html", media_type="text/html")
 else:
     @app.get("/")

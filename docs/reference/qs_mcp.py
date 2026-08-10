@@ -213,10 +213,15 @@ def log_food(
     new), then logs the serving. Pass macros only when creating a new food.
     consumed_at defaults to now."""
     consumed_at = consumed_at or _now()
+    # Brandless foods store '' and never NULL: SQLite treats NULLs as distinct
+    # in a UNIQUE index, so a NULL brand would let unlimited duplicate
+    # ('Chicken', NULL) rows past UNIQUE (name, brand). With '' the constraint
+    # is real and the lookup below is a plain `=` (Plan 0005 §1).
+    brand = brand or ""
     conn = _rw()
     try:
         row = conn.execute(
-            "SELECT id FROM food WHERE name = ? AND brand IS ?", (food_name, brand)
+            "SELECT id FROM food WHERE name = ? AND brand = ?", (food_name, brand)
         ).fetchone()
         created = False
         if row is None:

@@ -249,6 +249,99 @@ class Metric(Base):
     )
 
 
+class Food(Base):
+    """A food and the macros in one serving of it.
+
+    Macros live here, not on `FoodLog`: a serving's numbers are derived
+    (`servings x kcal_per_serving`), so correcting a food's macros
+    retroactively corrects every past log entry. The cost is that editing a
+    food rewrites history silently, which is what Plan 0007's audit log is for.
+
+    `brand` is `''` rather than NULL for brandless foods. SQLite treats NULLs
+    as distinct in a UNIQUE index, so a nullable column would make
+    `UNIQUE (name, brand)` decorative.
+    """
+
+    __tablename__ = "food"
+    __table_args__ = (UniqueConstraint("name", "brand", name="uq_food_name_brand"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    brand: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    serving_desc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kcal_per_serving: Mapped[float | None] = mapped_column(Float, nullable=True)
+    protein_g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    carb_g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fat_g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[str] = mapped_column(
+        Text, server_default=text("(datetime('now'))"), nullable=False
+    )
+
+    logs: Mapped[list["FoodLog"]] = relationship("FoodLog", back_populates="food")
+
+
+class FoodLog(Base):
+    """One consumption event: a food, an amount, and when."""
+
+    __tablename__ = "food_log"
+    __table_args__ = (
+        CheckConstraint(
+            "meal IN ('breakfast','lunch','dinner','snack') OR meal IS NULL",
+            name="ck_food_log_meal",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    consumed_at: Mapped[str] = mapped_column(Text, nullable=False)
+    # STORED, so it can be indexed and joined against `observation.date`,
+    # `workouts.date` and `note.date`. `Computed` is what stops SQLAlchemy
+    # trying to INSERT into it, which SQLite refuses outright.
+    date: Mapped[str] = mapped_column(
+        Text,
+        Computed("substr(consumed_at, 1, 10)", persisted=True),
+        nullable=False,
+        index=True,
+    )
+    food_id: Mapped[int] = mapped_column(
+        ForeignKey("food.id"), nullable=False, index=True
+    )
+    servings: Mapped[float] = mapped_column(Float, nullable=False, server_default="1.0")
+    meal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(
+        Text, server_default=text("(datetime('now'))"), nullable=False
+    )
+
+    food: Mapped[Food] = relationship("Food", back_populates="logs")
+
+
+class Note(Base):
+    """Prose with a date on it: the landing zone for anything unshaped.
+
+    Together with `Document` this is the journal (Plan 0005 §1a) - staging,
+    expected to be superseded, explicitly *not* the audit log. A named scalar
+    over time does not belong here; that already has a shape and goes in
+    `metric` with a `metric_def` entry.
+
+    `kind` is unconstrained on purpose. `source` distinguishes what was
+    observed from what a model inferred, which becomes unanswerable once the
+    agent can write notes.
+    """
+
+    __tablename__ = "note"
+    __table_args__ = (Index("ix_note_date_kind", "date", "kind"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    noted_at: Mapped[str] = mapped_column(Text, nullable=False)
+    date: Mapped[str] = mapped_column(
+        Text,
+        Computed("substr(noted_at, 1, 10)", persisted=True),
+        nullable=False,
+    )
+    kind: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual")
+
+
 class BodyComposition(Base):
     """Body composition measurement.
 

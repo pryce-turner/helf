@@ -827,6 +827,78 @@
         }
     }
 
+    /* Rating stars. Unrated is five outlines, not zero of five, because
+       nobody having judged a movement yet is not the same as judging it
+       badly. */
+    .star-rating {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+    }
+
+    .star-rating__star {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border: none;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+        color: var(--text-muted);
+        border-radius: var(--radius-sm);
+        transition: color var(--duration-fast), background var(--duration-fast);
+    }
+
+    .star-rating__star[aria-pressed="true"] {
+        color: var(--warning);
+    }
+
+    @media (hover: hover) {
+        .star-rating__star:hover {
+            background: var(--bg-hover);
+            color: var(--warning);
+        }
+    }
+
+    .star-rating__star:disabled {
+        cursor: default;
+        opacity: 0.6;
+    }
+
+    /* Touch wants a bigger target than a 16px star. */
+    @media (pointer: coarse) {
+        .star-rating__star {
+            width: 34px;
+            height: 34px;
+        }
+    }
+
+    .mobility-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 12px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .mobility-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--info);
+        background: color-mix(in srgb, var(--info) 14%, transparent);
+        border-radius: var(--radius-sm);
+        padding: 2px 7px;
+    }
+
     /* A day's sets in the progression history. A tight table rather than a row
        of chips: these are three to six near-identical lines and the eye should
        be able to run down the loads. */

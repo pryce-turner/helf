@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Sparkles, ChevronDown } from 'lucide-react';
 import Navigation from '@/components/Navigation';
+import CategoryField from '@/components/CategoryField';
+import StarRating from '@/components/StarRating';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -153,6 +155,13 @@ const Exercises = () => {
     cancelEditing();
   };
 
+  // Every category that exists, whether or not it currently holds an exercise
+  // — an empty one is still a place to file the next movement.
+  const categoryNames = useMemo(
+    () => (categories ?? []).map((c) => c.name).sort((a, b) => a.localeCompare(b)),
+    [categories],
+  );
+
   // Group exercises by category
   const exercisesByCategory = useMemo(() => {
     if (!exercises) return {};
@@ -250,19 +259,12 @@ const Exercises = () => {
                       <Label htmlFor="new-category" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
                         Category
                       </Label>
-                      <Input
+                      <CategoryField
                         id="new-category"
-                        type="text"
-                        list="category-suggestions"
                         value={newCategory}
-                        onChange={(e) => setNewCategory(e.target.value)}
-                        placeholder="e.g., Push"
+                        onChange={setNewCategory}
+                        categories={categoryNames}
                       />
-                      <datalist id="category-suggestions">
-                        {categories?.map(cat => (
-                          <option key={cat.doc_id} value={cat.name} />
-                        ))}
-                      </datalist>
                     </div>
                   </div>
                   <div>
@@ -402,19 +404,16 @@ const Exercises = () => {
                                     placeholder="Exercise name"
                                     style={{ flex: '1 1 200px' }}
                                   />
-                                  <Input
-                                    type="text"
-                                    list="edit-category-suggestions"
-                                    value={editCategory}
-                                    onChange={(e) => setEditCategory(e.target.value)}
-                                    placeholder="Category"
-                                    style={{ flex: '1 1 150px' }}
-                                  />
-                                  <datalist id="edit-category-suggestions">
-                                    {categories?.map(cat => (
-                                      <option key={cat.doc_id} value={cat.name} />
-                                    ))}
-                                  </datalist>
+                                  {/* Same control as the add form: a category
+                                      picked one way and typed the other is how
+                                      a duplicate gets in. */}
+                                  <div style={{ flex: '1 1 150px' }}>
+                                    <CategoryField
+                                      value={editCategory}
+                                      onChange={setEditCategory}
+                                      categories={categoryNames}
+                                    />
+                                  </div>
                                 </div>
                                 <textarea
                                   className="input"
@@ -469,9 +468,22 @@ const Exercises = () => {
                                         color: 'var(--text-primary)',
                                         marginBottom: (exercise.use_count > 0 || exercise.notes) ? 'var(--space-2)' : 0,
                                         wordBreak: 'break-word',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 'var(--space-2)',
+                                        flexWrap: 'wrap',
                                       }}
                                     >
                                       {exercise.name}
+                                      {/* Reads at a glance in the list; the
+                                          checkbox that sets it is beside the
+                                          rating, with the other controls. */}
+                                      {exercise.is_mobility && (
+                                        <span className="mobility-badge">
+                                          <Check style={{ width: '11px', height: '11px' }} />
+                                          Mobility
+                                        </span>
+                                      )}
                                     </h3>
                                     {exercise.notes && (
                                       <div
@@ -507,6 +519,38 @@ const Exercises = () => {
                                   </div>
                                 </div>
                                 <div className="exercise-row__actions flex items-center flex-wrap" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+                                  {/* Rating and mobility save on the spot.
+                                      They are one click each, and putting them
+                                      behind Edit/Save would make judging a
+                                      movement a three-step transaction. */}
+                                  <StarRating
+                                    name={exercise.name}
+                                    value={exercise.rating}
+                                    disabled={updateExercise.isPending}
+                                    onChange={(rating) =>
+                                      updateExercise.mutate({
+                                        id: exercise.doc_id,
+                                        data: { rating },
+                                      })
+                                    }
+                                  />
+                                  <label
+                                    className="mobility-toggle"
+                                    title="Also a mobility movement"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="checkbox"
+                                      checked={exercise.is_mobility}
+                                      onChange={(e) =>
+                                        updateExercise.mutate({
+                                          id: exercise.doc_id,
+                                          data: { is_mobility: e.target.checked },
+                                        })
+                                      }
+                                    />
+                                    Mobility
+                                  </label>
                                   <Button
                                     variant="secondary"
                                     size="sm"

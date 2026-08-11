@@ -44,17 +44,30 @@ class ProgressionService:
                 continue
 
             estimated_1rm = calculate_estimated_1rm(weight, reps)
+            logged_set = {
+                'weight': weight,
+                'weight_unit': workout.get('weight_unit', 'lbs'),
+                'reps': reps,
+                'estimated_1rm': estimated_1rm,
+                'comment': workout.get('comment'),
+            }
 
-            if (date not in historical_by_date or
-                estimated_1rm > historical_by_date[date]['estimated_1rm']):
+            # The day's best set leads, because that is the point the chart
+            # plots; every set of that day hangs off it in `sets`, in the order
+            # performed, so the history can show the session rather than its
+            # single heaviest moment.
+            if date not in historical_by_date:
                 historical_by_date[date] = {
                     'date': date,
-                    'weight': weight,
-                    'weight_unit': workout.get('weight_unit', 'lbs'),
-                    'reps': reps,
-                    'estimated_1rm': estimated_1rm,
-                    'comment': workout.get('comment'),
+                    **logged_set,
+                    'sets': [logged_set],
                 }
+                continue
+
+            day = historical_by_date[date]
+            day['sets'].append(logged_set)
+            if estimated_1rm > day['estimated_1rm']:
+                day.update(logged_set)
 
         historical = list(historical_by_date.values())
         historical.sort(key=lambda x: x['date'])

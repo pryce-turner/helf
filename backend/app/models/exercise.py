@@ -32,19 +32,33 @@ class ExerciseBase(BaseModel):
 class ExerciseCreate(ExerciseBase):
     """Model for creating an exercise."""
     notes: str | None = None
+    # Bounded here *and* by a CHECK: the agent writes raw SQL and never passes
+    # through Pydantic (ADR-0002), so the constraint is the rule both obey.
+    rating: int | None = Field(None, ge=1, le=5)
+    is_mobility: bool = False
 
 
 class ExerciseUpdate(BaseModel):
-    """Model for updating an exercise."""
+    """Model for updating an exercise.
+
+    Every field is optional and absence means "leave it alone". `rating` is the
+    one where that is not enough — clearing a rating back to unrated is a real
+    edit — so the repository distinguishes an omitted field from an explicit
+    null via `model_fields_set` rather than treating both as no-op.
+    """
     name: str | None = None
     category: str | None = None
     notes: str | None = None
+    rating: int | None = Field(None, ge=1, le=5)
+    is_mobility: bool | None = None
 
 
 class Exercise(ExerciseBase):
     """Full exercise model with metadata."""
     id: int = Field(..., alias="doc_id")
     notes: str | None = None
+    rating: int | None = None
+    is_mobility: bool = False
     last_used: str | None = None
     use_count: int = 0
     created_at: datetime

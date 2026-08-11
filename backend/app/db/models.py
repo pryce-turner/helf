@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Computed,
     DateTime,
@@ -47,6 +48,24 @@ class Exercise(Base):
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How good the movement is for this person, 1-5. NULL is unrated, which is
+    # a different fact from a bad rating and is why there is no default.
+    rating: Mapped[int | None] = mapped_column(
+        Integer,
+        CheckConstraint(
+            "rating IS NULL OR rating BETWEEN 1 AND 5", name="ck_exercises_rating"
+        ),
+        nullable=True,
+    )
+    # A flag, not a category. `category_id` says which part of the body a
+    # movement trains and there is exactly one; "is also mobility" cuts across
+    # that — a hip airplane is Legs and mobility both.
+    is_mobility: Mapped[bool] = mapped_column(
+        Boolean,
+        CheckConstraint("is_mobility IN (0, 1)", name="ck_exercises_is_mobility"),
+        nullable=False,
+        server_default="0",
+    )
     last_used: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

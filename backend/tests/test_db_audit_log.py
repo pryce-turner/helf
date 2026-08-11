@@ -222,3 +222,39 @@ def test_exercise_creation_is_audited():
     entry = _log("table_name = 'exercises'")[0]
     assert entry["op"] == "INSERT"
     assert json.loads(entry["new_values"])["name"] == "Bnech Press"
+
+
+def test_exercise_rating_and_mobility_are_audited():
+    """A column added to an audited table is invisible to the log until the
+    triggers are rebuilt, because they enumerate their columns into
+    `json_object`. Migration b3d1c07a4e21 rebuilds all three; this is what
+    fails if a later one forgets."""
+    conn = _raw()
+    conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-08-10')")
+    conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
+                 "VALUES ('Hip Airplane', 1, 0, '2026-08-10')")
+    conn.commit()
+    conn.execute("UPDATE exercises SET rating = 5, is_mobility = 1 WHERE name = 'Hip Airplane'")
+    conn.commit()
+    conn.close()
+
+    entry = _log("table_name = 'exercises' AND op = 'UPDATE'")[0]
+    before = json.loads(entry["old_values"])
+    after = json.loads(entry["new_values"])
+    assert before["rating"] is None and before["is_mobility"] == 0
+    assert after["rating"] == 5 and after["is_mobility"] == 1
+
+
+def test_exercise_rating_is_bounded_for_the_raw_writer_too():
+    """The Pydantic bound never sees the agent's SQL (ADR-0002); the CHECK
+    is the rule both writers obey."""
+    conn = _raw()
+    conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-08-10')")
+    conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
+                 "VALUES ('Cossack Squat', 1, 0, '2026-08-10')")
+    conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE exercises SET rating = 9 WHERE name = 'Cossack Squat'")
+        conn.commit()
+    conn.close()

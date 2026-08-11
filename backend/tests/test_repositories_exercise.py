@@ -1,6 +1,6 @@
 import pytest
 
-from app.models.exercise import CategoryCreate, ExerciseCreate
+from app.models.exercise import CategoryCreate, ExerciseCreate, ExerciseUpdate
 from app.repositories.exercise_repo import CategoryRepository, ExerciseRepository
 
 pytestmark = pytest.mark.usefixtures("db_engine")
@@ -49,3 +49,50 @@ def test_category_get_all_sorts_by_name():
 
     results = repo.get_all()
     assert [r["name"] for r in results] == ["Alpha", "Zed"]
+
+
+def test_exercise_rating_and_mobility_default_to_unset():
+    """Unrated is not zero-rated, and nothing is mobility work by default."""
+    repo = ExerciseRepository()
+    created = repo.create(ExerciseCreate(name="Hip Airplane", category="Legs"))
+    assert created["rating"] is None
+    assert created["is_mobility"] is False
+
+
+def test_exercise_update_sets_rating_and_mobility():
+    repo = ExerciseRepository()
+    created = repo.create(ExerciseCreate(name="Cossack Squat", category="Legs"))
+
+    updated = repo.update(
+        created["doc_id"], ExerciseUpdate(rating=5, is_mobility=True)
+    )
+    assert updated["rating"] == 5
+    assert updated["is_mobility"] is True
+
+
+def test_exercise_update_can_clear_a_rating():
+    """`rating: null` means unrate, which an `is not None` guard would drop.
+
+    The distinction only exists in `model_fields_set` — by value alone an
+    explicit null and an omitted field are identical.
+    """
+    repo = ExerciseRepository()
+    created = repo.create(
+        ExerciseCreate(name="Jefferson Curl", category="Back", rating=3)
+    )
+    assert created["rating"] == 3
+
+    cleared = repo.update(created["doc_id"], ExerciseUpdate(rating=None))
+    assert cleared["rating"] is None
+
+
+def test_exercise_update_without_rating_leaves_it_alone():
+    """The other half of the same distinction: omitted must not clear."""
+    repo = ExerciseRepository()
+    created = repo.create(
+        ExerciseCreate(name="Deep Squat Hold", category="Legs", rating=4)
+    )
+
+    renamed = repo.update(created["doc_id"], ExerciseUpdate(name="Squat Hold"))
+    assert renamed["name"] == "Squat Hold"
+    assert renamed["rating"] == 4

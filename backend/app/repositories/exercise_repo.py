@@ -19,6 +19,8 @@ class ExerciseRepository:
             "name": exercise.name,
             "category": exercise.category.name if exercise.category else None,
             "notes": exercise.notes,
+            "rating": exercise.rating,
+            "is_mobility": bool(exercise.is_mobility),
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
             "created_at": exercise.created_at,
@@ -87,6 +89,8 @@ class ExerciseRepository:
                 name=exercise.name,
                 category_id=category.id,
                 notes=exercise.notes,
+                rating=exercise.rating,
+                is_mobility=exercise.is_mobility,
                 last_used=None,
                 use_count=0,
                 created_at=now,
@@ -140,6 +144,13 @@ class ExerciseRepository:
                 exercise.category_id = category.id
             if data.notes is not None:
                 exercise.notes = data.notes if data.notes else None
+            # `rating: null` means "unrate this", which is indistinguishable
+            # from an omitted field by value alone. `model_fields_set` carries
+            # what the client actually sent.
+            if "rating" in data.model_fields_set:
+                exercise.rating = data.rating
+            if data.is_mobility is not None:
+                exercise.is_mobility = data.is_mobility
 
             session.commit()
             session.refresh(exercise)

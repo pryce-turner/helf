@@ -328,6 +328,9 @@ class WorkoutRepository:
                 .join(Exercise)
                 .options(selectinload(Workout.exercise), selectinload(Workout.category))
                 .where(Exercise.name == exercise)
-                .order_by(Workout.date.asc())
+                # `order` as the tiebreak so a day's sets come back in the
+                # sequence they were performed, which is what the progression
+                # history lists under each date.
+                .order_by(Workout.date.asc(), Workout.order.asc())
             ).scalars().all()
             return [self._serialize(workout) for workout in workouts]

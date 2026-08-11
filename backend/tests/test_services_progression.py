@@ -83,3 +83,31 @@ def test_progression_main_lifts_returns_all_keys():
         "Barbell Squat",
         "Deadlift",
     }
+
+
+def test_historical_day_carries_every_set_best_first():
+    """A day is a session, not its heaviest moment.
+
+    The leading numbers stay the best set — that is the one point the chart
+    plots for the day — and `sets` carries the rest in the order performed.
+    """
+    workout_repo = WorkoutRepository()
+    for order, (weight, reps) in enumerate([(135, 10), (185, 5), (155, 8)], start=1):
+        workout_repo.create(
+            WorkoutCreate(
+                date="2026-07-08",
+                exercise="Bench",
+                category="Chest",
+                weight=weight,
+                reps=reps,
+                order=order,
+            )
+        )
+
+    data = ProgressionService().get_progression_data("Bench", include_upcoming=False)
+    day = data["historical"][0]
+
+    # 185x5 estimates highest, so it leads.
+    assert day["weight"] == 185
+    assert [s["weight"] for s in day["sets"]] == [135, 185, 155]
+    assert day["estimated_1rm"] == max(s["estimated_1rm"] for s in day["sets"])

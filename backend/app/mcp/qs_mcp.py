@@ -390,7 +390,9 @@ def log_food(
         }
 
 
-def _resolve_exercise(conn: sqlite3.Connection, name: str) -> tuple[int, int, bool]:
+def _resolve_exercise(
+    conn: sqlite3.Connection, name: str, category: str | None = None
+) -> tuple[int, int, bool]:
     """Find an exercise by name, case-insensitively, creating it if new.
 
     G6: the reference matched exactly, so "bench press", "Bench Press" and
@@ -401,6 +403,10 @@ def _resolve_exercise(conn: sqlite3.Connection, name: str) -> tuple[int, int, bo
     G7: a created exercise needs a `category_id`, which is NOT NULL with
     foreign keys enforced. The reference supplied none, so its very first
     auto-create would have raised a FOREIGN KEY constraint failure.
+
+    `category` names the category a *newly created* exercise lands in and is
+    ignored for one that already exists — recategorising a movement because it
+    turned up in a routine would overwrite a decision made on /exercises.
     """
     found = conn.execute(
         "SELECT id, category_id FROM exercises WHERE name = ? COLLATE NOCASE", (name,)
@@ -408,15 +414,16 @@ def _resolve_exercise(conn: sqlite3.Connection, name: str) -> tuple[int, int, bo
     if found is not None:
         return found["id"], found["category_id"], False
 
-    category = conn.execute(
-        "SELECT id FROM categories WHERE name = ? COLLATE NOCASE", (UNCATEGORIZED,)
+    category_name = category or UNCATEGORIZED
+    existing = conn.execute(
+        "SELECT id FROM categories WHERE name = ? COLLATE NOCASE", (category_name,)
     ).fetchone()
     category_id = (
-        category["id"]
-        if category is not None
+        existing["id"]
+        if existing is not None
         else conn.execute(
             "INSERT INTO categories (name, created_at) VALUES (?, ?)",
-            (UNCATEGORIZED, _now()),
+            (category_name, _now()),
         ).lastrowid
     )
     exercise_id = conn.execute(
@@ -502,10 +509,185 @@ def log_workout(
 
 
 # --------------------------------------------------------------------------
+# Mobility — the one loop the agent drives rather than assists
+# --------------------------------------------------------------------------
+# A mobility program is one rolling routine, so its planned rows always share
+# this session number (Plan 0012 §2). Mirrors `MOBILITY_SESSION` in
+# `app/repositories/upcoming_repo.py`; duplicated rather than imported, because
+# this process imports nothing from `app` except `config` (ADR-0002).
+MOBILITY_SESSION = 1
+PLAN_KIND = "mobility_plan"
+SESSION_KIND = "mobility_session"
+
+
+def read_latest_mobility_session() -> dict:
+    """Read the last mobility session that was actually performed, and what was
+    said about it. Call this **before** write_next_mobility_session — it is the
+    entire input to the next prescription.
+
+    Returns the day's sets in performed order with their `comment` fields. The
+    comments are the user's feedback and the only feedback channel there is, so
+    read every one: some describe the movement they hang off ("failed right
+    side at 7"), and some are about the program as a whole ("keep this to 7
+    movements max") and are attached to whichever set was on screen at the time.
+
+    `rationale` is what the previous session was written to achieve, so you can
+    tell an instruction that worked from one that was never tried.
+    """
+    conn = _ro()
+    try:
+        note = conn.execute(
+            "SELECT date, body FROM note WHERE kind = ? "
+            "ORDER BY noted_at DESC LIMIT 1",
+            (SESSION_KIND,),
+        ).fetchone()
+        if note is None:
+            return {
+                "ok": True,
+                "found": False,
+                "hint": "No mobility session has been logged yet. The pool of "
+                        "movements and their notes is in `exercises` where "
+                        "is_mobility = 1; read those before writing a first "
+                        "session.",
+            }
+
+        sets = conn.execute(
+            """SELECT e.name AS exercise, w.weight, w.reps, w.time, w.comment,
+                      w."order", w.completed_at IS NOT NULL AS completed
+               FROM workouts w JOIN exercises e ON e.id = w.exercise_id
+               WHERE w.date = ?
+               ORDER BY w."order", w.id""",
+            (note["date"],),
+        ).fetchall()
+
+        return {
+            "ok": True,
+            "found": True,
+            "date": note["date"],
+            "rationale": note["body"],
+            "sets": [dict(r) for r in sets],
+        }
+    finally:
+        conn.close()
+
+
+def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
+    """Write the next mobility session, replacing whatever was pending.
+
+    `items` is the routine in the order it is to be performed. Each is
+    {exercise, sets?, reps?, weight_lb?, comment?, category?}:
+
+    - **`sets` expands into rows**, one per set, because that is how the user
+      logs — "8 and then 10 reps" is two different numbers and needs two rows
+      to land in. `sets: 2, reps: 8` becomes two rows of 8.
+    - **`comment` is the cue** ("each side", "soft knees — not stiff-leg", the
+      setup detail). It travels onto the logged set and is then *overwritten*
+      by the user's feedback, which is how the note comes back to you.
+    - **`weight_lb` is pounds** (ADR-0003).
+
+    `rationale` is what you changed and why. The user reads it on the mobility
+    tab before running the session, so write it to them, not to yourself.
+
+    Replaces the pending session wholesale — there is one rolling routine, not
+    a queue. Anything already pending and not yet run is discarded.
+    """
+    if not items:
+        return {"ok": False, "error": "a session needs at least one item"}
+    if not rationale or not rationale.strip():
+        return {
+            "ok": False,
+            "error": "rationale is required",
+            "hint": "It is what the user reads to know why today differs from "
+                    "last time. A session with no reasoning is a list.",
+        }
+
+    for index, item in enumerate(items):
+        if not item.get("exercise"):
+            return {"ok": False, "error": f"items[{index}] has no exercise"}
+        if item.get("sets") is not None and int(item["sets"]) < 1:
+            return {"ok": False, "error": f"items[{index}] has sets < 1"}
+
+    created: list[str] = []
+    written: list[int] = []
+
+    with _rw() as conn:
+        replaced = conn.execute(
+            "DELETE FROM upcoming_workouts WHERE kind = 'mobility'"
+        ).rowcount
+
+        for item in items:
+            exercise_id, category_id, was_created = _resolve_exercise(
+                conn, item["exercise"], category=item.get("category")
+            )
+            if was_created:
+                created.append(item["exercise"])
+                # A movement invented by a mobility prescription is mobility
+                # work by construction. An exercise that already existed is
+                # left alone - the flag is the user's judgement, on /exercises.
+                conn.execute(
+                    "UPDATE exercises SET is_mobility = 1 WHERE id = ?",
+                    (exercise_id,),
+                )
+
+            for _ in range(int(item.get("sets") or 1)):
+                written.append(
+                    conn.execute(
+                        """INSERT INTO upcoming_workouts
+                             (session, kind, exercise_id, category_id, weight,
+                              reps, comment, created_at)
+                           VALUES (?, 'mobility', ?, ?, ?, ?, ?, ?)""",
+                        (
+                            MOBILITY_SESSION,
+                            exercise_id,
+                            category_id,
+                            item.get("weight_lb"),
+                            item.get("reps"),
+                            item.get("comment"),
+                            _now(),
+                        ),
+                    ).lastrowid
+                )
+
+        # The rationale replaces its predecessor rather than accumulating: it
+        # describes the session that is pending, and only one ever is.
+        conn.execute("DELETE FROM note WHERE kind = ?", (PLAN_KIND,))
+        conn.execute(
+            "INSERT INTO note (noted_at, kind, body, source) VALUES (?, ?, ?, 'agent')",
+            (_now(), PLAN_KIND, rationale),
+        )
+
+    return {
+        "ok": True,
+        "sets_written": len(written),
+        "movements": len(items),
+        "replaced_pending_rows": replaced,
+        "exercises_created": created,
+    }
+
+
+# --------------------------------------------------------------------------
 # Server assembly
 # --------------------------------------------------------------------------
-READ_TOOLS = (query, get_schema, daily_summary, get_metric_names)
+READ_TOOLS = (query, get_schema, daily_summary, get_metric_names,
+              read_latest_mobility_session)
 WRITE_TOOLS = (add_metric, add_note, log_food, log_workout)
+
+# Registered in **both** modes, unlike everything in WRITE_TOOLS.
+#
+# This is a deliberate hole in the §4 rule that the mode is the whole gate, and
+# it is worth being honest about the cost: after this, "read-only" describes
+# the default set of tools rather than the process. The reason it is worth it
+# is that the mobility loop is the one feature whose entire value is the agent
+# writing — a read-only mobility server can describe the next session but not
+# produce one, which leaves the user copying a routine out of a chat window by
+# hand, which is the thing this replaces.
+#
+# It is scoped as narrowly as the idea allows. This tool writes planned rows
+# for one session plus its rationale; it cannot log a workout, record a
+# measurement, or touch anything already in the calendar. ADR-0004's real
+# claim — that the *connection* is the privilege boundary — is untouched:
+# `query` is still `mode=ro`, so no amount of talking gets a write through it.
+ALWAYS_TOOLS = (write_next_mobility_session,)
 
 
 def load_instructions() -> str:
@@ -549,6 +731,15 @@ def check_database() -> None:
             ).fetchone()
             is None
         ]
+        # `write_next_mobility_session` is registered in read-only mode too, so
+        # a database predating c4a92f18de07 would fail at the first call with an
+        # opaque "no such column: kind" rather than at startup.
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(upcoming_workouts)")
+        }
+        if columns and "kind" not in columns:
+            missing.append("upcoming_workouts.kind")
     finally:
         conn.close()
     if missing:
@@ -566,6 +757,12 @@ def build_server():
     with, or retried; a tool that answers "not permitted" invites all three.
     Registration is the gate because no client-side allowlist can be relied on
     when the client is unknown.
+
+    `ALWAYS_TOOLS` is the one exception and is argued for where it is defined.
+    Note what it means for the mode: `QS_MCP_MODE=read-only` no longer implies
+    the process cannot write, only that the general-purpose write tools are
+    absent. `query` remains `mode=ro` either way, which is the guarantee
+    ADR-0004 actually makes.
     """
     # `FastMCP` was renamed `MCPServer` in mcp 2.0. Same `.tool()` and `.run()`
     # API; the plan and the reference file both predate the rename.
@@ -574,7 +771,7 @@ def build_server():
     check_database()
     server = MCPServer("helf", instructions=load_instructions())
 
-    for tool in READ_TOOLS:
+    for tool in READ_TOOLS + ALWAYS_TOOLS:
         server.tool()(tool)
     if not READ_ONLY:
         for tool in WRITE_TOOLS:

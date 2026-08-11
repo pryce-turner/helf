@@ -42,6 +42,10 @@ import type {
     PresetInfo,
     PresetContent,
 } from "../types/upcoming";
+import type {
+    MobilityPending,
+    MobilityTransferResponse,
+} from "../types/mobility";
 
 // Use relative URL - Vite proxy handles routing to backend in dev
 // In production, requests go to same origin
@@ -188,6 +192,19 @@ export const upcomingApi = {
 
     generateLiftoscript: (request: LiftoscriptGenerateRequest) =>
         api.post<LiftoscriptGenerateResponse>("/api/upcoming/liftoscript/generate", request),
+};
+
+// Mobility
+//
+// No create: the pending session is written by the agent over MCP. The app
+// shows it and moves it onto a date.
+export const mobilityApi = {
+    getPending: () => api.get<MobilityPending>("/api/mobility/pending"),
+
+    transfer: (date: string) =>
+        api.post<MobilityTransferResponse>("/api/mobility/transfer", { date }),
+
+    clearPending: () => api.delete("/api/mobility/pending"),
 };
 
 // Body Composition

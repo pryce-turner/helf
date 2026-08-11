@@ -48,8 +48,15 @@ class Exercise(Base):
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # How good the movement is for this person, 1-5. NULL is unrated, which is
-    # a different fact from a bad rating and is why there is no default.
+    # **Enjoyment**, 1-5 — how much this person wants to do the movement, and
+    # nothing else. It exists to protect adherence: a routine only works if it
+    # gets run. NULL is unrated, a different fact from a bad rating, which is
+    # why there is no default.
+    #
+    # Emphatically *not* how valuable the movement is; that lives in `notes`.
+    # The divergence is the signal (Plan 0012 §8) — a 5-rated movement of low
+    # value is a candidate to cut, and a 1-rated movement of high value needs
+    # its friction diagnosed rather than its place defended.
     rating: Mapped[int | None] = mapped_column(
         Integer,
         CheckConstraint(
@@ -107,12 +114,35 @@ class Workout(Base):
 
 
 class UpcomingWorkout(Base):
-    """Planned upcoming workout entry."""
+    """Planned upcoming workout entry — lifting or mobility.
+
+    One row per prescribed set, waiting to be copied onto a date. Undated on
+    purpose: a plan becomes dated at the moment it is transferred into
+    `workouts`, and until then "when" is not a fact about it.
+
+    `kind` is what lets one table hold two programs that are written by
+    different authors. Lifting sessions come from a Liftoscript program the user
+    edits; mobility sessions are written one at a time by the agent, which reads
+    the last logged session's comments and adjusts. The shape is identical, so
+    the split is a discriminator rather than a second pair of tables (Plan
+    0012 §2).
+
+    The consequence to remember: **every query has to say which kind it means.**
+    A missing filter does not error, it silently mixes the two — the Liftoscript
+    generator deletes all upcoming rows before writing, and unscoped that would
+    take the pending mobility session with it.
+    """
 
     __tablename__ = "upcoming_workouts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(
+        Text,
+        CheckConstraint("kind IN ('lifting', 'mobility')", name="ck_upcoming_kind"),
+        nullable=False,
+        server_default="lifting",
+    )
     exercise_id: Mapped[int] = mapped_column(
         ForeignKey("exercises.id"), nullable=False, index=True
     )

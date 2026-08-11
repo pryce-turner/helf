@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2 } from 'lucide-react';
 import Navigation from '@/components/Navigation';
+import TrainingSectionTabs from '@/components/TrainingSectionTabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
@@ -189,6 +190,8 @@ const Upcoming = () => {
               </Button>
             </div>
           </div>
+
+          <TrainingSectionTabs />
 
           {/* Program Editor */}
           {showEditor && (

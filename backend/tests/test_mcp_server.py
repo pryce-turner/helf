@@ -350,6 +350,243 @@ def test_write_tools_appear_in_read_write_mode(mcp, monkeypatch):
     assert {"add_metric", "add_note", "log_food", "log_workout"} <= names
 
 
+def test_mobility_tools_are_present_in_read_only_mode(mcp, monkeypatch):
+    """The scoped exception (Plan 0012 §5).
+
+    The mobility loop's whole value is the agent writing the next session, so
+    its write tool is registered in both modes. If this ever stops being
+    deliberate, the failure is silent — the tab just never leaves the "no
+    session ready" state — which is why it is asserted rather than assumed.
+    """
+    monkeypatch.setattr(mcp, "READ_ONLY", True)
+    names = _tool_names(mcp.build_server())
+
+    assert "read_latest_mobility_session" in names
+    assert "write_next_mobility_session" in names
+    # The exception is scoped. Everything else still obeys the mode.
+    assert "log_workout" not in names
+    assert "add_metric" not in names
+
+
+# --------------------------------------------------------------------------
+# The mobility loop
+# --------------------------------------------------------------------------
+def _run_session(mcp, date: str, comment: str | None = None) -> None:
+    """Put a logged mobility day in the database, the way a transfer would."""
+    with database.SessionLocal() as session:
+        session.execute(
+            text(
+                "INSERT INTO categories (name, created_at) VALUES ('Core', '2026-08-07')"
+            )
+        )
+        session.execute(
+            text(
+                "INSERT INTO exercises (name, category_id, is_mobility, use_count, "
+                "created_at) VALUES ('QL Raise', 1, 1, 0, '2026-08-07')"
+            )
+        )
+        session.execute(
+            text(
+                'INSERT INTO workouts (date, exercise_id, category_id, reps, comment, '
+                '"order", created_at, updated_at) '
+                "VALUES (:d, 1, 1, 8, :c, 1, '2026-08-07', '2026-08-07')"
+            ),
+            {"d": date, "c": comment},
+        )
+        session.execute(
+            text(
+                "INSERT INTO note (noted_at, kind, body, source) "
+                "VALUES (:n, 'mobility_session', 'held QL steady', 'agent')"
+            ),
+            {"n": f"{date}T12:00:00"},
+        )
+        session.commit()
+
+
+def test_read_latest_says_so_when_nothing_has_been_logged(mcp):
+    result = mcp.read_latest_mobility_session()
+
+    assert result["found"] is False
+    # An agent told "no data" invents a first session from nothing; told where
+    # the pool is, it reads it.
+    assert "is_mobility" in result["hint"]
+
+
+def test_read_latest_returns_the_sets_and_their_comments(mcp):
+    _run_session(mcp, "2026-08-11", comment="8 then 10, up to 35 next")
+
+    result = mcp.read_latest_mobility_session()
+
+    assert result["found"] is True
+    assert result["date"] == "2026-08-11"
+    assert result["rationale"] == "held QL steady"
+    assert result["sets"][0]["exercise"] == "QL Raise"
+    assert result["sets"][0]["comment"] == "8 then 10, up to 35 next"
+
+
+def test_read_latest_ignores_a_lifting_day_that_borrows_a_mobility_movement(mcp):
+    """The day marker is a note, not `exercises.is_mobility`.
+
+    A mobility routine borrows movements that are also lifting movements, so
+    "the last day containing a mobility exercise" finds lifting days too —
+    2026-06-25 in the real database is a pigeon squat logged beside a Romanian
+    deadlift. Only a transferred session writes the marker.
+    """
+    _run_session(mcp, "2026-08-11")
+    with database.SessionLocal() as session:
+        session.execute(
+            text(
+                'INSERT INTO workouts (date, exercise_id, category_id, reps, "order", '
+                "created_at, updated_at) "
+                "VALUES ('2026-08-12', 1, 1, 8, 1, '2026-08-07', '2026-08-07')"
+            )
+        )
+        session.commit()
+
+    assert mcp.read_latest_mobility_session()["date"] == "2026-08-11"
+
+
+def test_write_next_expands_sets_into_rows(mcp):
+    result = mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "sets": 2, "reps": 8, "weight_lb": 30}],
+        rationale="up to 35 next time",
+    )
+
+    assert result["ok"] is True
+    assert result["sets_written"] == 2
+    assert result["movements"] == 1
+
+    rows = mcp.query(
+        "SELECT reps, weight, kind FROM upcoming_workouts ORDER BY id"
+    )["rows"]
+    assert rows == [
+        {"reps": 8, "weight": 30.0, "kind": "mobility"},
+        {"reps": 8, "weight": 30.0, "kind": "mobility"},
+    ]
+
+
+def test_write_next_flags_a_movement_it_invents(mcp):
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "Jefferson Curl", "sets": 1, "reps": 5}],
+        rationale="probing the range unloaded",
+    )
+
+    rows = mcp.query(
+        "SELECT name, is_mobility FROM exercises WHERE name = 'Jefferson Curl'"
+    )["rows"]
+    assert rows == [{"name": "Jefferson Curl", "is_mobility": 1}]
+
+
+def test_write_next_leaves_an_existing_movements_flag_alone(mcp):
+    """`is_mobility` is the user's judgement, made on /exercises. Borrowing a
+    lifting movement for one session must not rewrite it."""
+    with database.SessionLocal() as session:
+        session.execute(
+            text("INSERT INTO categories (name, created_at) VALUES ('Back', '2026-08-07')")
+        )
+        session.execute(
+            text(
+                "INSERT INTO exercises (name, category_id, is_mobility, use_count, "
+                "created_at) VALUES ('Good Morning', 1, 0, 0, '2026-08-07')"
+            )
+        )
+        session.commit()
+
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "good morning", "sets": 2, "reps": 8}],
+        rationale="soft knees, bar only",
+    )
+
+    rows = mcp.query("SELECT name, is_mobility FROM exercises")["rows"]
+    assert rows == [{"name": "Good Morning", "is_mobility": 0}]
+
+
+def test_write_next_replaces_the_pending_session(mcp):
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "sets": 3, "reps": 8}], rationale="first"
+    )
+    result = mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "sets": 2, "reps": 8}], rationale="second"
+    )
+
+    assert result["replaced_pending_rows"] == 3
+    assert mcp.query("SELECT count(*) n FROM upcoming_workouts")["rows"] == [{"n": 2}]
+    assert mcp.query("SELECT body FROM note WHERE kind = 'mobility_plan'")["rows"] == [
+        {"body": "second"}
+    ]
+
+
+def test_write_next_leaves_lifting_rows_untouched(mcp):
+    """Same table, and the DELETE that replaces the pending session is one
+    missing predicate away from clearing the user's whole program."""
+    with database.SessionLocal() as session:
+        session.execute(
+            text("INSERT INTO categories (name, created_at) VALUES ('Push', '2026-08-07')")
+        )
+        session.execute(
+            text(
+                "INSERT INTO exercises (name, category_id, use_count, created_at) "
+                "VALUES ('Bench', 1, 0, '2026-08-07')"
+            )
+        )
+        session.execute(
+            text(
+                "INSERT INTO upcoming_workouts (session, kind, exercise_id, "
+                "category_id, reps, created_at) "
+                "VALUES (1, 'lifting', 1, 1, 5, '2026-08-07')"
+            )
+        )
+        session.commit()
+
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "sets": 1, "reps": 8}], rationale="one set"
+    )
+
+    assert mcp.query(
+        "SELECT count(*) n FROM upcoming_workouts WHERE kind = 'lifting'"
+    )["rows"] == [{"n": 1}]
+
+
+def test_write_next_requires_a_rationale(mcp):
+    result = mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "reps": 8}], rationale="   "
+    )
+
+    assert result["ok"] is False
+    assert mcp.query("SELECT count(*) n FROM upcoming_workouts")["rows"] == [{"n": 0}]
+
+
+def test_write_next_rejects_an_empty_session(mcp):
+    assert mcp.write_next_mobility_session(items=[], rationale="nothing")["ok"] is False
+
+
+def test_write_next_is_attributed_to_the_agent(mcp):
+    """The actor claim is what `_rw`'s BEGIN IMMEDIATE dance exists for.
+
+    Two audited operations here, and note which: creating an exercise is an
+    INSERT on `exercises`, and replacing the rationale is a DELETE on `note`.
+    Ordinary note *inserts* are not audited at all — 0007 logs INSERTs only on
+    `metric` and `exercises`, where an insert can silently replace or invent
+    something.
+    """
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "sets": 1, "reps": 8}], rationale="first"
+    )
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "sets": 1, "reps": 8}], rationale="second"
+    )
+
+    logged = mcp.query(
+        "SELECT table_name, op, actor FROM audit_log ORDER BY id"
+    )["rows"]
+
+    assert {"table_name": "exercises", "op": "INSERT", "actor": "agent"} in logged
+    assert {"table_name": "note", "op": "DELETE", "actor": "agent"} in logged
+    # The claim is released inside the same transaction, so nothing later is
+    # attributed to the agent by accident.
+    assert mcp.query("SELECT actor FROM audit_actor")["rows"] == [{"actor": "app"}]
+
+
 def test_read_only_is_the_default_for_an_unset_variable(monkeypatch):
     """Forgetting the variable must yield the safe mode, not the permissive
     one. Re-imported because the flag is read at import time."""

@@ -1,6 +1,10 @@
+/** Which program a planned row belongs to. Mirrors the CHECK on the column. */
+export type WorkoutKind = "lifting" | "mobility";
+
 export interface UpcomingWorkout {
   doc_id: number;
   session: number;
+  kind: WorkoutKind;
   exercise: string;
   category: string;
   weight: number | null;

@@ -5,6 +5,7 @@ import WorkoutSession from "./pages/WorkoutSession";
 import Progression from "./pages/Progression";
 import BodyComposition from "./pages/BodyComposition";
 import Upcoming from "./pages/Upcoming";
+import Mobility from "./pages/Mobility";
 import Exercises from "./pages/Exercises";
 import Food from "./pages/Food";
 import Supplements from "./pages/Supplements";
@@ -58,6 +59,7 @@ function App() {
                         <Route path="/food" element={<Food />} />
                         <Route path="/supplements" element={<Supplements />} />
                         <Route path="/upcoming" element={<Upcoming />} />
+                        <Route path="/mobility" element={<Mobility />} />
                         <Route path="/exercises" element={<Exercises />} />
                     </Routes>
                     <InstallPrompt />

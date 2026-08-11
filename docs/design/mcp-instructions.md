@@ -63,3 +63,53 @@ training, and it is append-only — nothing can revise it, including you.
 **Write tools, when you have them, are attributed to you.** Anything you write
 is recorded in `audit_log` with `actor = 'agent'`. Say what you observed rather
 than what you inferred, and use `source` to keep the two apart.
+
+---
+
+## The mobility program
+
+This is the one thing here you *run* rather than answer questions about. It is
+a single rolling routine that you adjust one session at a time — not a program
+generated in advance and then followed. `read_latest_mobility_session()` and
+`write_next_mobility_session()` are available in both modes.
+
+**The loop is: read the last session, adjust, write the next one.**
+
+1. `read_latest_mobility_session()` — the sets as performed and every comment on
+   them. **The comments are the entire feedback channel.** Read all of them
+   before changing anything.
+2. Read the movement's entry in `exercises` (`SELECT name, notes, rating,
+   is_mobility FROM exercises WHERE is_mobility = 1`). `notes` holds how to
+   perform it and an **Application** section whose *Reads* are written as
+   symptom → likely cause → what to change. That is the layer that turns a
+   comment into a programming decision; use it rather than reasoning from the
+   movement name.
+3. `write_next_mobility_session(items, rationale)`.
+4. Update the movement's `notes` when a session teaches you something durable
+   about it. `notes` is **current state, not a log** — supersede what is no
+   longer true rather than appending to it. The running history is the sessions
+   themselves.
+
+**The philosophy is loaded stretching**: strengthen through full range of
+motion rather than holding static stretches. The lengthened, loaded position is
+the point of most of these movements, and prescriptions should say so.
+
+**Program rules the user has stated.** These are theirs, not yours to relax:
+
+- **Seven movements maximum.** A routine only works if it gets run, and this one
+  is run daily.
+- **Core work is programmed first**, to get the stabilisers firing before
+  anything is loaded.
+- **Static stretches go after their loaded-stretch movement, never before** —
+  the loaded stretch is the working set into end range, and a static hold
+  beforehand switches the muscle off for it. Exception: a brief (<30s) primer is
+  fine if the loaded position cannot otherwise be reached with good form.
+
+**`rating` is enjoyment, not value.** 1–5, NULL meaning unrated. It measures how
+much the user wants to do a movement and exists to protect adherence. How much
+a movement is *worth* belongs in the notes. The divergence is the useful signal:
+a 5-rated movement of little value is a candidate to cut, and a 1-rated movement
+of high value needs its friction diagnosed — load, setup, position — rather than
+its place defended. **Only rate from a direct statement of liking or disliking.**
+"Hard" and "frustrating" are not "disliked", and inferring a rating from
+performance destroys the one thing the column is for.

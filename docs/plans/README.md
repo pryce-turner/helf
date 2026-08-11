@@ -36,13 +36,15 @@ table.
 | 0009 | [Drop AMRAP notation](0009-drop-amrap-notation.md) | Implemented 2026-08-08 | `fd709c41eb19` | — |
 | 0010 | [Retire `body_composition`](0010-retire-body-composition.md) | Implemented 2026-08-09 | `86c8bbc9e2d7` | — |
 | 0011 | [Supplement stacks](0011-supplement-stacks.md) | Implemented 2026-08-09 | `9ffbe9c21a0f` | — |
+| 0012 | [Mobility](0012-mobility.md) | Implemented 2026-08-10 | `c4a92f18de07` | §8: the four vault sessions are not backfilled, so the first `read_latest_mobility_session()` finds nothing |
 
 ## Where things stand
 
 Every plan is landed except 0004, which is deferred on purpose. Two things are
-built, tested, and deliberately **not switched on**: agent write tools
-(`QS_MCP_MODE=read-write`) and a notes UI. Both are decisions, not omissions —
-0006 §8 and 0005 §7.
+built, tested, and deliberately **not switched on**: the general-purpose agent
+write tools (`QS_MCP_MODE=read-write`) and a notes UI. Both are decisions, not
+omissions — 0006 §8 and 0005 §7. Mobility's write tool is the one exception and
+is argued in 0012 §5.
 
 ### Deliberately not switched on
 
@@ -51,7 +53,7 @@ too, but it is **gitignored** — this is the copy a fresh clone gets.
 
 | Thing | Where it is argued |
 |---|---|
-| Agent **write** tools — `QS_MCP_MODE` defaults to `read-only` | 0006 §8 |
+| Agent **write** tools — `QS_MCP_MODE` defaults to `read-only`. **One exception since 0012**: `write_next_mobility_session` is registered in both modes, so read-only now means "the general-purpose write tools are absent", not "this process cannot write" | 0006 §8, 0012 §5 |
 | Notes have an API and no UI | 0005 §7 |
 | `v_blood_results` is not built — no data source | 0001 §5 |
 | Plan 0004, the workout regrain | 0004 §1 |
@@ -62,8 +64,14 @@ Work that is finished but under-checked. Not bugs; things nobody has looked at.
 
 - **Only the Body section has been looked at in a browser.** Calendar,
   Progression and Exercises were glanced at; `/day/:date` (the 1,626-line
-  WorkoutSession) and `/upcoming` have not been opened since the Tailwind fix,
-  and they are the two most layout-heavy pages.
+  WorkoutSession), `/upcoming` and the new `/mobility` have not been opened,
+  and the first two are the most layout-heavy pages in the app. `/mobility` is
+  mounted under test in both its states but has never been rendered in Chrome.
+- **The mobility loop has never been run by a real MCP client.** It has been
+  run end to end against a scratch copy of production by calling the tool
+  functions directly — write, render, transfer, comment, read back, with the
+  lifting program intact throughout. What is untested is an actual agent
+  deciding *what* to prescribe from the Reads in `exercises.notes`.
 - **Audit-log volume wants a check after a month of real use** (0007 §4).
 
 Recently paid down:

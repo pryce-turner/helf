@@ -1,0 +1,220 @@
+# 0012 — Mobility: the loop the agent drives
+
+**Status:** Implemented 2026-08-10
+**Landed in:** `c4a92f18de07`, `backend/app/mcp/qs_mcp.py`, `/mobility`
+
+A rolling mobility routine that the agent adjusts one session at a time from
+the user's own feedback. Unlike every other plan here, the interesting part is
+not the schema — it is that a feedback loop which had been running in an
+Obsidian vault for six weeks moves into the database, and what that costs.
+
+## 1. What was already there, and why it moved
+
+The program ran in `~/Documents/PryceVault/Lifting/Mobility/`: an `Overview.md`
+per region holding the movement pool, and one dated note per session. Four
+sessions existed — 2026-06-27, and then 08-06 through 08-08 daily. The loop the
+vault's own `AGENTS.md` describes is exactly the one implemented here:
+
+> Read the most recent session note's `## Notes` for feedback. Append any
+> exercise-specific feedback to that exercise's entry in Overview. Generate the
+> next dated session note with an adjusted routine.
+
+It worked. What it could not do was reach the calendar. Only 2026-06-25 was
+ever logged in helf, and that session was logged by hand; 08-06, 08-07 and
+08-08 exist only as markdown. So the training history had a six-week hole in
+it, the mobility work did not count toward the streak, and nothing in
+`v_daily_summary` knew those days had happened.
+
+**Decision: the vault's content moves into helf.** The movement pool becomes
+`exercises` rows with `is_mobility = 1`, and each movement's markdown — *How to
+perform* plus the *Application* section whose Reads are written as symptom →
+cause → programming response — goes into `exercises.notes`.
+
+`notes` is a single TEXT column, so the Reads are prose rather than queryable
+rows. That was chosen over a structured `exercise_doc` table deliberately:
+Overview is a *current-state document that gets rewritten*, which is exactly
+what one editable markdown blob is, and the consumer is a language model that
+reads prose natively. A structured version buys a query nobody has needed.
+
+Imported by `backend/migrations/import_mobility_pool.py`, which parses
+Overview.md rather than embedding a copy of it. 18 movements: 2 matched
+existing exercises by name and were updated in place, 16 were created. Three
+carried Enjoyment stars, which became `rating` 3, 4 and 5.
+
+**The vault is not deleted.** The dated session notes are the history of how
+this program was reasoned about and nothing in helf reproduces them. It stops
+being written to; it stays readable.
+
+## 2. Storage: `upcoming_workouts.kind`, not a second pair of tables
+
+A pending mobility session is a list of prescribed sets waiting to be copied
+onto a date. So is a pending lifting session. They differ in who writes them
+and what the page looks like, not in shape — so `kind TEXT NOT NULL DEFAULT
+'lifting' CHECK (kind IN ('lifting','mobility'))` and one table.
+
+The alternative was `mobility_session` + `mobility_item` with a status, a
+region, per-item `sets`/`per_side`/`block` columns and a `rationale`. It was
+rejected as duplicating the exercise/category resolution, the transfer path and
+the serialiser to gain columns that `comment` carries as prose. What it would
+have bought — a session-level entity — is genuinely absent, and §3 is where
+that bill comes due.
+
+**Undated until transferred**, like upcoming lifting. A plan becomes dated at
+the moment it is copied into `workouts`; before that, "when" is not a fact
+about it.
+
+**One session number.** Mobility rows always use `session = 1`
+(`MOBILITY_SESSION`). There is one rolling routine, not a queue, so an ordinal
+that counts up would be a number with nothing to say.
+
+**Sets expand into rows.** `sets: 2, reps: 8` is two rows, not one row with a
+`sets` column — because that is the grain the user logs at. The 08-08 feedback
+reads "8 and then 10 reps on 30lb kb QL raise": two numbers, needing two rows
+to land in. The page folds consecutive identical rows back into "2 x 8" for
+display.
+
+### The cost, stated plainly
+
+**Every query on `upcoming_workouts` must now name its kind.** A missing filter
+does not error — it silently mixes two programs. The two that would have hurt:
+
+- `delete_all()` is the Liftoscript generator's clear-the-board step. Unscoped,
+  generating a lifting program destroys the pending mobility session and the
+  mobility tab falls back to "no session ready" for a reason nothing on screen
+  explains.
+- `get_by_exercise()` feeds the progression service's forward projection. A
+  prescribed stretch at bodyweight is not a point on a 1RM curve.
+
+Both are defaulted to `'lifting'` so existing callers keep their behaviour, and
+both have a test whose name says what breaks.
+
+## 3. What the single table cannot hold: a `note` row per session
+
+Two facts have no column, and both are load-bearing:
+
+**Which days were mobility days.** `exercises.is_mobility` cannot answer this. A
+mobility routine borrows movements that are also lifting movements — the good
+morning is in both programs — so "the last day containing a mobility exercise"
+finds lifting days too. 2026-06-25 in the live database is precisely that: a
+weighted pigeon squat and a single-leg calf raise logged beside a Romanian
+deadlift. Only the act of transferring a session knows the day is a mobility
+day.
+
+**Why this session looks the way it does.** The agent's reasoning is the
+substance of the feature; without it the tab is a list of stretches.
+
+One `note` row carries both and changes kind as it changes meaning:
+`mobility_plan` while pending, `mobility_session` once run and dated to the day
+it was run on. That is the day marker the read path keys on.
+
+This is a deliberate narrowing of §4's "feedback goes only in set comments" —
+which governs the *user's* feedback. Agent-authored prose in `note` is what
+`note` is for (0005 §1a), and `source` keeps the two apart.
+
+## 4. Feedback: the existing per-set comment field, and nothing else
+
+The user's feedback goes in `workouts.comment` on the logged sets, edited in
+`/day/:date` where the field already exists. No new notes UI, no per-session
+feedback box.
+
+**The known cost.** Program-level feedback has no row of its own. The 08-08
+session produced *"in general keep this program to 7 movements MAX"* — a rule
+about the program, which under this design gets attached to whichever set was
+on screen when it was thought of. Mitigations:
+
+- `read_latest_mobility_session()` returns **every** comment on the day, not
+  just those on flagged movements, so nothing is dropped.
+- The tool description tells the agent that some comments describe the program
+  rather than the movement they hang off.
+- Standing program rules were moved into `docs/design/mcp-instructions.md`,
+  where they are read every session instead of having to be rediscovered in an
+  old comment. The seven-movement cap, core-first ordering, and static-stretch
+  placement live there now.
+
+## 5. MCP: a scoped write exception
+
+Two tools, `read_latest_mobility_session` and `write_next_mobility_session`.
+The read tool is an ordinary read tool. The write tool is registered in **both**
+modes, via a new `ALWAYS_TOOLS` tuple.
+
+This is a hole in 0006 §4's rule that the mode is the whole gate, and it is
+worth naming what it costs: **`QS_MCP_MODE=read-only` no longer means the
+process cannot write.** It means the general-purpose write tools are absent.
+
+Why it was taken anyway: the mobility loop's entire value is the agent writing
+the next session. A read-only mobility server can describe a session but not
+produce one, which leaves the user copying a routine out of a chat window by
+hand — the thing this replaces. The two remaining options were worse: flipping
+the global mode switches on four unrelated write tools that were deliberately
+left off (0006 §8), and leaving the default off means flipping an environment
+variable before every session.
+
+It is scoped as narrowly as the idea allows. The tool writes planned rows for
+one session plus its rationale. It cannot log a workout, record a measurement,
+or touch anything already in the calendar. **ADR-0004's actual claim is
+untouched**: the privilege boundary is the connection, `query` is still
+`mode=ro`, and no amount of argument gets a write through it.
+
+`check_database()` gained a check for `upcoming_workouts.kind`, because the
+write tool now exists in the default mode and would otherwise fail at first
+call with "no such column" instead of at startup.
+
+## 6. The page: two states, and no third
+
+`/mobility`, a tab beside `/upcoming` under the Upcoming nav entry — the mobile
+bar is full at five (ADR-0006), and this is the second time that decision has
+paid for itself.
+
+1. **A session is ready.** Rationale, the folded routine, a date picker
+   defaulting to today, and a discard button.
+2. **No session is ready.** What to do about it, plus the last session's
+   comments — which is what makes the empty state actionable rather than a
+   dead end.
+
+`ready` is derived server-side from whether the pending session has items, not
+stored, so there is no status column to fall out of step with the rows it
+describes. There is no "generating" state: the agent writes the session in one
+transaction, so from the page's point of view it either exists or does not.
+
+## 7. Verification
+
+```
+349 backend tests, 40 frontend tests, ruff clean, eslint clean, tsc clean
+alembic check          — no drift
+downgrade/upgrade      — round trip, 30 lifting rows preserved
+```
+
+Against the live database, after the pool import:
+
+```
+exercises where is_mobility = 1 : 19   (18 imported + Bosu Heel Toe)
+                        rated   : 3    (3, 4, 5 — matching the vault's stars)
+                    notes bytes : 22,977
+workouts                        : 9,292   (unchanged)
+PRAGMA integrity_check          : ok
+PRAGMA foreign_key_check        : (empty)
+```
+
+Backups: `data/helf.db.pre-mobility.bak` (before the migration),
+`data/helf.db.pre-mobility-pool.bak` (before the import).
+
+## 8. Open, and deliberately not done
+
+- **The four vault sessions are not backfilled.** 08-06, 08-07 and 08-08 exist
+  only as markdown, so the first `read_latest_mobility_session()` returns
+  `found: false` and the first prescription has to come from the pool and the
+  vault rather than from the database. Backfilling would mean inventing precise
+  per-set rows from prose that only sometimes records them — "8 and then barely
+  7" is recoverable, "held unchanged" is not. Left to the user to decide.
+- **Region is not modelled.** The vault is structured by region and only "Lower
+  Back" exists. A second region would need either a column or a naming
+  convention; one region needs neither.
+- **`rating` means enjoyment.** The vault is emphatic that enjoyment and value
+  diverge and that the divergence is the useful signal. There is one rating
+  column, so it holds enjoyment, and value stays in the notes. The ORM
+  docstring predating this said "how good the movement is for this person" and
+  has been corrected.
+- **No per-side modelling.** "each side" is a cue in `comment`. Making it
+  structured means deciding whether a two-sided set is one row or two, which
+  changes what the logged history means; not worth it until something needs to
+  count sides.

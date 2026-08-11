@@ -12,6 +12,7 @@ from app.api import (
     body_comp,
     exercises,
     food,
+    mobility,
     notes,
     progression,
     stacks,
@@ -68,6 +69,7 @@ app.include_router(workouts.router, prefix="/api/workouts", tags=["workouts"])
 app.include_router(exercises.router, prefix="/api/exercises", tags=["exercises"])
 app.include_router(progression.router, prefix="/api/progression", tags=["progression"])
 app.include_router(upcoming.router, prefix="/api/upcoming", tags=["upcoming"])
+app.include_router(mobility.router, prefix="/api/mobility", tags=["mobility"])
 app.include_router(body_comp.router, prefix="/api/body-composition", tags=["body-composition"])
 app.include_router(food.router, prefix="/api/food", tags=["food"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
@@ -158,6 +160,10 @@ if static_dir.exists() and static_dir.is_dir():
 
     @app.get("/upcoming")
     async def spa_upcoming():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/mobility")
+    async def spa_mobility():
         return FileResponse(static_dir / "index.html", media_type="text/html")
 
     @app.get("/body-composition")

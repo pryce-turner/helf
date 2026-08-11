@@ -66,6 +66,7 @@ helf/
 │   │   │   ├── exercises.py
 │   │   │   ├── progression.py
 │   │   │   ├── upcoming.py
+│   │   │   ├── mobility.py
 │   │   │   ├── body_comp.py
 │   │   │   ├── food.py
 │   │   │   ├── notes.py
@@ -79,6 +80,7 @@ helf/
 │   │   │   ├── exercise.py
 │   │   │   ├── progression.py
 │   │   │   ├── upcoming.py
+│   │   │   ├── mobility.py
 │   │   │   ├── body_composition.py
 │   │   │   ├── food.py
 │   │   │   ├── note.py
@@ -86,7 +88,8 @@ helf/
 │   │   ├── repositories/     # SQLAlchemy data access layer
 │   │   │   ├── workout_repo.py
 │   │   │   ├── exercise_repo.py
-│   │   │   ├── upcoming_repo.py
+│   │   │   ├── upcoming_repo.py   # kind-scoped: lifting vs mobility
+│   │   │   ├── mobility_repo.py
 │   │   │   ├── body_comp_repo.py
 │   │   │   ├── food_repo.py
 │   │   │   ├── note_repo.py
@@ -95,6 +98,7 @@ helf/
 │   │   │   ├── progression_service.py
 │   │   │   ├── mqtt_service.py
 │   │   │   ├── wendler_service.py
+│   │   │   ├── mobility_service.py
 │   │   │   └── liftoscript_service.py
 │   │   ├── utils/            # Helper functions
 │   │   │   ├── calculations.py   # 1RM estimation, moving averages
@@ -111,7 +115,8 @@ helf/
 │   │   ├── alembic/          # Alembic migration environment
 │   │   │   ├── env.py        # Wired to app settings + Base.metadata
 │   │   │   └── versions/     # Revision scripts
-│   │   └── tinydb_to_sqlite.py   # Legacy one-shot data import
+│   │   ├── tinydb_to_sqlite.py   # Legacy one-shot data import
+│   │   └── import_mobility_pool.py   # One-shot Overview.md → exercises
 │   ├── alembic.ini
 │   ├── tests/                # 18 pytest test files
 │   └── pyproject.toml
@@ -121,6 +126,7 @@ helf/
 │   │   │   ├── Navigation.tsx         # Desktop sidebar + mobile bottom bar
 │   │   │   ├── SectionTabs.tsx        # Sibling routes sharing one nav entry
 │   │   │   ├── BodySectionTabs.tsx    # Composition + Food (ADR-0006)
+│   │   │   ├── TrainingSectionTabs.tsx # Lifting + Mobility
 │   │   │   ├── LiftoscriptEditor.tsx  # Script editor for workout programs
 │   │   │   ├── PresetSelector.tsx     # Dropdown for built-in presets
 │   │   │   ├── PWA/
@@ -134,6 +140,7 @@ helf/
 │   │   │   ├── useProgression.ts      # 1RM data, main lifts
 │   │   │   ├── useBodyComposition.ts  # Measurements, trends, stats
 │   │   │   ├── useUpcoming.ts         # Sessions, Liftoscript, presets
+│   │   │   ├── useMobility.ts         # Pending session, transfer, discard
 │   │   │   ├── useFood.ts             # Day, summary, catalog search, logging
 │   │   │   ├── useStacks.ts           # Preset groups, one-tap logging
 │   │   │   └── usePWA.ts             # Online status, install prompt
@@ -144,13 +151,14 @@ helf/
 │   │   │   ├── WorkoutSession.tsx     # Day view, log exercises
 │   │   │   ├── Progression.tsx        # 1RM charts
 │   │   │   ├── Upcoming.tsx           # Session planner + Liftoscript
+│   │   │   ├── Mobility.tsx           # Next mobility session, agent-written
 │   │   │   ├── BodyComposition.tsx    # Trends + stats
 │   │   │   ├── Food.tsx               # Daily log vs measured kcal target
 │   │   │   ├── Supplements.tsx        # Stacks, logged in one tap
 │   │   │   └── Exercises.tsx          # Exercise catalog
 │   │   ├── types/            # TypeScript type definitions
 │   │   │   ├── workout.ts, exercise.ts
-│   │   │   ├── progression.ts, upcoming.ts
+│   │   │   ├── progression.ts, upcoming.ts, mobility.ts
 │   │   │   └── bodyComposition.ts
 │   │   ├── App.tsx           # Router + QueryClient + layout
 │   │   ├── main.tsx          # Entry point + SW registration
@@ -186,6 +194,17 @@ written down anywhere — they go stale and are then believed. What follows is t
 sharing a `date`, ordered by `order`. Plan 0004 would make sessions a real
 entity and is **deferred** — the MCP write path adapts a session-shaped tool
 onto flat rows instead.
+
+**Planned training is flat too, and holds two programs.**
+`upcoming_workouts.kind` is `lifting` or `mobility`: same shape — an ordered
+list of prescribed sets waiting to be copied onto a date — written by different
+authors. Lifting comes from a Liftoscript program the user edits; mobility is
+one rolling routine the agent rewrites each session (Plan 0012).
+
+The cost is that **every query must name its kind**. A missing filter does not
+error, it mixes the two: `delete_all()` unscoped would let generating a
+Liftoscript program destroy the pending mobility session. Repository methods
+default to `lifting`.
 
 **Everything measured is tall.** An `observation` is one act of measuring — an
 instant and an instrument — carrying `metric` rows whose names come from a fixed
@@ -254,6 +273,24 @@ deliberately: a target no measurement supports is worse than a blank.
 Adding a column per tracked thing would rebuild the wide table Plan 0010 just
 retired. `supplements_taken` is a count for that reason.
 
+### A mobility day is marked by a `note`, not by `is_mobility`
+
+`exercises.is_mobility` marks the *movement pool*. It cannot tell you which
+**days** were mobility sessions, because a mobility routine borrows movements
+that are also lifting movements — the good morning is in both — so "the last day
+containing a mobility exercise" finds lifting days too. 2026-06-25 is exactly
+that: a pigeon squat and a calf raise logged beside a Romanian deadlift.
+
+The marker is one `note` row that changes kind as it changes meaning:
+`mobility_plan` while the session is pending, `mobility_session` once it has
+been transferred and dated to the day it was run. That row also carries the
+agent's reasoning for the session, which is what the mobility tab renders.
+
+The user's feedback is **only** in `workouts.comment` on the logged sets. There
+is no per-session feedback field, so program-level remarks ("keep this to 7
+movements max") arrive attached to whichever set was on screen — the read tool
+returns every comment on the day for that reason (Plan 0012 §4).
+
 ### The journal is not the audit log
 
 | | `note` / `document` | `audit_log` |
@@ -299,6 +336,11 @@ cd backend && QS_DB_PATH=../data/helf.db .venv/bin/python -m app.mcp.qs_mcp
 - **`QS_MCP_MODE` defaults to `read-only`**, and gating works by *not
   registering* the write tools. A tool that does not exist cannot be attempted
   or argued with; one that answers "not permitted" invites retries.
+- **One tool is exempt.** `write_next_mobility_session` is registered in both
+  modes (`ALWAYS_TOOLS`), because the mobility loop's whole value is the agent
+  writing the next session. Read-only therefore means "the general-purpose
+  write tools are absent", not "this process cannot write" — see Plan 0012 §5
+  and the amendment on ADR-0004.
 - **`query` always runs on a `mode=ro` connection**, in either mode. The
   privilege boundary is the connection, not the tool name (ADR-0004).
 - Tool functions are plain functions; `build_server()` assembles the server.
@@ -453,6 +495,17 @@ docker-compose up -d
 - `GET /{id}` / `PUT /{id}` / `DELETE /{id}` - `items` on PUT **replaces** the membership
 - `POST /{id}/log` - Write one `food_log` row per item, at one instant
 
+### Mobility (`/api/mobility`)
+- `GET /pending` - The pending session, its rationale, and the last session
+  that was run. `ready` is derived from whether items exist, and is the page's
+  whole state discriminator
+- `POST /transfer` - Copy the pending session onto a date, appending after
+  anything already logged that day, and mark the day as a mobility session
+- `DELETE /pending` - Discard the pending session without running it
+
+There is deliberately **no create endpoint**: the session is written by the
+agent over MCP, which is the point of the feature.
+
 ### Notes (`/api/notes`)
 - `GET /?kind=&start=&end=` - Notes, most recent first
 - `GET /kinds` - Counts and date spans per kind, across notes and documents
@@ -475,7 +528,8 @@ docker-compose up -d
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Body section (ADR-0006) |
 | `/supplements` | Supplements | Preset groups logged in one tap — tab 3 of the Body section |
-| `/upcoming` | Upcoming | Session planner, Liftoscript editor, presets |
+| `/upcoming` | Upcoming | Session planner, Liftoscript editor, presets — tab 1 of the Upcoming section |
+| `/mobility` | Mobility | The next mobility session, ready to copy or awaiting generation — tab 2 of the Upcoming section |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category |
 
 ## Key Features
@@ -524,6 +578,25 @@ docker-compose up -d
 
 *Why supplements are `food` rows and why the log has no `stack_id`: see the data
 model section above.*
+
+### Mobility
+- **One rolling routine**, adjusted a session at a time from the last session's
+  feedback — not a program generated in advance and then followed
+- The agent drives it over MCP: `read_latest_mobility_session()` returns the
+  day's sets and every comment on them, `write_next_mobility_session()` replaces
+  what is pending and records why
+- The philosophy is **loaded stretching** — strengthen through full range rather
+  than holding static stretches — and the standing program rules (seven
+  movements max, core first, static stretches *after* their loaded movement)
+  live in `docs/design/mcp-instructions.md`
+- The movement pool is `exercises` with `is_mobility = 1`; each movement's
+  `notes` carry how to perform it and an Application section whose *Reads* are
+  written as symptom → likely cause → what to change. That is what turns a
+  comment into a programming decision
+- `rating` on those movements is **enjoyment**, not value. It protects
+  adherence; how much a movement is worth lives in the notes, and the
+  divergence between the two is the useful signal
+- Imported from an Obsidian vault by `backend/migrations/import_mobility_pool.py`
 
 ### Body Composition
 - MQTT ingest from a smart scale (openScale-sync format), near-daily
@@ -703,6 +776,10 @@ read the ADR before proposing a change to what it covers.
 | [0004](docs/decisions/0004-mcp-server-over-rest-for-agent-access.md) | MCP over REST for agent access — and read-only is **not** a confidentiality control, so nothing secret goes in `helf.db` |
 | [0005](docs/decisions/0005-no-amrap-in-the-data-model.md) | No AMRAP notation; `reps` is an integer |
 | [0006](docs/decisions/0006-food-is-a-tab-under-body-not-a-sixth-nav-item.md) | The mobile nav bar is **full at five**; a new destination is a tab beside an existing one |
+
+ADR-0004 carries an amendment: one mobility write tool is registered in both
+MCP modes (Plan 0012 §5), so `read-only` describes the default tool set rather
+than the process. The connection is still the privilege boundary.
 
 Earlier choices, predating the ADR practice:
 

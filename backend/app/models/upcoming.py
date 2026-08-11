@@ -1,14 +1,22 @@
 """Upcoming workout data models."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+#: Which program a planned row belongs to. A `Literal` here *and* a CHECK in
+#: the database, deliberately (ADR-0002): the agent writes raw SQL over MCP and
+#: never passes through Pydantic, so the constraint is the only rule both
+#: writers obey.
+WorkoutKind = Literal["lifting", "mobility"]
 
 
 class UpcomingWorkoutBase(BaseModel):
     """Base upcoming workout model."""
 
     session: int = Field(..., ge=1)
+    kind: WorkoutKind = "lifting"
     exercise: str = Field(..., min_length=1)
     category: str = Field(..., min_length=1)
     weight: float | None = None

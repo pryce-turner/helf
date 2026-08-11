@@ -15,6 +15,7 @@ from app.api import (
     body_comp,
     exercises,
     food,
+    mobility,
     notes,
     progression,
     stacks,
@@ -96,6 +97,10 @@ def client(db_engine):
     app.include_router(exercises.router, prefix="/api/exercises")
     app.include_router(progression.router, prefix="/api/progression")
     app.include_router(upcoming.router, prefix="/api/upcoming")
+    # `mobility_repo` is absent from the patch list above on purpose: it
+    # reaches `database.SessionLocal` through the module, so the engine patch
+    # already covers it.
+    app.include_router(mobility.router, prefix="/api/mobility")
     app.include_router(body_comp.router, prefix="/api/body-composition")
     app.include_router(food.router, prefix="/api/food")
     app.include_router(notes.router, prefix="/api/notes")

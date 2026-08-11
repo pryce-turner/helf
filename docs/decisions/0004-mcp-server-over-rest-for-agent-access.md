@@ -61,6 +61,20 @@ agent tool.
   server itself — it decides which tools to register — since no capability can be
   assumed of an arbitrary MCP client. This is a better boundary anyway: it holds
   no matter what connects.
+
+  **Amended 2026-08-10 (plan 0012 §5).** One write tool,
+  `write_next_mobility_session`, is registered in *both* modes. So
+  `QS_MCP_MODE=read-only` now means "the general-purpose write tools are
+  absent", not "this process cannot write" — a real weakening of the mode as a
+  summary, taken because the mobility loop's whole value is the agent writing
+  the next session. The tool is scoped to planned rows for one session plus its
+  rationale; it cannot log a workout, record a measurement, or alter anything
+  already in the calendar.
+
+  **This ADR's actual claim is unchanged**: the privilege boundary is the
+  *connection*, not the tool name. `query` is opened `mode=ro` in either mode,
+  so a model that talks its way into composing an UPDATE is still refused by
+  SQLite itself.
 - **Transport: stdio.** Universally supported by MCP clients and requires no
   authentication, because the client launches the server as a subprocess and it
   inherits that trust. The cost is colocation — server and client share a host

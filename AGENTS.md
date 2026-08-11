@@ -401,7 +401,9 @@ docker-compose up -d
 - `GET /recent?limit=N` - Recently used exercises
 - `GET /{name}` - Get exercise by name
 - `POST /` - Create exercise
-- `PUT /{id}` - Update exercise
+- `PUT /{id}` - Update exercise. Omitting a key leaves it alone; sending
+  `rating: null` *clears* the rating — the two are told apart by
+  `model_fields_set`, not by value
 - `DELETE /{id}` - Delete exercise
 - `POST /seed` - Generate preset exercises (16 across 6 categories)
 - `GET /categories/` - List categories
@@ -536,6 +538,12 @@ model section above.*
 - Seed database with 16 preset exercises across 6 categories
 - Track usage count and last-used date
 - CRUD for exercises and categories
+- **`rating`** (1–5, NULL is *unrated*) and **`is_mobility`** are judgements
+  about the movement, kept on the exercise rather than copied onto its sets, so
+  re-rating rewrites no history. `is_mobility` is a flag and not a category
+  because a movement has exactly one category and "is also mobility" cuts
+  across them. Both are edited inline on `/exercises`; both are audited, which
+  is why the migration that added them rebuilt the `exercises` triggers.
 
 ### PWA Features
 - Offline support with service worker (Workbox)

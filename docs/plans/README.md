@@ -152,6 +152,12 @@ Each of these cost real debugging time at least once.
   `dexafit` — and they disagree by design. On 2026-03-10 the scale read 6.15
   percentage points of body fat above the DEXA scan. Never difference or
   average across `observation.source`.
+- **A column added to an audited table is invisible to the log until its
+  triggers are rebuilt.** They enumerate their columns into `json_object`, so
+  the log keeps working and quietly stops recording the new field. Migration
+  `b3d1c07a4e21` rebuilds the three `exercises` triggers for `rating` and
+  `is_mobility`; a test in `test_db_audit_log.py` fails if the next one
+  forgets.
 - **`food_log.date` is `substr(consumed_at, 1, 10)`** — a string prefix, not a
   parsed instant. So the day an entry lands on is whatever the first ten
   characters spell, and `new Date().toISOString()` spells the *UTC* date. West

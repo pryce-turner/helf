@@ -51,6 +51,8 @@ export function useCreateExercise() {
         name: newExercise.name,
         category: newExercise.category,
         notes: newExercise.notes ?? null,
+        rating: newExercise.rating ?? null,
+        is_mobility: newExercise.is_mobility ?? false,
         last_used: null,
         use_count: 0,
         created_at: new Date().toISOString(),

@@ -827,6 +827,66 @@
         }
     }
 
+    /* A day's sets in the progression history. A tight table rather than a row
+       of chips: these are three to six near-identical lines and the eye should
+       be able to run down the loads. */
+    .session-sets {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .session-set {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        font-size: 13px;
+        padding: 3px 0;
+    }
+
+    .session-set__index {
+        flex: 0 0 16px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
+    .session-set__load {
+        flex: 0 0 120px;
+        font-family: var(--font-mono);
+        color: var(--text-primary);
+    }
+
+    .session-set__1rm {
+        flex: 0 0 auto;
+        font-family: var(--font-mono);
+        font-size: 12px;
+    }
+
+    /* Named, not just coloured: the colour alone does not say what it means. */
+    .session-set__best {
+        flex: 0 0 auto;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--accent);
+        background: var(--accent-subtle);
+        border-radius: var(--radius-sm);
+        padding: 1px 6px;
+    }
+
+    .session-set__comment {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        font-style: italic;
+        color: var(--text-secondary);
+    }
+
     /* One exercise in the catalog. Its buttons sit under it on a phone, where
        a row of them would not fit beside the name; beside it on a wide screen,
        where stacking them cost 155px per exercise — six thousand pixels of

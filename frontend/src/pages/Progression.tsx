@@ -16,6 +16,10 @@ import {
     useProgressionExercises,
 } from "@/hooks/useProgression";
 import { useUpcomingWorkouts } from "@/hooks/useUpcoming";
+import type {
+    ProgressionDataPoint,
+    ProgressionSet,
+} from "@/types/progression";
 import {
     LineChart,
     Line,
@@ -27,6 +31,75 @@ import {
     ResponsiveContainer,
     ReferenceLine,
 } from "recharts";
+
+/**
+ * A day's sets, as performed.
+ *
+ * The response carries them; older cached responses may not, so a day with no
+ * `sets` falls back to the one set the top-level numbers describe rather than
+ * rendering nothing.
+ */
+const setsOf = (point: ProgressionDataPoint): ProgressionSet[] =>
+    point.sets && point.sets.length > 0
+        ? point.sets
+        : [
+              {
+                  weight: point.weight,
+                  weight_unit: point.weight_unit,
+                  reps: point.reps,
+                  estimated_1rm: point.estimated_1rm,
+                  comment: point.comment,
+              },
+          ];
+
+const SessionSets = ({ point }: { point: ProgressionDataPoint }) => {
+    const sets = setsOf(point);
+    // The chart plots one point per day, and this is the set it came from.
+    // Marking it keeps the list and the line telling the same story — but only
+    // when one set actually stands out. Three sets across at the same weight
+    // all tie, and labelling all three "best" says nothing.
+    const best = Math.max(...sets.map((s) => s.estimated_1rm));
+    const bestIsUnique =
+        sets.length > 1 &&
+        sets.filter((s) => s.estimated_1rm === best).length === 1;
+
+    return (
+        <div className="session-sets">
+            {sets.map((set, index) => {
+                const isBest = bestIsUnique && set.estimated_1rm === best;
+                return (
+                    <div key={index} className="session-set">
+                        <span className="session-set__index">{index + 1}</span>
+                        <span className="session-set__load">
+                            {set.weight} {set.weight_unit}
+                            <span style={{ color: 'var(--text-muted)' }}> × </span>
+                            {set.reps}
+                        </span>
+                        <span
+                            className="session-set__1rm"
+                            style={{
+                                color: isBest ? 'var(--accent)' : 'var(--text-muted)',
+                            }}
+                        >
+                            {set.estimated_1rm.toFixed(1)} 1RM
+                        </span>
+                        {isBest && (
+                            <span
+                                className="session-set__best"
+                                title="The day's best — this is the point on the chart"
+                            >
+                                best
+                            </span>
+                        )}
+                        {set.comment && (
+                            <span className="session-set__comment">{set.comment}</span>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 
 const Progression = () => {
     const { exercise: urlExercise } = useParams<{ exercise?: string }>();
@@ -429,39 +502,12 @@ const Progression = () => {
                                                                     >
                                                                         {format(parseISO(point.date), "MMM d, yyyy")}
                                                                     </h3>
+                                                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                                                        {setsOf(point).length} set
+                                                                        {setsOf(point).length === 1 ? '' : 's'}
+                                                                    </span>
                                                                 </div>
-                                                                <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
-                                                                    {point.weight && (
-                                                                        <div className="workout-chip">
-                                                                            <Weight style={{ width: '14px', height: '14px', color: 'var(--success)' }} />
-                                                                            <span className="workout-chip__value" style={{ fontSize: '13px' }}>
-                                                                                {point.weight} {point.weight_unit}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                    {point.reps && (
-                                                                        <div className="workout-chip">
-                                                                            <Hash style={{ width: '14px', height: '14px', color: 'var(--success)' }} />
-                                                                            <span className="workout-chip__value" style={{ fontSize: '13px' }}>
-                                                                                {point.reps} reps
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="workout-chip">
-                                                                        <TrendingUp style={{ width: '14px', height: '14px', color: 'var(--accent)' }} />
-                                                                        <span className="workout-chip__value" style={{ fontSize: '13px', color: 'var(--accent)' }}>
-                                                                            {point.estimated_1rm.toFixed(1)} 1RM
-                                                                        </span>
-                                                                    </div>
-                                                                    {point.comment && (
-                                                                        <div className="workout-chip">
-                                                                            <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
-                                                                            <span className="workout-chip__comment" style={{ fontSize: '13px' }}>
-                                                                                {point.comment}
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
+                                                                <SessionSets point={point} />
                                                             </div>
                                                         </div>
                                                     </div>

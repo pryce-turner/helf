@@ -992,6 +992,18 @@
         transition: all var(--duration-normal) var(--ease-default);
     }
 
+    /* A square cell is a phone's answer: at 402px it is 48px across and 48px
+       tall, which is exactly right. At 1440px it is 167px tall, so a month
+       needed 1,454px — twice the viewport — and a month view you have to
+       scroll to see is not a month view. A cell holds a date and a count; this
+       is the room that takes. */
+    @media (min-width: 768px) {
+        .calendar-day {
+            aspect-ratio: auto;
+            min-height: 92px;
+        }
+    }
+
     .calendar-day:hover {
         transform: translateY(-2px);
         box-shadow: var(--shadow-md);

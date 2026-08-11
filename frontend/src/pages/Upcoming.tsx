@@ -462,14 +462,15 @@ const Upcoming = () => {
                               >
                                 {workoutIndex + 1}
                               </div>
-                              <div className="flex-1">
-                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
+                              <div className="flex-1 log-line" style={{ minWidth: 0 }}>
+                                <div className="log-line__title">
                                   <h3
                                     style={{
                                       fontFamily: 'var(--font-body)',
                                       fontSize: '16px',
                                       fontWeight: 600,
                                       color: 'var(--text-primary)',
+                                      whiteSpace: 'nowrap',
                                     }}
                                   >
                                     {workout.exercise}
@@ -485,7 +486,7 @@ const Upcoming = () => {
                                     {workout.category}
                                   </span>
                                 </div>
-                                <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                                <div className="log-line__chips">
                                   {workout.weight && (
                                     <div className="workout-chip">
                                       <Weight style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />

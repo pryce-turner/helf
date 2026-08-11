@@ -742,14 +742,17 @@
         padding-right: 50px;
     }
 
-    .set-row__title {
+    /* One entry in a log — a set logged, a set planned. Name and category
+       above the numbers on a phone, all on one line on a wide screen. Shared
+       so the two lists cannot drift apart. */
+    .log-line__title {
         display: flex;
         align-items: center;
         gap: var(--space-3);
         margin-bottom: var(--space-3);
     }
 
-    .set-row__chips {
+    .log-line__chips {
         display: flex;
         flex-wrap: wrap;
         gap: var(--space-2);
@@ -773,17 +776,20 @@
             height: 18px;
         }
 
-        /* A set is one line on a wide screen: what it was, how heavy, how
+        /* An entry is one line on a wide screen: what it was, how heavy, how
            many. Stacking the name above the numbers is a phone's answer to a
            narrow column, and it doubled the height of every row. */
-        .set-row__body {
+        .log-line {
             display: flex;
             align-items: center;
             gap: var(--space-4);
+        }
+
+        .set-row__body {
             padding-right: 110px;
         }
 
-        .set-row__title {
+        .log-line__title {
             margin-bottom: 0;
             flex: 0 0 auto;
             min-width: 260px;
@@ -792,25 +798,23 @@
         /* The numbers keep their width; a long comment gives way to an
            ellipsis rather than wrapping the row onto a second line. It is
            readable in full in the edit form, one click away. */
-        .set-row__chips {
+        .log-line__chips {
             flex: 1 1 auto;
             flex-wrap: nowrap;
             min-width: 0;
         }
 
-        /* The numbers are the data — they hold their width. Only the comment
-           gives ground. */
-        .set-row__chips .workout-chip {
+        .log-line__chips .workout-chip {
             flex: 0 0 auto;
             white-space: nowrap;
         }
 
-        .set-row__chips .workout-chip:has(.workout-chip__comment) {
+        .log-line__chips .workout-chip:has(.workout-chip__comment) {
             flex: 0 1 auto;
             min-width: 0;
         }
 
-        .set-row__chips .workout-chip__comment {
+        .log-line__chips .workout-chip__comment {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;

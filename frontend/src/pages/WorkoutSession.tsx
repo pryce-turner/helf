@@ -241,7 +241,7 @@ const SortableWorkoutCard = ({
 
         {/* Main content - clickable area */}
         <div
-          className="set-row__body"
+          className="set-row__body log-line"
           onClick={() =>
             !editingWorkout || editingWorkout.doc_id !== workout.doc_id
               ? handleEditWorkout(workout)
@@ -255,7 +255,7 @@ const SortableWorkoutCard = ({
           }}
         >
           {/* Exercise name and category - inline */}
-          <div className="set-row__title">
+          <div className="log-line__title">
             <h3
               style={{
                 fontFamily: "var(--font-body)",
@@ -283,7 +283,7 @@ const SortableWorkoutCard = ({
           </div>
 
           {/* Data chips */}
-          <div className="set-row__chips">
+          <div className="log-line__chips">
             {workout.weight && (
               <div className="workout-chip">
                 <Weight

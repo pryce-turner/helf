@@ -116,6 +116,9 @@ const Progression = () => {
     const today = format(new Date(), "yyyy-MM-dd");
     const todayIndex = combinedData.findIndex((d) => d.date === today);
 
+    const showUpcomingCard =
+        includeUpcoming && (progressionData?.upcoming.length ?? 0) > 0;
+
     return (
         <>
             <Navigation />
@@ -204,10 +207,11 @@ const Progression = () => {
                                 <CardContent>
                                     <ResponsiveContainer width="100%" height={320}>
                                         <LineChart data={combinedData}>
-                                            <CartesianGrid
-                                                strokeDasharray="3 3"
-                                                stroke="var(--border)"
-                                            />
+                                            {/* Solid hairline. A dashed grid
+                                                reads as a projection or a
+                                                threshold, and this chart has a
+                                                real one — the Today line. */}
+                                            <CartesianGrid stroke="var(--border)" />
                                             <XAxis
                                                 dataKey="date"
                                                 stroke="var(--text-muted)"
@@ -216,9 +220,17 @@ const Progression = () => {
                                                     format(parseISO(date), "MMM d")
                                                 }
                                             />
+                                            {/* Fitted, not zero-based. Nobody's
+                                                1RM approaches zero, so anchoring
+                                                there spent the bottom half of the
+                                                plot on empty space and flattened
+                                                eight years of change into a band
+                                                60px tall. */}
                                             <YAxis
                                                 stroke="var(--text-muted)"
                                                 style={{ fontSize: '12px' }}
+                                                domain={['auto', 'auto']}
+                                                padding={{ top: 10, bottom: 10 }}
                                                 label={{
                                                     value: "1RM (lbs)",
                                                     angle: -90,
@@ -257,7 +269,15 @@ const Progression = () => {
                                                     return [value, name];
                                                 }}
                                             />
-                                            <Legend />
+                                            {/* The swatch carries the identity;
+                                                the words stay in text ink. */}
+                                            <Legend
+                                                formatter={(value: string) => (
+                                                    <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                                        {value}
+                                                    </span>
+                                                )}
+                                            />
                                             {todayIndex >= 0 && (
                                                 <ReferenceLine
                                                     x={today}
@@ -266,6 +286,11 @@ const Progression = () => {
                                                     label={{ value: "Today", fill: 'var(--text-muted)', fontSize: 12 }}
                                                 />
                                             )}
+                                            {/* A marker only where it says something
+                                                the line cannot: that this point is
+                                                planned rather than lifted. Marking
+                                                every session as well buried the line
+                                                under 700 dots. */}
                                             <Line
                                                 type="monotone"
                                                 dataKey="estimated_1rm"
@@ -276,18 +301,15 @@ const Progression = () => {
                                                     const { cx, cy, payload } =
                                                         props;
                                                     if (cx == null || cy == null) return null;
+                                                    if (payload.type !== "upcoming") return null;
                                                     return (
                                                         <circle
                                                             cx={cx}
                                                             cy={cy}
                                                             r={4}
-                                                            fill={
-                                                                payload.type ===
-                                                                "upcoming"
-                                                                    ? "var(--warning)"
-                                                                    : "var(--chart-2)"
-                                                            }
-                                                            stroke="none"
+                                                            fill="var(--warning)"
+                                                            stroke="var(--bg-secondary)"
+                                                            strokeWidth={2}
                                                         />
                                                     );
                                                 }}
@@ -305,7 +327,19 @@ const Progression = () => {
                                 </CardContent>
                             </Card>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 'var(--space-4)' }}>
+                            {/* Two columns only when there is a second card to
+                                put in one. The upcoming card is absent whenever
+                                this exercise has nothing planned, which left the
+                                session list squeezed into half the width with an
+                                empty half beside it. */}
+                            <div
+                                className={
+                                    showUpcomingCard
+                                        ? "grid grid-cols-1 lg:grid-cols-2"
+                                        : "grid grid-cols-1"
+                                }
+                                style={{ gap: 'var(--space-4)' }}
+                            >
                                 <Card className="animate-in">
                                     <CardHeader>
                                         <CardTitle className="font-display text-xl tracking-tight">
@@ -397,7 +431,7 @@ const Progression = () => {
                                     </CardContent>
                                 </Card>
 
-                                {includeUpcoming && progressionData.upcoming.length > 0 && (
+                                {showUpcomingCard && (
                                     <Card className="animate-in">
                                         <CardHeader>
                                             <CardTitle className="font-display text-xl tracking-tight">

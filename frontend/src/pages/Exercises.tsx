@@ -444,8 +444,8 @@ const Exercises = () => {
                               </div>
                             ) : (
                               // Display state
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                                <div className="flex items-start" style={{ gap: 'var(--space-3)', minWidth: 0 }}>
+                              <div className="exercise-row">
+                                <div className="flex items-start" style={{ gap: 'var(--space-3)', minWidth: 0, flex: '1 1 auto' }}>
                                   <div
                                     className="workout-order"
                                     style={{
@@ -505,7 +505,7 @@ const Exercises = () => {
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+                                <div className="exercise-row__actions flex items-center flex-wrap" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                                   <Button
                                     variant="secondary"
                                     size="sm"

@@ -55,8 +55,6 @@ const Navigation = () => {
                 </div>
             </nav>
 
-            <div className="hidden md:block nav-spacer-desktop" />
-
             {/* Mobile Navigation */}
             <nav className="md:hidden nav-mobile">
                 <div className="nav-mobile__inner">
@@ -74,8 +72,6 @@ const Navigation = () => {
                     ))}
                 </div>
             </nav>
-
-            <div className="md:hidden nav-spacer-mobile" />
         </>
     );
 };

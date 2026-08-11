@@ -701,13 +701,29 @@
         color: var(--text-muted);
     }
 
-    /* Nav spacers */
-    .nav-spacer-desktop {
-        height: 56px;
+    /* Install prompt — a corner toast, never a centred modal.
+       On mobile it clears the bottom nav bar; on desktop it sits in the bottom
+       right, out of the reading column. */
+    .install-prompt {
+        position: fixed;
+        z-index: 50;
+        bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+        left: var(--space-4);
+        right: var(--space-4);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        padding: var(--space-4);
     }
 
-    .nav-spacer-mobile {
-        height: calc(64px + env(safe-area-inset-bottom, 0px));
+    @media (min-width: 768px) {
+        .install-prompt {
+            bottom: var(--space-6);
+            left: auto;
+            right: var(--space-6);
+            width: 360px;
+        }
     }
 
     /* Interactive item styles */
@@ -1522,24 +1538,26 @@
     }
 }
 
-/* Navigation spacing overrides - outside layer for proper specificity */
-/* Mobile: top safe area + bottom nav padding */
+/* Clearance for the two fixed navigation bars.
+   `.page__content` owns this on its own: the spacer divs that used to reserve
+   the room are gone. They were written when no `md:` variant generated any CSS,
+   so neither spacer ever displayed and this block compensated for both. Once
+   the variants worked the two stacked — 56px of spacer *and* 88px of padding —
+   and the mobile spacer was reserving its 64px at the top of the document for a
+   nav bar fixed to the bottom. One mechanism, in one place. */
 @media (max-width: 767px) {
     .page__content {
-        padding-top: calc(
-            var(--space-4) + env(safe-area-inset-top, 0px)
-        ) !important;
+        padding-top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
         padding-bottom: calc(
-            100px + env(safe-area-inset-bottom, 0px)
-        ) !important;
+            72px + var(--space-6) + env(safe-area-inset-bottom, 0px)
+        );
     }
 }
 
-/* Desktop: top nav needs top padding, also add bottom padding for safety */
 @media (min-width: 768px) {
     .page__content {
-        padding-top: 88px !important;
-        padding-bottom: 120px !important;
+        padding-top: calc(56px + var(--space-6));
+        padding-bottom: var(--space-10);
     }
 }
 

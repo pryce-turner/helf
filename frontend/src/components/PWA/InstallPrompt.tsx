@@ -7,26 +7,35 @@ interface BeforeInstallPromptEvent extends Event {
     userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+const DISMISSED_KEY = "pwa-prompt-dismissed";
+const DISMISSAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * True while a recent "Not now" should still be honoured.
+ *
+ * Read at the moment `beforeinstallprompt` fires, not once at mount. Chrome
+ * re-fires that event on every page load, so a check that only ran in the
+ * initial state was overwritten a moment later and the prompt came back on the
+ * next navigation — for a whole session, on every page.
+ */
+const recentlyDismissed = () => {
+    const dismissed = localStorage.getItem(DISMISSED_KEY);
+    if (!dismissed) return false;
+    const at = parseInt(dismissed, 10);
+    if (Number.isNaN(at)) return false;
+    return Date.now() - at < DISMISSAL_WINDOW_MS;
+};
+
 export function InstallPrompt() {
     const [deferredPrompt, setDeferredPrompt] =
         useState<BeforeInstallPromptEvent | null>(null);
-    const [showPrompt, setShowPrompt] = useState(() => {
-        const dismissed = localStorage.getItem("pwa-prompt-dismissed");
-        if (dismissed) {
-            const dismissedTime = parseInt(dismissed);
-            const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-            if (Date.now() - dismissedTime < sevenDaysInMs) {
-                return false;
-            }
-        }
-        return false;
-    });
+    const [showPrompt, setShowPrompt] = useState(false);
 
     useEffect(() => {
         const handler = (e: Event) => {
             e.preventDefault();
             setDeferredPrompt(e as BeforeInstallPromptEvent);
-            setShowPrompt(true);
+            if (!recentlyDismissed()) setShowPrompt(true);
         };
 
         window.addEventListener("beforeinstallprompt", handler);
@@ -64,21 +73,7 @@ export function InstallPrompt() {
     if (!showPrompt || !deferredPrompt) return null;
 
     return (
-        <div
-            className="fixed z-50 animate-in"
-            style={{
-                bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
-                left: 'var(--space-4)',
-                right: 'var(--space-4)',
-                maxWidth: '400px',
-                margin: '0 auto',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-lg)',
-                boxShadow: 'var(--shadow-lg)',
-                padding: 'var(--space-4)',
-            }}
-        >
+        <div className="install-prompt animate-in" role="dialog" aria-label="Install Helf">
             <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
                 <div style={{ flexShrink: 0, marginTop: '2px' }}>
                     <Download style={{ width: '20px', height: '20px', color: 'var(--accent)' }} />

@@ -77,6 +77,13 @@ Recently paid down:
   no variant generated any CSS and the desktop navigation had never rendered
   at any width.** Also two layout bugs on Supplements. Both pages are now
   mounted under test as well (`npm test`).
+- ~~Nobody has looked at the app on a desktop~~ — a full audit at 402px, 768px,
+  1024px and 1440px. Every page was a phone layout stretched to 1280px: a
+  logged set put its name at x=115 and its delete button at x=1300, a month
+  needed two screens, an exercise cost 155px. The pages that are one list now
+  read in a 900px column and an entry is one line from 1024px. It also found
+  **the food log's timezone bug** (below) and an install prompt that ignored
+  "Not now" on every navigation.
 - ~~No CI~~ — `.github/workflows/ci.yml` runs ruff, pytest, `alembic check`,
   a full `downgrade base` / `upgrade head` round trip, eslint, the jsdom tests
   and the build. **The round-trip step found a real bug on its first run**: the
@@ -145,6 +152,12 @@ Each of these cost real debugging time at least once.
   `dexafit` — and they disagree by design. On 2026-03-10 the scale read 6.15
   percentage points of body fat above the DEXA scan. Never difference or
   average across `observation.source`.
+- **`food_log.date` is `substr(consumed_at, 1, 10)`** — a string prefix, not a
+  parsed instant. So the day an entry lands on is whatever the first ten
+  characters spell, and `new Date().toISOString()` spells the *UTC* date. West
+  of Greenwich every evening meal was filed under tomorrow: the POST returned
+  201, the page refetched, and the entry was not there, because it was on the
+  next day. Write local time. Guarded by a test in `Food.test.tsx`.
 
 ## Decisions that are settled
 

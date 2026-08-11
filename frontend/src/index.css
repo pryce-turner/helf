@@ -776,17 +776,23 @@
             height: 18px;
         }
 
-        /* An entry is one line on a wide screen: what it was, how heavy, how
-           many. Stacking the name above the numbers is a phone's answer to a
-           narrow column, and it doubled the height of every row. */
+        .set-row__body {
+            padding-right: 110px;
+        }
+    }
+
+    /* An entry is one line once there is room for one: what it was, how heavy,
+       how many. Stacking the name above the numbers is a phone's answer to a
+       narrow column, and it doubled the height of every row.
+
+       1024px, not 768px, because the line needs the width. At tablet size the
+       name and the numbers consumed it all and the comment shrank to an empty
+       grey pill — a chip that says nothing is worse than one on its own line. */
+    @media (min-width: 1024px) {
         .log-line {
             display: flex;
             align-items: center;
             gap: var(--space-4);
-        }
-
-        .set-row__body {
-            padding-right: 110px;
         }
 
         .log-line__title {

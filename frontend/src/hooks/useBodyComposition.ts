@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { bodyCompositionApi } from '@/lib/api';
 import type { BodyComposition } from '@/types/bodyComposition';
 
@@ -44,6 +49,10 @@ export function useBodyCompositionTrends(days: number = 30) {
       const response = await bodyCompositionApi.getTrends(days);
       return response.data;
     },
+    // Changing the period is a filter, not a navigation: hold the charts that
+    // are already drawn rather than replacing four of them with a spinner and
+    // collapsing the page to nothing for the length of a request.
+    placeholderData: keepPreviousData,
   });
 }
 

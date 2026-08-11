@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { format, parseISO } from "date-fns";
+import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import type { LucideIcon } from "lucide-react";
 import { Weight, TrendingDown, TrendingUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
@@ -44,6 +44,19 @@ import {
 // scatter on top of a red body-fat line, the classic deutan collision.
 const SCALE_COLOR = "var(--chart-2)";
 const DEXA_COLOR = "#16a34a";
+
+/**
+ * What to call an instrument in front of a person.
+ *
+ * `observation.source` is one of three machine names and two technologies. The
+ * distinction that matters to a reader is bioimpedance vs DEXA — which of the
+ * two numbers to trust for level — not which DEXA clinic produced a scan.
+ */
+const sourceLabel = (source: string | null): string => {
+    if (source === "openscale") return "the scale (bioimpedance)";
+    if (source === "bodyspec" || source === "dexafit") return "a DEXA scan";
+    return "an unknown instrument";
+};
 
 // The sparse series gets the heavier mark. Visual weight is inverted against
 // data volume on purpose, because the sparse series is the accurate one. The
@@ -229,6 +242,17 @@ const BodyComposition = () => {
 
     const hasDexa = chartData.some((d) => d.weightDexa != null || d.bodyFatDexa != null);
 
+    // The shortest offered period that would reach the last measurement. Null
+    // when the current period already reaches it, or when a year does not.
+    const PERIODS = [7, 30, 60, 90, 180, 365];
+    const daysSinceLatest = stats?.latest_date
+        ? differenceInCalendarDays(new Date(), parseISO(stats.latest_date))
+        : null;
+    const periodShowingLatest =
+        daysSinceLatest != null
+            ? (PERIODS.find((d) => d > daysSinceLatest && d > trendDays) ?? null)
+            : null;
+
     return (
         <>
             <Navigation />
@@ -304,6 +328,30 @@ const BodyComposition = () => {
                                 </div>
                             </div>
 
+                            {/* The stats describe one instrument's series, and
+                                which one is not cosmetic: the scale read 6.15
+                                points of body fat above the DEXA scan taken the
+                                same day. `primary_source` is on the response
+                                precisely so a reader knows which series a delta
+                                belongs to, and it was going unrendered. */}
+                            {stats.latest_source && (
+                                <p
+                                    className="section"
+                                    style={{
+                                        fontSize: '12px',
+                                        color: 'var(--text-muted)',
+                                        marginTop: 'calc(-1 * var(--space-2))',
+                                    }}
+                                >
+                                    Latest from {sourceLabel(stats.latest_source)}
+                                    {stats.latest_date &&
+                                        ` on ${format(parseISO(stats.latest_date), "MMM d, yyyy")}`}
+                                    . Changes compare the two most recent readings from{" "}
+                                    {sourceLabel(stats.primary_source)} — never across
+                                    instruments.
+                                </p>
+                            )}
+
                             <BodySpecSync />
 
                             {/* Period selector */}
@@ -335,12 +383,12 @@ const BodyComposition = () => {
                                     <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-muted)' }}>Loading trends...</p>
                                 </div>
                             ) : chartData.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                                <div className="chart-grid">
                                     {/* Only worth the space once both instruments are
                                         present; with one source the marks need no
                                         explaining. */}
                                     {hasDexa && (
-                                        <div className="flex items-center animate-in" style={{ gap: 'var(--space-4)', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                        <div className="chart-grid__legend flex items-center animate-in" style={{ gap: 'var(--space-4)', fontSize: '11px', color: 'var(--text-secondary)' }}>
                                             <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
                                                 <span style={{ display: 'inline-block', width: '16px', height: '2px', backgroundColor: SCALE_COLOR }} />
                                                 Scale (bioimpedance)
@@ -363,7 +411,7 @@ const BodyComposition = () => {
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
                                                     <ComposedChart data={chartData}>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
                                                             dataKey="date"
                                                             stroke="var(--text-muted)"
@@ -427,7 +475,7 @@ const BodyComposition = () => {
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
                                                     <ComposedChart data={chartData}>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
                                                             dataKey="date"
                                                             stroke="var(--text-muted)"
@@ -491,7 +539,7 @@ const BodyComposition = () => {
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
                                                     <LineChart data={chartData}>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
                                                             dataKey="date"
                                                             stroke="var(--text-muted)"
@@ -502,7 +550,7 @@ const BodyComposition = () => {
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
                                                             domain={['auto', 'auto']}
-                                                            tickFormatter={(v) => v.toFixed(0)}
+                                                            tickFormatter={(v) => v.toFixed(1) + "%"}
                                                             padding={{ top: 10, bottom: 10 }}
                                                         />
                                                         <Tooltip
@@ -524,7 +572,7 @@ const BodyComposition = () => {
                                                             stroke="var(--accent)"
                                                             name="Muscle Mass"
                                                             strokeWidth={2}
-                                                            dot={{ r: 3 }}
+                                                            dot={false}
                                                             connectNulls
                                                         />
                                                     </LineChart>
@@ -544,7 +592,7 @@ const BodyComposition = () => {
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
                                                     <LineChart data={chartData}>
-                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                                                        <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
                                                             dataKey="date"
                                                             stroke="var(--text-muted)"
@@ -577,7 +625,7 @@ const BodyComposition = () => {
                                                             stroke="var(--info)"
                                                             name="Water %"
                                                             strokeWidth={2}
-                                                            dot={{ r: 3 }}
+                                                            dot={false}
                                                             connectNulls
                                                         />
                                                     </LineChart>
@@ -587,8 +635,38 @@ const BodyComposition = () => {
                                     )}
                                 </div>
                             ) : (
-                                <div style={{ textAlign: 'center', padding: 'var(--space-12) 0', color: 'var(--text-secondary)' }}>
-                                    No trend data available for this period
+                                /* An empty window is the default view whenever
+                                   the last measurement is more than 30 days old,
+                                   which is most of the time between DEXA scans.
+                                   Say what is actually true and offer the period
+                                   that would show something, rather than leaving
+                                   a bare sentence and a period menu to guess at. */
+                                <div
+                                    className="empty-state"
+                                    style={{ padding: 'var(--space-12) 0' }}
+                                >
+                                    <div className="empty-state__title">
+                                        Nothing measured in this period
+                                    </div>
+                                    {stats.latest_date && (
+                                        <p className="empty-state__text">
+                                            The most recent measurement is from{" "}
+                                            {format(
+                                                parseISO(stats.latest_date),
+                                                "MMMM d, yyyy",
+                                            )}
+                                            .
+                                        </p>
+                                    )}
+                                    {periodShowingLatest && (
+                                        <Button
+                                            variant="ghost"
+                                            style={{ marginTop: 'var(--space-4)' }}
+                                            onClick={() => setTrendDays(periodShowingLatest)}
+                                        >
+                                            Show the last {periodShowingLatest} days
+                                        </Button>
+                                    )}
                                 </div>
                             )}
                         </>

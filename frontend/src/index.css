@@ -817,6 +817,26 @@
         }
     }
 
+    /* Small multiples: four measurements of the same body over the same days.
+       Stacked, they were four scroll-lengths apart, so comparing the weight
+       curve against the body-fat curve meant remembering the first one. */
+    .chart-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-4);
+    }
+
+    @media (min-width: 1024px) {
+        .chart-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    /* The instrument key describes every chart below it. */
+    .chart-grid__legend {
+        grid-column: 1 / -1;
+    }
+
     /* Install prompt — a corner toast, never a centred modal.
        On mobile it clears the bottom nav bar; on desktop it sits in the bottom
        right, out of the reading column. */

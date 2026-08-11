@@ -15,6 +15,7 @@ import {
     useProgression,
     useProgressionExercises,
 } from "@/hooks/useProgression";
+import { useUpcomingWorkouts } from "@/hooks/useUpcoming";
 import {
     LineChart,
     Line,
@@ -34,6 +35,7 @@ const Progression = () => {
     const [maWindowDays, setMaWindowDays] = useState(30);
 
     const { data: exercises } = useProgressionExercises();
+    const { data: allUpcoming } = useUpcomingWorkouts();
 
     // Auto-select first exercise when list loads (if no URL param or selection)
     if (!selectedExercise && exercises && exercises.length > 0) {
@@ -119,6 +121,27 @@ const Progression = () => {
     const showUpcomingCard =
         includeUpcoming && (progressionData?.upcoming.length ?? 0) > 0;
 
+    /* Whether there is anything for this control to include.
+       An estimated 1RM is (0.033 x reps x weight) + weight, so a planned set
+       without a weight has no 1RM to project and `progression_service` drops
+       it. Every upcoming row in this database is rep-only, which made the
+       checkbox a control that changed nothing, for every exercise, with no
+       indication why. It now reports which of the two reasons applies rather
+       than offering to do something it cannot. */
+    const plannedForExercise = (allUpcoming ?? []).filter(
+        (w) => w.exercise === selectedExercise,
+    );
+    const projectable = plannedForExercise.filter(
+        (w) => w.weight != null && w.weight > 0,
+    );
+    const canIncludeUpcoming = projectable.length > 0;
+    const whyNoUpcoming =
+        plannedForExercise.length === 0
+            ? "nothing planned for this exercise"
+            : `${plannedForExercise.length} planned ${
+                  plannedForExercise.length === 1 ? "set has" : "sets have"
+              } no weight, so there is no 1RM to project`;
+
     return (
         <>
             <Navigation />
@@ -159,7 +182,8 @@ const Progression = () => {
                                     type="checkbox"
                                     id="includeUpcoming"
                                     className="checkbox"
-                                    checked={includeUpcoming}
+                                    checked={includeUpcoming && canIncludeUpcoming}
+                                    disabled={!canIncludeUpcoming}
                                     onChange={(e) =>
                                         setIncludeUpcoming(e.target.checked)
                                     }
@@ -167,9 +191,24 @@ const Progression = () => {
                                 <label
                                     htmlFor="includeUpcoming"
                                     className="checkbox-label"
+                                    style={
+                                        canIncludeUpcoming
+                                            ? undefined
+                                            : { color: 'var(--text-muted)' }
+                                    }
                                 >
                                     Include upcoming workouts
                                 </label>
+                                {!canIncludeUpcoming && (
+                                    <span
+                                        style={{
+                                            fontSize: '12px',
+                                            color: 'var(--text-muted)',
+                                        }}
+                                    >
+                                        — {whyNoUpcoming}
+                                    </span>
+                                )}
                             </div>
 
                             <div style={{ width: '120px' }}>

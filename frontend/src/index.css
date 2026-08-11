@@ -679,6 +679,13 @@
         }
     }
 
+    /* A reading column for the pages that are one list read top to bottom.
+       Full width is right for the month grid and the charts; for a log of sets
+       or meals it strands the row's two ends a thousand pixels apart. */
+    .page__content--narrow {
+        max-width: 900px;
+    }
+
     .page__header {
         margin-bottom: var(--space-6);
     }
@@ -699,6 +706,115 @@
     .page__subtitle {
         font-size: 13px;
         color: var(--text-muted);
+    }
+
+    /* One logged set.
+
+       The action stack is a column on touch, where each control needs its own
+       44px target and the thumb travels down the right edge. That column is
+       what sets the row's 120px height, so on a pointer device it becomes a
+       row of smaller controls and the card collapses to the height of its own
+       content — thirteen sets that used to need 1,800px of scrolling. */
+    .set-row {
+        padding: var(--space-4);
+        position: relative;
+        min-height: 120px;
+    }
+
+    .set-row__actions {
+        position: absolute;
+        top: var(--space-4);
+        right: var(--space-4);
+        bottom: var(--space-4);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .set-row__icon {
+        width: 26px;
+        height: 26px;
+    }
+
+    /* Clears the action stack, which is positioned out of flow. */
+    .set-row__body {
+        padding-right: 50px;
+    }
+
+    .set-row__title {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-3);
+    }
+
+    .set-row__chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+    }
+
+    @media (min-width: 768px) {
+        .set-row {
+            min-height: 0;
+            padding: var(--space-3) var(--space-4);
+        }
+
+        .set-row__actions {
+            bottom: auto;
+            top: var(--space-3);
+            flex-direction: row;
+            gap: var(--space-1);
+        }
+
+        .set-row__icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* A set is one line on a wide screen: what it was, how heavy, how
+           many. Stacking the name above the numbers is a phone's answer to a
+           narrow column, and it doubled the height of every row. */
+        .set-row__body {
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+            padding-right: 110px;
+        }
+
+        .set-row__title {
+            margin-bottom: 0;
+            flex: 0 0 auto;
+            min-width: 260px;
+        }
+
+        /* The numbers keep their width; a long comment gives way to an
+           ellipsis rather than wrapping the row onto a second line. It is
+           readable in full in the edit form, one click away. */
+        .set-row__chips {
+            flex: 1 1 auto;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+
+        /* The numbers are the data — they hold their width. Only the comment
+           gives ground. */
+        .set-row__chips .workout-chip {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+        .set-row__chips .workout-chip:has(.workout-chip__comment) {
+            flex: 0 1 auto;
+            min-width: 0;
+        }
+
+        .set-row__chips .workout-chip__comment {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     }
 
     /* Install prompt — a corner toast, never a centred modal.

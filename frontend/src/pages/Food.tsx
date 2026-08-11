@@ -473,7 +473,7 @@ const FoodPage = () => {
         <>
             <Navigation />
             <div className="page">
-                <div className="page__content">
+                <div className="page__content page__content--narrow">
                     <div className="page__header animate-in">
                         <h1 className="page__title">BODY</h1>
                         <p className="page__subtitle">

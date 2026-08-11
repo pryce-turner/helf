@@ -142,7 +142,7 @@ const SortableWorkoutCard = ({
 
   return (
     <Card ref={setNodeRef} style={style} className="card-hover animate-in">
-      <CardContent style={{ padding: "var(--space-4)", position: "relative", minHeight: "120px" }}>
+      <CardContent className="set-row">
         {isEditing && (
           <button
             type="button"
@@ -166,15 +166,7 @@ const SortableWorkoutCard = ({
           </button>
         )}
         {!isEditing && (
-          <div
-            className="flex flex-col items-center justify-between"
-            style={{
-              position: "absolute",
-              top: "var(--space-4)",
-              right: "var(--space-4)",
-              bottom: "var(--space-4)",
-            }}
-          >
+          <div className="set-row__actions">
             {/* Completion checkbox */}
             <button
               className="action-btn"
@@ -195,9 +187,9 @@ const SortableWorkoutCard = ({
               }}
             >
               {workout.completed_at ? (
-                <CheckCircle2 style={{ width: "28px", height: "28px" }} />
+                <CheckCircle2 className="set-row__icon" />
               ) : (
-                <Circle style={{ width: "28px", height: "28px" }} />
+                <Circle className="set-row__icon" />
               )}
             </button>
 
@@ -212,7 +204,7 @@ const SortableWorkoutCard = ({
               {...attributes}
               {...listeners}
             >
-              <GripVertical style={{ width: "26px", height: "26px" }} />
+              <GripVertical className="set-row__icon" />
             </button>
 
             {/* Delete button */}
@@ -224,7 +216,7 @@ const SortableWorkoutCard = ({
                   title="Confirm delete"
                   style={{ padding: "4px" }}
                 >
-                  <Check style={{ width: "24px", height: "24px" }} />
+                  <Check className="set-row__icon" />
                 </button>
                 <button
                   className="action-btn"
@@ -232,7 +224,7 @@ const SortableWorkoutCard = ({
                   title="Cancel"
                   style={{ padding: "4px" }}
                 >
-                  <X style={{ width: "24px", height: "24px" }} />
+                  <X className="set-row__icon" />
                 </button>
               </div>
             ) : (
@@ -241,7 +233,7 @@ const SortableWorkoutCard = ({
                 onClick={() => handleDeleteClick(workout.doc_id)}
                 style={{ padding: "4px" }}
               >
-                <Trash2 style={{ width: "24px", height: "24px" }} />
+                <Trash2 className="set-row__icon" />
               </button>
             )}
           </div>
@@ -249,6 +241,7 @@ const SortableWorkoutCard = ({
 
         {/* Main content - clickable area */}
         <div
+          className="set-row__body"
           onClick={() =>
             !editingWorkout || editingWorkout.doc_id !== workout.doc_id
               ? handleEditWorkout(workout)
@@ -259,18 +252,10 @@ const SortableWorkoutCard = ({
               !editingWorkout || editingWorkout.doc_id !== workout.doc_id
                 ? "pointer"
                 : "default",
-            paddingRight: "50px",
           }}
         >
           {/* Exercise name and category - inline */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-3)",
-              marginBottom: "var(--space-3)",
-            }}
-          >
+          <div className="set-row__title">
             <h3
               style={{
                 fontFamily: "var(--font-body)",
@@ -298,13 +283,7 @@ const SortableWorkoutCard = ({
           </div>
 
           {/* Data chips */}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "var(--space-2)",
-            }}
-          >
+          <div className="set-row__chips">
             {workout.weight && (
               <div className="workout-chip">
                 <Weight
@@ -918,7 +897,7 @@ const WorkoutSession = () => {
     <>
       <Navigation />
       <div className="page">
-        <div className="page__content">
+        <div className="page__content page__content--narrow">
           {/* Header */}
           <div
             className="flex flex-col sm:flex-row sm:items-center justify-between animate-in"

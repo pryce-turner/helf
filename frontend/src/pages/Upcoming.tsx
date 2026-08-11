@@ -175,7 +175,7 @@ const Upcoming = () => {
     <>
       <Navigation />
       <div className="page">
-        <div className="page__content">
+        <div className="page__content page__content--narrow">
           {/* Header */}
           <div className="page__header animate-in">
             <div className="flex items-start justify-between flex-wrap" style={{ gap: 'var(--space-4)' }}>

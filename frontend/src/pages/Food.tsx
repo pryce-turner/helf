@@ -235,10 +235,16 @@ const LogForm = ({ date, onDone }: { date: string; onDone: () => void }) => {
         // generated column, so a logged entry lands on the day the clock says.
         // Backdating keeps today's clock time, which is close enough for a
         // meal and avoids inventing a midnight timestamp.
-        const consumed_at =
-            date === todayISO()
-                ? new Date().toISOString()
-                : `${date}T${format(new Date(), "HH:mm:ss")}`;
+        //
+        // Local time, never `toISOString()`. That column is
+        // `substr(consumed_at, 1, 10)` — the date is whatever the first ten
+        // characters spell — so a UTC string files the entry under the UTC
+        // date. West of Greenwich that is tomorrow for every evening meal:
+        // dinner logged at 18:02 on the 10th became `2026-08-11` and vanished
+        // from the day it was logged on. The day being viewed is already a
+        // local `yyyy-MM-dd`, so it serves for today and for a backdated entry
+        // alike.
+        const consumed_at = `${date}T${format(new Date(), "HH:mm:ss")}`;
 
         const entry = picked
             ? { food_id: picked.doc_id, servings: amount, meal, consumed_at }
@@ -276,6 +282,11 @@ const LogForm = ({ date, onDone }: { date: string; onDone: () => void }) => {
                             }}
                             placeholder="Search or type a new food"
                             autoComplete="off"
+                            // The form only exists because "Log food" was
+                            // pressed, and naming the food is the only way to
+                            // start. Opening it focused saves a click and lets
+                            // the whole entry be typed.
+                            autoFocus
                         />
 
                         {!picked && matches && matches.length > 0 && (

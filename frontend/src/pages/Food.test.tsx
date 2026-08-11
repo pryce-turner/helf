@@ -155,4 +155,30 @@ describe("Food page", () => {
         // typeahead offers magnesium.
         expect(mocked.search).toHaveBeenCalledWith("man", 50, "food");
     });
+
+    /**
+     * `food_log.date` is `substr(consumed_at, 1, 10)`, so the day an entry
+     * lands on is whatever the first ten characters spell. `toISOString()`
+     * spells the UTC date: west of Greenwich every evening meal was filed
+     * under tomorrow and disappeared from the day it was logged on. A
+     * screenshot cannot catch this — the request succeeds and the page
+     * refetches a day that correctly no longer contains the entry.
+     */
+    it("logs against the viewed day, not the UTC one", async () => {
+        const user = userEvent.setup();
+        mocked.getDay.mockResolvedValue(day() as never);
+        mocked.log.mockResolvedValue({ data: {} } as never);
+
+        renderPage(<FoodPage />, "/food");
+        await user.click(await screen.findByRole("button", { name: /Log food/ }));
+        await user.type(screen.getByLabelText("Food"), "Rice");
+        await user.click(screen.getByRole("button", { name: /Log it/ }));
+
+        await waitFor(() => expect(mocked.log).toHaveBeenCalled());
+        const sent = mocked.log.mock.calls[0][0] as { consumed_at: string };
+        expect(sent.consumed_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+        expect(sent.consumed_at.slice(0, 10)).toBe(
+            new Date().toLocaleDateString("en-CA"),
+        );
+    });
 });

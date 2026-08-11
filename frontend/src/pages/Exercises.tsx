@@ -243,6 +243,7 @@ const Exercises = () => {
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder="e.g., Bench Press"
+                        autoFocus
                       />
                     </div>
                     <div style={{ flex: '1 1 200px' }}>

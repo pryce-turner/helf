@@ -200,6 +200,7 @@ const StackEditor = ({
                             placeholder="Morning"
                             onChange={(e) => setName(e.target.value)}
                             autoComplete="off"
+                            autoFocus
                         />
                     </div>
 

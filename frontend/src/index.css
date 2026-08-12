@@ -113,13 +113,19 @@
         --card-foreground: 0 0% 98%;
         --popover: 0 0% 8%;
         --popover-foreground: 0 0% 98%;
-        --primary: 142 71% 45%;
+        /* The accent, as an HSL triplet: `#f97316` is `hsl(25 95% 53%)`. These
+           three were shadcn's default green (`142 71% 45%`), never changed to
+           match the design system, and the only thing that consumes them is
+           the calendar — so picking a date rendered a green day on an orange
+           app. Keep them in step with `--accent` above; they are the same
+           colour written for a different consumer. */
+        --primary: 25 95% 53%;
         --primary-foreground: 0 0% 4%;
         --secondary: 0 0% 11%;
         --secondary-foreground: 0 0% 98%;
         --muted: 0 0% 9%;
         --muted-foreground: 0 0% 36%;
-        --accent-tw: 142 71% 45%;
+        --accent-tw: 25 95% 53%;
         --accent-foreground: 0 0% 4%;
         --destructive: 0 84% 60%;
         --destructive-foreground: 0 0% 98%;
@@ -133,7 +139,7 @@
            wrapped in `hsl()`. */
         --border-tw: 0 0% 16%;
         --input: 0 0% 11%;
-        --ring: 142 71% 45%;
+        --ring: 25 95% 53%;
         --radius: 0.625rem;
     }
 }
@@ -152,6 +158,28 @@
         font-variant-numeric: tabular-nums;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        /* Kills the 300ms double-tap-to-zoom gesture, which also removes the
+           tap delay that made every button feel a beat late on a phone. */
+        touch-action: manipulation;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    /* The zoom that the viewport meta cannot stop.
+       iOS Safari zooms into a focused text field whose font-size is under
+       16px, honours no viewport setting while doing it, and does not zoom back
+       out — leaving the page wider than the screen and scrolled off-centre.
+       The only fix is for no focusable field to be under 16px.
+
+       `!important` is load-bearing, not laziness: some fields set their size
+       inline (the Liftoscript editor is 14px), and a stylesheet rule only
+       beats an inline style when it is important. Scoped to coarse pointers so
+       the desktop type scale is untouched. */
+    @media (pointer: coarse) {
+        input,
+        select,
+        textarea {
+            font-size: 16px !important;
+        }
     }
 
     h1,
@@ -392,7 +420,10 @@
         border-radius: var(--radius-sm);
         padding: 12px 16px;
         color: var(--text-primary);
-        font-size: 15px;
+        /* 16px, not 15. Under 16 iOS Safari zooms into the field on focus and
+           does not zoom back out, which is what left every form off-centre on
+           a phone. One pixel is not worth that. */
+        font-size: 16px;
         transition: all var(--duration-normal) var(--ease-default);
         font-family: var(--font-body);
         box-sizing: border-box;

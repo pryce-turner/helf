@@ -658,6 +658,19 @@ The app follows a dark-first design philosophy with an orange accent.
 - Semantic: `--success` (#22c55e), `--warning` (#eab308), `--error` (#ef4444), `--info` (#3b82f6)
 - Chart palette: `--chart-1` (#f97316) through `--chart-5` (#eab308)
 
+### Zoom is off, and it takes two changes not one
+
+The viewport meta carries `user-scalable=no, maximum-scale=1`, and `body` has
+`touch-action: manipulation`. That covers pinch and double-tap.
+
+It does **not** cover the one that actually bit: iOS Safari zooms into a
+focused text field whose `font-size` is under 16px, honours no viewport setting
+while doing so, and never zooms back out — leaving every form off-centre on a
+phone. So `@media (pointer: coarse)` forces `input, select, textarea` to 16px
+with `!important`, which is load-bearing because some fields set their size
+inline. **Removing either half brings the bug back**, and it cannot be
+reproduced in desktop Chrome.
+
 ### Typography
 - Display font: Clash Display (headings) - from Fontshare
 - Body font: Satoshi (UI text) - from Fontshare

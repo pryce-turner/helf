@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `user-scalable=no` and `maximum-scale=1` stop the pinch and double-tap
+         zoom. They do NOT stop the one that actually bites: iOS Safari ignores
+         both when it decides to zoom into a focused input, which it does
+         whenever that input's font-size is under 16px. That is handled in
+         index.css under `@media (pointer: coarse)` and the two go together —
+         removing either brings the off-centre page back. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>Helf</title>
   </head>
   <body>

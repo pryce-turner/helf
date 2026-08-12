@@ -123,7 +123,15 @@
         --accent-foreground: 0 0% 4%;
         --destructive: 0 84% 60%;
         --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 16%;
+        /* `--border-tw`, not `--border`, for the same reason as `--accent-tw`
+           above: the design system already defines `--border` as a hex, and
+           this block comes later, so declaring it here won its cascade and
+           handed every `var(--border)` in the app a bare HSL triplet. A
+           triplet is not a color — `1px solid 0 0% 16%` is invalid — so the
+           rule was dropped and *no border rendered anywhere*, in 42 places.
+           Only Tailwind's `border-border` utility may consume this, and only
+           wrapped in `hsl()`. */
+        --border-tw: 0 0% 16%;
         --input: 0 0% 11%;
         --ring: 142 71% 45%;
         --radius: 0.625rem;

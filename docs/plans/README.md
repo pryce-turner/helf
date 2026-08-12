@@ -36,7 +36,7 @@ table.
 | 0009 | [Drop AMRAP notation](0009-drop-amrap-notation.md) | Implemented 2026-08-08 | `fd709c41eb19` | — |
 | 0010 | [Retire `body_composition`](0010-retire-body-composition.md) | Implemented 2026-08-09 | `86c8bbc9e2d7` | — |
 | 0011 | [Supplement stacks](0011-supplement-stacks.md) | Implemented 2026-08-09 | `9ffbe9c21a0f` | — |
-| 0012 | [Mobility](0012-mobility.md) | Implemented 2026-08-10 | `c4a92f18de07` | §8: the four vault sessions are not backfilled, so the first `read_latest_mobility_session()` finds nothing |
+| 0012 | [Mobility](0012-mobility.md) | Implemented 2026-08-10 | `c4a92f18de07` | — (the vault backfill landed 2026-08-11, §9) |
 
 ## Where things stand
 
@@ -75,6 +75,11 @@ Work that is finished but under-checked. Not bugs; things nobody has looked at.
 - **Audit-log volume wants a check after a month of real use** (0007 §4).
 
 Recently paid down:
+
+- ~~The mobility program's history lives outside the database~~ — the four
+  vault sessions are backfilled (0012 §9), 65 sets, with stated numbers carried
+  verbatim and inferred ones named in each day's note. Loads nobody wrote down
+  are NULL rather than guessed.
 
 - ~~No supplement editor~~ — `/supplements` now has an "All supplements"
   catalog with an editor per entry, and `GET /api/food/{id}/usage` tells it how
@@ -166,6 +171,14 @@ Each of these cost real debugging time at least once.
   `b3d1c07a4e21` rebuilds the three `exercises` triggers for `rating` and
   `is_mobility`; a test in `test_db_audit_log.py` fails if the next one
   forgets.
+- **A CSS custom property declared in both the design-system block and the
+  shadcn block silently loses.** `--border` was `#2a2a2d` in one and `0 0% 16%`
+  in the other; the later won, so every `var(--border)` got a bare HSL triplet,
+  which is not a colour, so the declaration was dropped — **no border rendered
+  anywhere in the app**, in 42 places. Found by opening `/mobility` in Chrome,
+  not by any test: nothing errors and the layout does not move. Shadcn-side
+  names are suffixed `-tw` for this reason (`--accent-tw` already was;
+  `--border-tw` since 2026-08-11).
 - **`food_log.date` is `substr(consumed_at, 1, 10)`** — a string prefix, not a
   parsed instant. So the day an entry lands on is whatever the first ten
   characters spell, and `new Date().toISOString()` spells the *UTC* date. West

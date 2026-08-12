@@ -200,12 +200,9 @@ Backups: `data/helf.db.pre-mobility.bak` (before the migration),
 
 ## 8. Open, and deliberately not done
 
-- **The four vault sessions are not backfilled.** 08-06, 08-07 and 08-08 exist
-  only as markdown, so the first `read_latest_mobility_session()` returns
-  `found: false` and the first prescription has to come from the pool and the
-  vault rather than from the database. Backfilling would mean inventing precise
-  per-set rows from prose that only sometimes records them — "8 and then barely
-  7" is recoverable, "held unchanged" is not. Left to the user to decide.
+- ~~The four vault sessions are not backfilled.~~ **Done 2026-08-11** —
+  `backend/migrations/backfill_mobility_sessions.py`, 65 sets across 06-27,
+  08-06, 08-07 and 08-08. See §9.
 - **Region is not modelled.** The vault is structured by region and only "Lower
   Back" exists. A second region would need either a column or a naming
   convention; one region needs neither.
@@ -217,4 +214,50 @@ Backups: `data/helf.db.pre-mobility.bak` (before the migration),
 - **No per-side modelling.** "each side" is a cue in `comment`. Making it
   structured means deciding whether a two-sided set is one row or two, which
   changes what the logged history means; not worth it until something needs to
-  count sides.
+  count sides. It cost something in the backfill: 2026-08-08's "hit 8 on the
+  left, failed on the right at 7" became two rows of 8 and 7, which is the
+  right *shape* — two sets were performed — but the reader has to take the
+  asymmetry from the comment rather than from the numbers.
+
+## 9. The backfill (2026-08-11)
+
+§8 argued against this and the argument was about invention, not about value.
+Doing it anyway, with the invention labelled, is better than a six-week hole:
+without it the first `read_latest_mobility_session()` returned `found: false`
+and the program's whole history lived outside the database.
+
+**Three tiers of number, kept distinguishable.**
+
+| Tier | Rule | Example |
+|---|---|---|
+| **Stated** | The user wrote it down. Carried across with their words in the set's `comment` | "8 and then 10 reps on 30lb kb QL raise" |
+| **Prescribed** | The routine said 2x8 and nothing was said afterwards | Hanging knee raise on 08-08 |
+| **Inferred** | Reconstructed from elsewhere, and named in the note | bar-only good morning = 45lb |
+
+The prescribed tier is safe because **the session notes are a list of
+deviations**. A movement under "Held unchanged" with no feedback went to plan;
+that is what the vault's own workflow means by holding it unchanged.
+
+Only two inferences were needed, and 2026-08-08 confirms both: a bar-only good
+morning is 45lb and "+15lb plates" is 75lb (its stated "75lb x 6 reps x 2
+sets"), and the QL kettlebell prescribed as "~25-30lb" is 30lb (its stated
+"30lb kb QL raise").
+
+**A load never written down is NULL, not a guess.** An invented weight becomes
+a point on a progression chart and the baseline the next session is programmed
+against — strictly worse than a gap. So the unweighted pigeon regressions and
+every calf raise load before 08-08 are NULL.
+
+Each day carries its `mobility_session` marker note with the vault's rationale
+plus a provenance paragraph stating it was backfilled and which numbers were
+inferred. `source = 'import'`: nobody typed it into the app today and no model
+wrote it today — it was moved.
+
+**2026-06-25 was left alone.** It is already in the calendar with mobility
+movements on it — a pigeon squat and a single-leg calf raise beside a Romanian
+deadlift — and it is not one of the vault's sessions; the earliest of those is
+06-27, whose rationale is that the RDL is *being replaced*. It is not marked as
+a mobility day, so `read_latest_mobility_session()` will never return it.
+
+Verification: 9,292 → 9,357 workout rows, 4 `mobility_session` notes, a re-run
+is a clean no-op. Backup `data/helf.db.pre-mobility-backfill.bak`.

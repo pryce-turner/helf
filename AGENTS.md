@@ -639,6 +639,18 @@ The app follows a dark-first design philosophy with an orange accent.
 > `@config "../tailwind.config.js"` keeps the v3 config (the shadcn colour
 > tokens) loaded. Do not "modernise" this back.
 
+> **The design-system tokens and the shadcn tokens share a namespace, and they
+> are different kinds of value.** The design system stores real colours
+> (`--border: #2a2a2d`); shadcn stores bare HSL triplets meant to be wrapped
+> (`hsl(var(--border-tw))`). Declaring the same name in both blocks means the
+> later one wins and every `var(--border)` in the app receives `0 0% 16%` —
+> which is not a colour, so `1px solid var(--border)` is dropped as invalid.
+> That is what happened: **no border rendered anywhere in the app**, in 42
+> places, until 2026-08-11. Shadcn-side names are therefore suffixed `-tw`
+> (`--accent-tw`, `--border-tw`) and only Tailwind's config may consume them.
+> A missing border is silent — nothing errors and the layout does not move — so
+> the check is visual: if a dashed empty-state card has no dash, look here.
+
 ### Colors (CSS Variables in `frontend/src/index.css`)
 - Backgrounds: `--bg-base` (#09090b), `--bg-primary`, `--bg-secondary`, `--bg-tertiary`, `--bg-hover`, `--bg-active`
 - Text: `--text-primary` (#fafafa), `--text-secondary` (#a1a1a6), `--text-muted` (#5c5c5e)

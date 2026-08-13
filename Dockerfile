@@ -60,14 +60,21 @@ COPY backend/app /app/app
 COPY backend/alembic.ini /app/alembic.ini
 COPY backend/migrations /app/migrations
 
+# The MCP server loads its instructions from docs/design/ at startup and treats
+# them as fatal if absent, so the image needs them or `app.mcp.qs_mcp` cannot
+# run in a container at all. Copied to /app/docs so that walking up from
+# /app/app/mcp/qs_mcp.py finds it, exactly as walking up from
+# backend/app/mcp/qs_mcp.py finds the repo copy.
+COPY docs/design /app/docs/design
+
 # Copy frontend build
 COPY --from=frontend-build /app/frontend/dist /app/static
 
 # Create data directory
 RUN mkdir -p /app/data
 
-# Expose port
-EXPOSE 8080
+# 8080 is the API; 8081 is the MCP server when the mcp service overrides CMD.
+EXPOSE 8080 8081
 
 # Health check
 HEALTHCHECK --interval=60s --timeout=10s --start-period=40s --retries=3 \

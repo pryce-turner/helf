@@ -596,6 +596,51 @@ def test_read_only_is_the_default_for_an_unset_variable(monkeypatch):
     assert importlib.reload(qs_mcp).READ_ONLY is True
 
 
+def test_instructions_are_found_from_the_container_layout(tmp_path, monkeypatch):
+    """The repo nests one level deeper than the image, and the old
+    `parents[3]` encoded the repo's depth as a constant.
+
+    Repo is `<root>/backend/app/mcp/qs_mcp.py`; the image is `/app/app/mcp/`.
+    `parents[3]` resolved to `/docs/design/...` in the container, and since
+    missing instructions are fatal the server could not start in production at
+    all — silently, because nothing outside a container exercised that path.
+    This reproduces the container layout rather than trusting the arithmetic.
+    """
+    monkeypatch.delenv("QS_MCP_INSTRUCTIONS", raising=False)
+
+    root = tmp_path / "app"
+    module = root / "app" / "mcp" / "qs_mcp.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("")
+    instructions = root / "docs" / "design" / "mcp-instructions.md"
+    instructions.parent.mkdir(parents=True)
+    instructions.write_text("# instructions")
+
+    monkeypatch.setattr(qs_mcp, "__file__", str(module))
+    assert qs_mcp._find_instructions() == instructions
+
+
+def test_instructions_path_can_be_overridden(tmp_path, monkeypatch):
+    """For a layout neither the repo nor the image anticipates."""
+    elsewhere = tmp_path / "custom.md"
+    elsewhere.write_text("# instructions")
+    monkeypatch.setenv("QS_MCP_INSTRUCTIONS", str(elsewhere))
+
+    assert qs_mcp._find_instructions() == elsewhere
+
+
+def test_unknown_transport_is_refused(monkeypatch):
+    """A typo in `QS_MCP_TRANSPORT` must not silently fall back to stdio.
+
+    A container that quietly served stdio would look healthy — the process
+    stays up — while nothing could ever reach it over the network.
+    """
+    monkeypatch.setenv("QS_MCP_TRANSPORT", "http")  # the plausible wrong name
+
+    with pytest.raises(qs_mcp.ConfigurationError, match="streamable-http"):
+        qs_mcp.main()
+
+
 def _tool_names(server) -> set[str]:
     import anyio
 

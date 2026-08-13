@@ -61,9 +61,34 @@ QUERY_TIMEOUT_S = 5.0
 # a race gets "database is locked" instead of waiting a few milliseconds.
 BUSY_TIMEOUT_MS = 5000
 
-INSTRUCTIONS_PATH = (
-    Path(__file__).resolve().parents[3] / "docs" / "design" / "mcp-instructions.md"
-)
+def _find_instructions() -> Path:
+    """Locate `mcp-instructions.md` without hard-coding a directory depth.
+
+    This was `parents[3]`, which is correct in the repo
+    (`<root>/backend/app/mcp/`) and wrong in the container (`/app/app/mcp/`, one
+    level shallower) — it resolved to `/docs/design/...` and the server, for
+    which missing instructions are fatal, could not start in production at all.
+
+    Walking up until the file appears is layout-independent, so the same module
+    works checked out, installed, or copied into an image. `QS_MCP_INSTRUCTIONS`
+    overrides for anything neither layout anticipates.
+    """
+    override = os.environ.get("QS_MCP_INSTRUCTIONS")
+    if override:
+        return Path(override)
+
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "docs" / "design" / "mcp-instructions.md"
+        if candidate.exists():
+            return candidate
+
+    # Nothing found: return the repo-layout guess so the startup error names a
+    # plausible path rather than `/docs/...`.
+    return here.parents[3] / "docs" / "design" / "mcp-instructions.md"
+
+
+INSTRUCTIONS_PATH = _find_instructions()
 
 # Exercises the agent invents need a home, and `exercises.category_id` is NOT
 # NULL with foreign keys enforced (G7) - the reference's auto-create would have
@@ -781,7 +806,39 @@ def build_server():
 
 
 def main() -> None:
-    build_server().run()  # stdio
+    """Run the server on the transport `QS_MCP_TRANSPORT` names.
+
+    Defaults to `stdio`, which is what `.mcp.json` and every local client use,
+    and what ADR-0004's "separate process" means in practice. `streamable-http`
+    exists for clients that cannot spawn a process on this host — an agent
+    elsewhere on the tailnet.
+
+    The transport is not a privilege boundary and must not be read as one. The
+    connection still is: `query` is `mode=ro` on either transport, and the tool
+    set is still chosen by `QS_MCP_MODE`. What HTTP changes is *reachability* —
+    stdio is reachable by whoever can run the command, HTTP by whoever can reach
+    the socket. That is why it binds `QS_MCP_HOST` (default loopback) rather
+    than `0.0.0.0`: a container publishing a port is an explicit act, not a
+    default.
+    """
+    transport = os.environ.get("QS_MCP_TRANSPORT", "stdio")
+    server = build_server()
+
+    if transport == "stdio":
+        server.run()
+        return
+
+    if transport not in ("streamable-http", "sse"):
+        raise ConfigurationError(
+            f"Unknown QS_MCP_TRANSPORT {transport!r}. "
+            f"Expected 'stdio', 'streamable-http' or 'sse'."
+        )
+
+    server.run(
+        transport,
+        host=os.environ.get("QS_MCP_HOST", "127.0.0.1"),
+        port=int(os.environ.get("QS_MCP_PORT", "8081")),
+    )
 
 
 if __name__ == "__main__":

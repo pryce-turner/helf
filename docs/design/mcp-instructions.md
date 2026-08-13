@@ -70,25 +70,31 @@ than what you inferred, and use `source` to keep the two apart.
 
 This is the one thing here you *run* rather than answer questions about. It is
 a single rolling routine that you adjust one session at a time — not a program
-generated in advance and then followed. `read_latest_mobility_session()` and
-`write_next_mobility_session()` are available in both modes.
+generated in advance and then followed. All four mobility tools are available
+in both modes.
 
 **The loop is: read the last session, adjust, write the next one.**
 
-1. `read_latest_mobility_session()` — the sets as performed and every comment on
+1. `read_pending_mobility_session()` — **if a session is already pending, stop
+   there.** Writing replaces it wholesale, so a new routine written now
+   discards one the user has not had the chance to run. Report what is waiting
+   instead.
+2. `read_latest_mobility_session()` — the sets as performed and every comment on
    them. **The comments are the entire feedback channel.** Read all of them
    before changing anything.
-2. Read the movement's entry in `exercises` (`SELECT name, notes, rating,
+3. Read the movement's entry in `exercises` (`SELECT name, notes, rating,
    is_mobility FROM exercises WHERE is_mobility = 1`). `notes` holds how to
    perform it and an **Application** section whose *Reads* are written as
    symptom → likely cause → what to change. That is the layer that turns a
    comment into a programming decision; use it rather than reasoning from the
    movement name.
-3. `write_next_mobility_session(items, rationale)`.
-4. Update the movement's `notes` when a session teaches you something durable
-   about it. `notes` is **current state, not a log** — supersede what is no
-   longer true rather than appending to it. The running history is the sessions
-   themselves.
+4. `write_next_mobility_session(items, rationale)`.
+5. `update_mobility_movement(exercise_id, notes=…, rating=…)` when a session
+   teaches you something durable about a movement. `notes` is **current state,
+   not a log** — supersede what is no longer true rather than appending to it.
+   The running history is the sessions themselves. This is the step that
+   compounds: a lesson left unwritten is one you re-derive next week from the
+   same comment.
 
 **The philosophy is loaded stretching**: strengthen through full range of
 motion rather than holding static stretches. The lengthened, loaded position is
@@ -112,4 +118,6 @@ a 5-rated movement of little value is a candidate to cut, and a 1-rated movement
 of high value needs its friction diagnosed — load, setup, position — rather than
 its place defended. **Only rate from a direct statement of liking or disliking.**
 "Hard" and "frustrating" are not "disliked", and inferring a rating from
-performance destroys the one thing the column is for.
+performance destroys the one thing the column is for. Set it through
+`update_mobility_movement` at the moment it is said — most of the pool is
+unrated, and a rating recalled later is a rating inferred.

@@ -362,7 +362,9 @@ def test_mobility_tools_are_present_in_read_only_mode(mcp, monkeypatch):
     names = _tool_names(mcp.build_server())
 
     assert "read_latest_mobility_session" in names
+    assert "read_pending_mobility_session" in names
     assert "write_next_mobility_session" in names
+    assert "update_mobility_movement" in names
     # The exception is scoped. Everything else still obeys the mode.
     assert "log_workout" not in names
     assert "add_metric" not in names
@@ -584,6 +586,165 @@ def test_write_next_is_attributed_to_the_agent(mcp):
     assert {"table_name": "note", "op": "DELETE", "actor": "agent"} in logged
     # The claim is released inside the same transaction, so nothing later is
     # attributed to the agent by accident.
+    assert mcp.query("SELECT actor FROM audit_actor")["rows"] == [{"actor": "app"}]
+
+
+# --------------------------------------------------------------------------
+# What is on deck
+# --------------------------------------------------------------------------
+def test_read_pending_says_so_when_nothing_is_waiting(mcp):
+    assert mcp.read_pending_mobility_session() == {"ok": True, "pending": False}
+
+
+def test_read_pending_returns_the_routine_in_prescribed_order(mcp):
+    mcp.write_next_mobility_session(
+        items=[
+            {"exercise": "Decline Bicycle Crunch", "sets": 1, "reps": 20},
+            {"exercise": "QL Raise", "sets": 2, "reps": 8, "comment": "each side"},
+        ],
+        rationale="core first, then the QL",
+    )
+
+    result = mcp.read_pending_mobility_session()
+
+    assert result["pending"] is True
+    assert result["rationale"] == "core first, then the QL"
+    # One row per set, in insertion order. The table has no `order` column, so
+    # nothing else carries the sequence the routine is to be performed in.
+    assert [item["exercise"] for item in result["items"]] == [
+        "Decline Bicycle Crunch",
+        "QL Raise",
+        "QL Raise",
+    ]
+    assert result["items"][1]["comment"] == "each side"
+
+
+def test_read_pending_ignores_a_rationale_with_no_items(mcp):
+    """A plan note on its own is a leftover, not a session.
+
+    Reporting it would describe a routine the user cannot see — the same rule
+    `MobilityService.get_pending` follows on the app side.
+    """
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "reps": 8}], rationale="stale"
+    )
+    with database.SessionLocal() as session:
+        session.execute(text("DELETE FROM upcoming_workouts"))
+        session.commit()
+
+    assert mcp.read_pending_mobility_session()["pending"] is False
+
+
+def test_read_pending_ignores_a_pending_lifting_session(mcp):
+    """`session = 1` is the mobility slot, but lifting numbers its sessions
+    from 1 as well. `kind` is what separates them, not the number."""
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "reps": 8}], rationale="the mobility one"
+    )
+    with database.SessionLocal() as session:
+        session.execute(
+            text(
+                "INSERT INTO upcoming_workouts (session, kind, exercise_id, "
+                "category_id, reps, created_at) "
+                "VALUES (1, 'lifting', 1, 1, 5, '2026-08-13')"
+            )
+        )
+        session.commit()
+
+    result = mcp.read_pending_mobility_session()
+
+    assert len(result["items"]) == 1
+    assert result["items"][0]["reps"] == 8
+
+
+# --------------------------------------------------------------------------
+# What a session taught you about a movement
+# --------------------------------------------------------------------------
+@pytest.fixture()
+def movement(mcp):
+    """A movement in the mobility pool, with notes and a rating to supersede."""
+    mcp.write_next_mobility_session(
+        items=[{"exercise": "QL Raise", "reps": 8}], rationale="baseline"
+    )
+    with database.SessionLocal() as session:
+        session.execute(
+            text(
+                "UPDATE exercises SET notes = 'hold the brace', rating = 3 "
+                "WHERE name = 'QL Raise'"
+            )
+        )
+        session.commit()
+    return mcp.query("SELECT id FROM exercises WHERE name = 'QL Raise'")["rows"][0]["id"]
+
+
+def test_update_movement_supersedes_the_notes(mcp, movement):
+    result = mcp.update_mobility_movement(movement, notes="hold the brace; ribs down")
+
+    assert result["ok"] is True
+    assert result["updated"] == ["notes"]
+    # The previous value comes back because `notes` is current state — once
+    # replaced, what it used to say exists only in `audit_log`.
+    assert result["previous"] == {"notes": "hold the brace", "rating": 3}
+
+
+def test_update_movement_leaves_an_omitted_field_alone(mcp, movement):
+    mcp.update_mobility_movement(movement, rating=5)
+
+    assert mcp.query(
+        f"SELECT notes, rating FROM exercises WHERE id = {movement}"
+    )["rows"] == [{"notes": "hold the brace", "rating": 5}]
+
+
+def test_update_movement_needs_something_to_write(mcp, movement):
+    assert mcp.update_mobility_movement(movement)["ok"] is False
+
+
+def test_update_movement_refuses_to_blank_the_notes(mcp, movement):
+    """Blanking discards how the movement is performed. Omitting the field is
+    how you leave it alone, and the two are easy to confuse from the far side
+    of a tool call."""
+    result = mcp.update_mobility_movement(movement, notes="   ")
+
+    assert result["ok"] is False
+    assert mcp.query(
+        f"SELECT notes FROM exercises WHERE id = {movement}"
+    )["rows"] == [{"notes": "hold the brace"}]
+
+
+def test_update_movement_refuses_a_rating_outside_the_scale(mcp, movement):
+    """The CHECK constraint would catch this, but as an opaque IntegrityError.
+    The agent needs to be told the scale, not that a constraint exists."""
+    result = mcp.update_mobility_movement(movement, rating=0)
+
+    assert result["ok"] is False
+    assert "1-5" in result["error"]
+
+
+def test_update_movement_refuses_an_unknown_exercise(mcp, movement):
+    assert mcp.update_mobility_movement(9999, rating=4)["ok"] is False
+
+
+def test_update_movement_refuses_a_movement_outside_the_pool(mcp, catalog):
+    """`is_mobility` is the user's judgement, made on /exercises. A tool that
+    could pull any movement into the pool by writing notes at it would be a
+    general exercise editor with a mobility-shaped name."""
+    bench = mcp.query("SELECT id FROM exercises WHERE name = 'Bench Press'")["rows"][0]
+
+    result = mcp.update_mobility_movement(bench["id"], rating=5)
+
+    assert result["ok"] is False
+    assert "not a mobility movement" in result["error"]
+    assert mcp.query("SELECT rating FROM exercises WHERE name = 'Bench Press'")[
+        "rows"
+    ] == [{"rating": None}]
+
+
+def test_update_movement_is_attributed_to_the_agent(mcp, movement):
+    mcp.update_mobility_movement(movement, rating=1)
+
+    logged = mcp.query("SELECT table_name, op, actor FROM audit_log ORDER BY id")["rows"]
+
+    assert {"table_name": "exercises", "op": "UPDATE", "actor": "agent"} in logged
     assert mcp.query("SELECT actor FROM audit_actor")["rows"] == [{"actor": "app"}]
 
 

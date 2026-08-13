@@ -71,6 +71,14 @@ agent tool.
   rationale; it cannot log a workout, record a measurement, or alter anything
   already in the calendar.
 
+  **Amended 2026-08-13.** A second tool, `update_mobility_movement`, joins it —
+  same argument, applied to step 4 of the loop. The instructions told the agent
+  to write down what a session taught it about a movement, and no tool existed
+  to do it, so the one step that compounds was the one step no client could
+  perform. It is scoped to `notes` and `rating` on a movement already flagged
+  `is_mobility`; it cannot add a movement to the pool, and the flag stays the
+  user's judgement made on /exercises.
+
   **This ADR's actual claim is unchanged**: the privilege boundary is the
   *connection*, not the tool name. `query` is opened `mode=ro` in either mode,
   so a model that talks its way into composing an UPDATE is still refused by
@@ -80,6 +88,36 @@ agent tool.
   inherits that trust. The cost is colocation — server and client share a host
   and filesystem. HTTP transport would lift that at the price of building an
   auth story; not worth it until something actually needs to connect remotely.
+
+  **Amended 2026-08-13.** Something does, and both halves of that sentence have
+  since moved. `streamable-http` shipped, and is deployed as the `helf-mcp`
+  compose service on `30172:8081` with `QS_MCP_HOST=0.0.0.0` — reachable across
+  the tailnet, where `helf.pryce.fyi` resolves via AdGuard. stdio remains for
+  clients that can spawn a process on the host; the two are not exclusive, and
+  HTTP has the incidental benefit that one server process serves every client
+  rather than each spawning its own writer on the file.
+
+  **The auth story was considered and declined: the tailnet is the boundary.**
+  There is no authentication anywhere in helf — not on this transport, not on
+  the REST API, and CORS is `*`. This is a deliberate posture for a single-user
+  system on a private network, not an omission, and it should not be
+  "fixed" piecemeal by whoever next notices it.
+
+  Three consequences worth stating plainly, because the deployment no longer
+  makes them obvious:
+
+  1. **Anything that can reach the port has the full registered tool surface**,
+     including both `ALWAYS_TOOLS` writes. Read-only was never a
+     confidentiality control and is now not a write control either.
+  2. **`QS_MCP_MODE` is per-process, not per-caller.** One server cannot be
+     read-only for one client and read-write for another. Differentiating them
+     needs either a second process on a second port, or per-session tool grants
+     in a client capable of them.
+  3. **Which sessions get these tools is therefore the last remaining gate, and
+     it lives in the client.** That inverts the reasoning above — gating was put
+     in the server precisely because no client capability could be assumed. It
+     holds for an arbitrary MCP client; it stops being the whole story once a
+     general-purpose agent that also reads untrusted text is on the tailnet.
 - Guards are mandatory on the read path: single statement, row cap, statement
   timeout. Without them one `SELECT *` on a join dumps the database into the
   model's context.

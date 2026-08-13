@@ -4,9 +4,12 @@ Plan 0006. Descends from `docs/reference/qs_mcp.py`, which was written against
 the design doc's schema rather than the one these plans built; §2 of the plan
 lists the gaps and every one of them is closed here.
 
-**Two processes, one file (ADR-0002).** This runs on the host, beside the
-container rather than inside it, and opens `data/helf.db` directly. That is
-what makes WAL and `busy_timeout` load-bearing rather than decorative.
+**Two processes, one file (ADR-0002).** This opens `data/helf.db` directly and
+never goes through the app: as the `helf-mcp` compose service over
+`streamable-http` for clients that cannot spawn a process on this host, and
+spawned per-client over stdio for those that can. Either way it is a second
+writer on the same file, which is what makes WAL and `busy_timeout`
+load-bearing rather than decorative.
 
 **Nothing is imported from the application except `config`.** No repositories,
 no ORM models. The boundary that matters is not sharing a code path; reading
@@ -596,6 +599,48 @@ def read_latest_mobility_session() -> dict:
         conn.close()
 
 
+def read_pending_mobility_session() -> dict:
+    """Read the session that is on deck — written, but not yet run.
+
+    Distinct from `read_latest_mobility_session`, which reads the last session
+    *performed*. Check this **before** writing: `write_next_mobility_session`
+    replaces the pending session wholesale, so writing while one is already
+    waiting discards a routine the user has not had the chance to run.
+
+    Rows come back one per set, as they are stored — `sets: 2` on the way in is
+    two identical rows on the way out, in prescribed order. `pending` is false
+    when nothing is waiting, and a rationale with no items is a leftover rather
+    than a plan, so it is not reported on its own.
+    """
+    conn = _ro()
+    try:
+        rows = conn.execute(
+            """SELECT e.name AS exercise, u.weight, u.reps, u.time, u.comment
+               FROM upcoming_workouts u JOIN exercises e ON e.id = u.exercise_id
+               WHERE u.kind = 'mobility' AND u.session = ?
+               ORDER BY u.id""",
+            (MOBILITY_SESSION,),
+        ).fetchall()
+        if not rows:
+            return {"ok": True, "pending": False}
+
+        note = conn.execute(
+            "SELECT noted_at, body FROM note WHERE kind = ? "
+            "ORDER BY noted_at DESC LIMIT 1",
+            (PLAN_KIND,),
+        ).fetchone()
+
+        return {
+            "ok": True,
+            "pending": True,
+            "items": [dict(r) for r in rows],
+            "rationale": note["body"] if note else None,
+            "generated_at": note["noted_at"] if note else None,
+        }
+    finally:
+        conn.close()
+
+
 def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
     """Write the next mobility session, replacing whatever was pending.
 
@@ -690,11 +735,89 @@ def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
     }
 
 
+def update_mobility_movement(
+    exercise_id: int,
+    notes: str | None = None,
+    rating: int | None = None,
+) -> dict:
+    """Record what a session taught you about a movement — step 4 of the loop.
+
+    `notes` is **current state, not a log.** It replaces what is there, so
+    carry forward everything still true and supersede only what is not. The
+    running history is the sessions themselves; a notes field that accumulates
+    becomes a changelog nobody reads, including you. The **Application**
+    section and its symptom → cause → change *Reads* are the part that earns
+    its keep — that is what turns next session's comment into a decision.
+
+    `rating` is 1-5 enjoyment and exists to protect adherence, so set it
+    **only from a direct statement of liking or disliking**. "Hard" and
+    "frustrating" are not "disliked", and inferring it from performance
+    destroys the one thing the column is for.
+
+    Omit a field to leave it alone. Restricted to movements already flagged
+    `is_mobility`: this is the mobility loop's tool, not an exercise editor,
+    and the flag is the user's judgement made on /exercises. Returns the
+    previous values so you can see what you superseded.
+    """
+    if notes is None and rating is None:
+        return {"ok": False, "error": "provide notes or rating"}
+    if notes is not None and not notes.strip():
+        return {
+            "ok": False,
+            "error": "notes cannot be blank",
+            "hint": "notes replaces what is there, so blanking it discards how "
+                    "the movement is performed. Omit the field to leave it "
+                    "alone.",
+        }
+    if rating is not None and not 1 <= int(rating) <= 5:
+        return {
+            "ok": False,
+            "error": f"rating {rating} is outside 1-5",
+            "hint": "1-5 is enjoyment, NULL is unrated. There is no zero.",
+        }
+
+    with _rw() as conn:
+        found = conn.execute(
+            "SELECT name, notes, rating, is_mobility FROM exercises WHERE id = ?",
+            (exercise_id,),
+        ).fetchone()
+        if found is None:
+            return {"ok": False, "error": f"no exercise with id {exercise_id}"}
+        if not found["is_mobility"]:
+            return {
+                "ok": False,
+                "error": f"'{found['name']}' is not a mobility movement",
+                "hint": "This tool edits the mobility pool only. Adding a "
+                        "movement to it is the user's call, on /exercises.",
+            }
+
+        # Column names come from this fixed mapping and never from the caller,
+        # so the interpolation below has no injection surface; the values stay
+        # parameterised.
+        fields = {
+            "notes": notes,
+            "rating": int(rating) if rating is not None else None,
+        }
+        changed = [name for name, value in fields.items() if value is not None]
+        conn.execute(
+            f"UPDATE exercises SET {', '.join(f'{name} = ?' for name in changed)} "
+            f"WHERE id = ?",
+            [fields[name] for name in changed] + [exercise_id],
+        )
+
+        return {
+            "ok": True,
+            "exercise": found["name"],
+            "updated": changed,
+            "previous": {"notes": found["notes"], "rating": found["rating"]},
+        }
+
+
 # --------------------------------------------------------------------------
 # Server assembly
 # --------------------------------------------------------------------------
 READ_TOOLS = (query, get_schema, daily_summary, get_metric_names,
-              read_latest_mobility_session)
+              read_latest_mobility_session, read_pending_mobility_session)
 WRITE_TOOLS = (add_metric, add_note, log_food, log_workout)
 
 # Registered in **both** modes, unlike everything in WRITE_TOOLS.
@@ -707,12 +830,21 @@ WRITE_TOOLS = (add_metric, add_note, log_food, log_workout)
 # produce one, which leaves the user copying a routine out of a chat window by
 # hand, which is the thing this replaces.
 #
-# It is scoped as narrowly as the idea allows. This tool writes planned rows
-# for one session plus its rationale; it cannot log a workout, record a
-# measurement, or touch anything already in the calendar. ADR-0004's real
-# claim — that the *connection* is the privilege boundary — is untouched:
-# `query` is still `mode=ro`, so no amount of talking gets a write through it.
-ALWAYS_TOOLS = (write_next_mobility_session,)
+# `update_mobility_movement` widens the hole from one tool to two, and the
+# argument is the same one: step 4 of the documented loop is *write down what
+# this session taught you about the movement*, and without a tool for it the
+# instructions were asking for something no client could perform. The pool's
+# `notes` are where a comment becomes a programming decision, so a loop that
+# cannot update them re-derives the same lesson every week.
+#
+# Both are scoped as narrowly as the idea allows. Between them they write
+# planned rows for one session, its rationale, and the `notes`/`rating` of a
+# movement already flagged `is_mobility`. Neither can log a workout, record a
+# measurement, add a movement to the pool, or touch anything already in the
+# calendar. ADR-0004's real claim — that the *connection* is the privilege
+# boundary — is untouched: `query` is still `mode=ro`, so no amount of talking
+# gets a write through it.
+ALWAYS_TOOLS = (write_next_mobility_session, update_mobility_movement)
 
 
 def load_instructions() -> str:

@@ -33,8 +33,15 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Copy backend dependency files
 COPY backend/pyproject.toml backend/README.md ./
 
-# Install dependencies to system Python
-RUN uv pip install --system --no-cache .
+# Install dependencies to system Python, including the `mcp` extra.
+#
+# pyproject calls that extra out as something "the API image should not carry",
+# which was true while the MCP server ran on the host over stdio (Plan 0006 §1).
+# Once the helf-mcp service started building from this same Dockerfile, that
+# stopped holding: one image serves both commands, so the extra has to be in it
+# or `python -m app.mcp.qs_mcp` cannot import at all. Splitting the image back
+# apart is the alternative if the API image's contents ever need to be minimal.
+RUN uv pip install --system --no-cache ".[mcp]"
 
 # Stage 3: Production
 FROM python:3.12-slim AS production

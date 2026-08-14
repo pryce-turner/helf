@@ -1,6 +1,15 @@
 services:
     helf:
         build: .
+        # TrueNAS starts the app with `docker compose up`, which builds only when
+        # the image is *absent* — so a code change never reached a restarted app
+        # without a manual `docker compose build`. `pull_policy: build` makes
+        # every `up` rebuild. Layer caching means an unchanged tree costs seconds.
+        pull_policy: build
+        # Both services are the same image, differing only in command. Naming it
+        # explicitly keeps the second build a pure cache hit against the first
+        # rather than a second tag of identical layers.
+        image: helf:latest
         container_name: helf-app
         ports:
             - "30171:8080"
@@ -44,7 +53,15 @@ services:
     # what `audit_actor` + `BEGIN IMMEDIATE` already exist to handle.
     helf-mcp:
         build: .
+        pull_policy: build
+        image: helf:latest
         container_name: helf-mcp
+        # The image's CMD is uvicorn on 8080 — without this override the "MCP"
+        # container silently ran a second copy of the API and nothing ever
+        # listened on 8081. `python -m` works because the image sets
+        # PYTHONPATH=/app with the package at /app/app, matching how the module
+        # is run from `backend/` in development.
+        command: ["python", "-m", "app.mcp.qs_mcp"]
         ports:
             # helf.pryce.fyi resolves on the tailnet via AdGuard, so this is
             # reachable only from the tailnet. It is NOT authenticated: read-only
@@ -70,3 +87,20 @@ services:
             helf:
                 condition: service_healthy
         restart: unless-stopped
+        # The image's HEALTHCHECK probes the API's /api/health on 8080, which
+        # this container does not serve — inherited unchanged it would report
+        # unhealthy forever. A TCP connect to the MCP port is the honest check:
+        # the streamable-http endpoint answers only to POSTs carrying MCP
+        # framing, so there is no GET that means "healthy".
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "import socket; socket.create_connection(('127.0.0.1', 8081), 5).close()",
+                ]
+            interval: 60s
+            timeout: 10s
+            start_period: 20s
+            retries: 3

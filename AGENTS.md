@@ -586,9 +586,13 @@ model section above.*
   day's sets and every comment on them, `write_next_mobility_session()` replaces
   what is pending and records why
 - The philosophy is **loaded stretching** — strengthen through full range rather
-  than holding static stretches — and the standing program rules (seven
-  movements max, core first, static stretches *after* their loaded movement)
-  live in `docs/design/mcp-instructions.md`
+  than holding static stretches
+- **The standing program rules are the user's, and `docs/design/mcp-instructions.md`
+  is the only place they are written down.** How many movements a routine may
+  hold, what is programmed first, where static stretches sit relative to their
+  loaded movement — that file is loaded verbatim into the agent's context at
+  startup, so a copy here is a copy that changes without it. Do not restate
+  them in this file; read them there
 - The movement pool is `exercises` with `is_mobility = 1`; each movement's
   `notes` carry how to perform it and an Application section whose *Reads* are
   written as symptom → likely cause → what to change. That is what turns a

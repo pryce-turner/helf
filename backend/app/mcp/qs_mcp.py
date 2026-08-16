@@ -740,7 +740,8 @@ def update_mobility_movement(
     notes: str | None = None,
     rating: int | None = None,
 ) -> dict:
-    """Record what a session taught you about a movement — step 4 of the loop.
+    """Record what a session taught you about a movement — the write-back step
+    of the loop, after the next session has been prescribed.
 
     `notes` is **current state, not a log.** It replaces what is there, so
     carry forward everything still true and supersede only what is not. The
@@ -831,8 +832,8 @@ WRITE_TOOLS = (add_metric, add_note, log_food, log_workout)
 # hand, which is the thing this replaces.
 #
 # `update_mobility_movement` widens the hole from one tool to two, and the
-# argument is the same one: step 4 of the documented loop is *write down what
-# this session taught you about the movement*, and without a tool for it the
+# argument is the same one: the documented loop ends in *write down what this
+# session taught you about the movement*, and without a tool for it the
 # instructions were asking for something no client could perform. The pool's
 # `notes` are where a comment becomes a programming decision, so a loop that
 # cannot update them re-derives the same lesson every week.

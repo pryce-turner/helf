@@ -37,6 +37,8 @@ import {
   Calendar as CalendarIcon,
   History,
   Copy,
+  Square,
+  CheckSquare,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -63,6 +65,7 @@ import {
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
 import { useCategories, useExercises, useRecentExercises } from "@/hooks/useExercises";
+import { useMobilityDay, useSetMobilityDay } from "@/hooks/useMobility";
 import { useProgression } from "@/hooks/useProgression";
 import type { WorkoutCreate } from "@/types/workout";
 
@@ -633,6 +636,7 @@ const WorkoutSession = () => {
   const { data: categories } = useCategories();
   const { data: exercises } = useExercises();
   const { data: recentExercises } = useRecentExercises(8);
+  const { data: mobilityDay } = useMobilityDay(date);
 
   const createWorkout = useCreateWorkout();
   const updateWorkout = useUpdateWorkout();
@@ -641,6 +645,7 @@ const WorkoutSession = () => {
   const toggleComplete = useToggleComplete();
   const moveToDate = useMoveToDate();
   const copyToDate = useCopyToDate();
+  const setMobilityDay = useSetMobilityDay();
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -849,6 +854,25 @@ const WorkoutSession = () => {
     // Stay on current page (unlike move which navigates)
   }, [date, copyTargetDate, copyToDate]);
 
+  // Whether this day was a mobility session.
+  //
+  // Nothing about the logged rows can answer this on its own — a mobility
+  // routine borrows movements that are also lifting movements, so "the day
+  // contains a mobility exercise" finds lifting days too. The marker has to be
+  // asserted, and it is what the agent reads back over MCP to write the next
+  // session from.
+  const isMobilityDay = mobilityDay?.is_mobility ?? false;
+
+  // A day with nothing logged cannot have been a session, and marking one
+  // would hand the agent an empty day as its most recent input. Still togglable
+  // when already marked, so a day emptied after the fact can be corrected.
+  const canMarkMobility = (workouts?.length ?? 0) > 0 || isMobilityDay;
+
+  const handleToggleMobilityDay = useCallback(() => {
+    if (!date || !canMarkMobility) return;
+    setMobilityDay.mutate({ date, isMobility: !isMobilityDay });
+  }, [date, canMarkMobility, isMobilityDay, setMobilityDay]);
+
   // Progression data for add form's selected exercise
   const { data: addFormProgression } = useProgression(
     showAddRecent && selectedExercise && !editingWorkout ? selectedExercise : "",
@@ -962,6 +986,71 @@ const WorkoutSession = () => {
               </Button>
             </div>
           </div>
+
+          {/* Mobility day marker — the day view's one assertion about the
+              session as a whole, rather than about a set in it. */}
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={isMobilityDay}
+            disabled={!canMarkMobility}
+            onClick={handleToggleMobilityDay}
+            className="animate-in"
+            title={
+              canMarkMobility
+                ? "The agent writes the next mobility session from the last day marked here"
+                : "Log an exercise before marking this day as a mobility session"
+            }
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+              width: "100%",
+              padding: "var(--space-3) var(--space-4)",
+              marginBottom: "var(--space-6)",
+              borderRadius: "var(--radius-md)",
+              border: `1px solid ${
+                isMobilityDay ? "var(--accent)" : "var(--border)"
+              }`,
+              background: isMobilityDay
+                ? "var(--accent-glow)"
+                : "var(--bg-secondary)",
+              color: isMobilityDay ? "var(--accent)" : "var(--text-secondary)",
+              fontFamily: "var(--font-body)",
+              fontSize: "14px",
+              fontWeight: 500,
+              textAlign: "left",
+              cursor: canMarkMobility ? "pointer" : "not-allowed",
+              opacity: canMarkMobility ? 1 : 0.5,
+              transition: "all var(--duration-normal) ease",
+            }}
+          >
+            {isMobilityDay ? (
+              <CheckSquare style={{ width: "20px", height: "20px", flexShrink: 0 }} />
+            ) : (
+              <Square style={{ width: "20px", height: "20px", flexShrink: 0 }} />
+            )}
+            Mobility session
+            <span
+              className="hidden sm:inline"
+              style={{
+                marginLeft: "auto",
+                fontSize: "12px",
+                fontWeight: 400,
+                color: "var(--text-muted)",
+              }}
+            >
+              {!canMarkMobility
+                ? "Log an exercise first"
+                : isMobilityDay
+                  ? mobilityDay?.rationale
+                    // Unchecking deletes the note, and the agent's reasoning
+                    // is the same row. Say so before it is thrown away.
+                    ? "Written by the agent — unchecking discards its reasoning"
+                    : "Feeds the next mobility session"
+                  : ""}
+            </span>
+          </button>
 
           {/* Move to Date Calendar */}
           {showMoveCalendar && (

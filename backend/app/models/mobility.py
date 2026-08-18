@@ -53,6 +53,30 @@ class MobilityPending(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class MobilityDay(BaseModel):
+    """Whether one day was a mobility day.
+
+    `is_mobility` is derived from the presence of the marker note rather than
+    stored as a flag, for the same reason `MobilityPending.ready` is: a column
+    saying "this was a mobility day" could disagree with the row that makes it
+    one, and the read path keys on the row.
+
+    `rationale` is None both when the day is not marked and when it was marked
+    by hand. The UI needs the distinction only to decide what to show *beside*
+    the checkbox, and `is_mobility` already carries it.
+    """
+
+    date: str
+    is_mobility: bool
+    rationale: str | None = None
+
+
+class MobilityDayUpdate(BaseModel):
+    """Set or clear the mobility marker on a day."""
+
+    is_mobility: bool
+
+
 class MobilityTransferRequest(BaseModel):
     """Request to copy the pending session onto a date."""
 

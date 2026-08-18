@@ -9,8 +9,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
  * `retry: false` matters: React Query's default retries turn a stubbed 404
  * into a multi-second test, and an error state we deliberately provoked into a
  * timeout instead of an assertion.
+ *
+ * `path` is the pattern to register the page under, defaulting to the route
+ * itself. Pages that read `useParams` need the two to differ — mounting
+ * `/day/2026-08-11` under its own literal path matches, but binds no params,
+ * so the page renders as though it had no date at all.
  */
-export function renderPage(ui: ReactElement, route = "/") {
+export function renderPage(ui: ReactElement, route = "/", path = route) {
     const queryClient = new QueryClient({
         defaultOptions: {
             queries: { retry: false, gcTime: 0 },
@@ -22,7 +27,7 @@ export function renderPage(ui: ReactElement, route = "/") {
         <QueryClientProvider client={queryClient}>
             <MemoryRouter initialEntries={[route]}>
                 <Routes>
-                    <Route path={route} element={ui} />
+                    <Route path={path} element={ui} />
                 </Routes>
             </MemoryRouter>
         </QueryClientProvider>,

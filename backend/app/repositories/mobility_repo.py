@@ -12,9 +12,9 @@ have nowhere else to go:
    A mobility routine borrows movements that are also lifting movements - the
    good morning is in both - so "the last day containing a mobility exercise"
    finds lifting days too, and 2026-06-25 is exactly that: a pigeon squat and a
-   calf raise logged beside a Romanian deadlift. The marker has to be written
-   when the session is transferred, because that is the only moment anything
-   knows the day was a mobility day.
+   calf raise logged beside a Romanian deadlift. Nothing about the rows says
+   it, so someone has to: transfer writes the marker for a session that came
+   from the agent, and the day view's checkbox writes it for one that did not.
 2. **Why this session looks the way it does.** The agent's reasoning - what
    changed since last time and what to watch for - is the substance of the
    feature. It is prose, dated, written by a model, which is precisely what
@@ -119,6 +119,80 @@ class MobilityRepository:
             session.commit()
             session.refresh(note)
             return self._serialize_note(note)
+
+    def get_session_note(self, date: str) -> dict | None:
+        """The marker for one day, if that day was a mobility day.
+
+        There is no unique index behind this - `note` is deliberately unshaped
+        (Plan 0005 §1a) - so the newest wins if a day somehow carries two.
+        """
+        with database.SessionLocal() as session:
+            note = session.execute(
+                select(Note)
+                .where(Note.kind == SESSION_KIND, Note.date == date)
+                .order_by(Note.noted_at.desc(), Note.id.desc())
+            ).scalars().first()
+            return self._serialize_note(note) if note else None
+
+    def mark_session(self, date: str) -> dict:
+        """Mark `date` as a mobility day, without disturbing an existing marker.
+
+        The transfer path writes this marker automatically; this is the other
+        way in, for a session the user built by hand or one they ran before the
+        loop existed. It is what `read_latest_mobility_session` keys on, so a
+        day marked here is the day the agent writes the next session from.
+
+        **Idempotent, and it never rewrites the body.** A day already marked by
+        transfer carries the agent's reasoning in that body, and re-marking must
+        not blank it - the checkbox says *whether* the day was mobility, not
+        *why*, and the two facts live in one row (see the module docstring).
+
+        A hand-marked day gets an empty body rather than a stand-in sentence.
+        The agent reads that field as "what the previous session was written to
+        achieve"; a session nobody prescribed achieved nothing in particular,
+        and an invented rationale would be read as one that was tried.
+
+        The pending plan note is left alone. Marking a day the user already
+        logged says nothing about a session that is still waiting to be run -
+        discarding that is `DELETE /pending`, deliberately.
+        """
+        with database.SessionLocal() as session:
+            note = session.execute(
+                select(Note)
+                .where(Note.kind == SESSION_KIND, Note.date == date)
+                .order_by(Note.noted_at.desc(), Note.id.desc())
+            ).scalars().first()
+
+            if note is None:
+                note = Note(
+                    noted_at=f"{date}{NOON}",
+                    kind=SESSION_KIND,
+                    body="",
+                    source="app",
+                )
+                session.add(note)
+                session.commit()
+                session.refresh(note)
+
+            return self._serialize_note(note)
+
+    def unmark_session(self, date: str) -> int:
+        """Unmark `date`, and return how many markers were removed.
+
+        This destroys the agent's rationale for that session along with the
+        marker, because the two are one row. That is recoverable - `note`
+        deletes are captured by the audit triggers (Plan 0007), which is the
+        reason the old row can be read back - but it is not undoable from the
+        UI, so the caller should mean it.
+        """
+        with database.SessionLocal() as session:
+            notes = session.execute(
+                select(Note).where(Note.kind == SESSION_KIND, Note.date == date)
+            ).scalars().all()
+            for note in notes:
+                session.delete(note)
+            session.commit()
+            return len(notes)
 
     def get_latest_logged(self) -> dict | None:
         """The last mobility session that reached the calendar, with its sets.

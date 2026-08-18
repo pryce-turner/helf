@@ -15,8 +15,11 @@
 >   one, and when the data contradicts the plan, trust the data and fix the
 >   plan. `docs/plans/0008-bodyspec-integration.md` §12 is the worked example.
 > - **`data/helf.db` is a live copy of production.** WAL is on, so `cp` is not
->   a consistent copy — use `sqlite3 … ".backup …"`, and back up before every
->   migration.
+>   a consistent copy — use `scripts/backup-db.sh`, which wraps
+>   `sqlite3 … ".backup …"` and verifies what it wrote. **Back up before every
+>   migration, and keep every backup** — see
+>   [Backups](#backups-and-why-none-are-deleted). Nothing in `data/` is pruned
+>   or overwritten.
 >
 > Settled decisions live in [`docs/decisions/`](docs/decisions/) as ADRs. They
 > record *why*, and are not to be re-litigated without new evidence.
@@ -174,8 +177,13 @@ helf/
 │   └── decisions/            # ADRs — settled decisions and why
 ├── data/                     # Data storage (gitignored)
 │   ├── helf.db               # Live copy of production. WAL on: back up with
-│   │                         #   `sqlite3 ... ".backup ..."`, never `cp`
-│   └── *.bak                 # Pre-migration backups
+│   │                         #   `scripts/backup-db.sh`, never `cp`
+│   └── *.bak                 # Every backup ever taken. Never pruned — the
+│                             #   whole history is ~3MB apiece and kept
+├── scripts/
+│   ├── backup-db.sh          # The only correct way to copy a live WAL database
+│   └── pre-migration-backup.sh   # PreToolUse hook: backs up before alembic
+│                             #   upgrade/downgrade/stamp, blocks if it can't
 ├── Dockerfile                # Multi-stage build (Node 20 + Python 3.12)
 ├── docker-compose.yml
 ├── .env.example
@@ -285,6 +293,15 @@ The marker is one `note` row that changes kind as it changes meaning:
 `mobility_plan` while the session is pending, `mobility_session` once it has
 been transferred and dated to the day it was run. That row also carries the
 agent's reasoning for the session, which is what the mobility tab renders.
+
+**Two things write that marker**, because not every mobility session comes from
+the planner: transfer promotes the plan note, and the day view's checkbox
+(`PUT /api/mobility/day/{date}`) marks a day the user built by hand or ran
+before the loop existed. Hand-marked days get an **empty body** rather than a
+stand-in sentence — the agent reads that field as what the session was written
+to achieve, and an invented rationale would be read as one that was tried.
+Unchecking **deletes the row**, rationale included, since the two facts share
+it; that is recoverable from `audit_log` but not from the UI.
 
 The user's feedback is **only** in `workouts.comment` on the logged sets. There
 is no per-session feedback field, so program-level remarks ("keep this to 7
@@ -502,9 +519,18 @@ docker-compose up -d
 - `POST /transfer` - Copy the pending session onto a date, appending after
   anything already logged that day, and mark the day as a mobility session
 - `DELETE /pending` - Discard the pending session without running it
+- `GET /day/{date}` / `PUT /day/{date}` - Whether the day was a mobility
+  session. PUT because the caller is a checkbox and knows the state it wants,
+  not the transition; idempotent in both directions, and re-marking never
+  rewrites a rationale transfer already put there. The date is pattern-checked
+  in the path — `note.date` is computed from `noted_at`, so a malformed one is
+  not rejected downstream, it becomes a marker dated to nonsense that sorts
+  after every real day and is handed to the agent forever
 
-There is deliberately **no create endpoint**: the session is written by the
-agent over MCP, which is the point of the feature.
+There is deliberately **no create endpoint for the session itself**: it is
+written by the agent over MCP, which is the point of the feature. `day` is the
+exception that proves it — it asserts that a session *happened*, not what was
+in it.
 
 ### Notes (`/api/notes`)
 - `GET /?kind=&start=&end=` - Notes, most recent first
@@ -522,7 +548,7 @@ agent over MCP, which is the point of the feature.
 | Path | Page | Description |
 |---|---|---|
 | `/` | Calendar | Month view with workout count indicators + streak |
-| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete |
+| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, mark the day a mobility session |
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
@@ -585,6 +611,11 @@ model section above.*
 - The agent drives it over MCP: `read_latest_mobility_session()` returns the
   day's sets and every comment on them, `write_next_mobility_session()` replaces
   what is pending and records why
+- **Which day it reads is the day view's checkbox**, `Mobility session` on
+  `/day/:date`. Transfer ticks it; ticking it by hand is how a session that
+  never went through the planner becomes the one the next prescription is
+  written from. A day with nothing logged cannot be ticked — that would hand
+  the agent an empty day as its most recent input
 - The philosophy is **loaded stretching** — strengthen through full range rather
   than holding static stretches
 - **The standing program rules are the user's, and `docs/design/mcp-instructions.md`
@@ -692,6 +723,49 @@ reproduced in desktop Chrome.
 - Use `<Card>` component for containers
 - Use `<Select>` component for dropdowns (Radix UI)
 - Navigation: desktop sidebar (`nav-desktop`) + mobile bottom bar (`nav-mobile`)
+
+## Backups, and why none are deleted
+
+**Every migration takes a backup, and every backup is kept.** Not the newest
+few — all of them. The database is ~3MB, so the entire history of the schema
+costs less than a phone photo, and the one you discover you need is always the
+one a retention policy would have thrown away.
+
+Take one with the script, never with `cp`:
+
+```bash
+scripts/backup-db.sh pre-0013     # -> data/helf.db.pre-0013.bak
+scripts/backup-db.sh              # -> data/helf.db.auto-<stamp>.bak
+```
+
+It uses SQLite's online backup API, so it is correct **while the app is
+running** — `cp` is not, because committed pages may still be in `helf.db-wal`.
+It then reopens the result `immutable=1`, runs `integrity_check`, and prints
+row counts and the Alembic revision. A backup that is silently corrupt is worse
+than none, because it is trusted.
+
+**You should rarely need to run it by hand.** `scripts/pre-migration-backup.sh`
+is a PreToolUse hook that fires on `alembic upgrade|downgrade|stamp` and takes
+one first. It *creates* the backup rather than blocking the command — a block
+teaches a model to route around it, a backup that always exists has nothing
+worth routing around — but it does fail loud and block if the backup itself
+fails. Migrations that run back-to-back reuse a snapshot under 10 minutes old.
+
+Three rules follow from keeping everything:
+
+- **Never delete a `.bak`.** Not to tidy up, not because it looks redundant.
+- **Never overwrite one.** `backup-db.sh` refuses a label that already exists;
+  pick a new one rather than forcing it.
+- **Label deliberate backups** (`pre-0013`, `pre-dexafit-backfill`) so the file
+  name says what it is a backup *of*. The `auto-<stamp>` ones are the hook's.
+
+`data/` is gitignored, so this history exists **only on disk**. It is not in
+git and not in the image; it lives or dies with the volume at
+`${HELF_DATA_PATH}`.
+
+A backup should have no `-wal` or `-shm` beside it. `.backup` leaves a fully
+checkpointed file, so a sidecar means something opened that backup read-write
+and it is no longer the frozen thing you think it is.
 
 ## Testing
 

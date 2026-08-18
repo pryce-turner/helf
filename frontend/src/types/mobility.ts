@@ -34,6 +34,21 @@ export interface MobilityPending {
     last_session: MobilityLastSession | null;
 }
 
+/**
+ * Whether one day was a mobility day.
+ *
+ * Derived on the server from the marker note rather than stored as a flag on
+ * the day, for the same reason `ready` is derived — the marker *is* the fact,
+ * and the agent reads the marked day back to write the next session from.
+ * `rationale` is null both when the day is unmarked and when it was marked by
+ * hand, since nothing was prescribed for it either way.
+ */
+export interface MobilityDay {
+    date: string;
+    is_mobility: boolean;
+    rationale: string | null;
+}
+
 export interface MobilityTransferResponse {
     date: string;
     count: number;

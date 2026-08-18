@@ -164,6 +164,129 @@ def test_clearing_pending_discards_it(client):
 
 
 # --------------------------------------------------------------------------
+# Marking a day by hand, from the day view
+# --------------------------------------------------------------------------
+def log_a_set(client, date: str, exercise: str = "Weighted Pigeon Squat") -> None:
+    client.post(
+        "/api/workouts/",
+        json={"date": date, "exercise": exercise, "category": "Legs", "reps": 5},
+    )
+
+
+def test_an_unmarked_day_says_so(client):
+    body = client.get("/api/mobility/day/2026-08-11").json()
+
+    assert body == {"date": "2026-08-11", "is_mobility": False, "rationale": None}
+
+
+def test_marking_a_day_makes_it_the_session_the_agent_reads_back(client):
+    """The whole point: a session run without the planner is otherwise invisible.
+
+    `is_mobility` on the exercises cannot stand in for this - the pigeon squat
+    is in the mobility pool, but so is every lifting day that happens to
+    include one.
+    """
+    log_a_set(client, "2026-08-11")
+
+    body = client.put(
+        "/api/mobility/day/2026-08-11", json={"is_mobility": True}
+    ).json()
+    assert body["is_mobility"] is True
+    # Nothing was prescribed, so nothing is claimed to have been.
+    assert body["rationale"] is None
+
+    last = client.get("/api/mobility/pending").json()["last_session"]
+    assert last["date"] == "2026-08-11"
+    assert [s["exercise"] for s in last["sets"]] == ["Weighted Pigeon Squat"]
+
+
+def test_marking_twice_is_the_same_as_marking_once(client):
+    log_a_set(client, "2026-08-11")
+
+    client.put("/api/mobility/day/2026-08-11", json={"is_mobility": True})
+    client.put("/api/mobility/day/2026-08-11", json={"is_mobility": True})
+
+    with database.SessionLocal() as session:
+        rows = session.execute(
+            text("SELECT id FROM note WHERE kind = :k"), {"k": SESSION_KIND}
+        ).all()
+    assert len(rows) == 1
+
+
+def test_marking_a_transferred_day_does_not_blank_the_agents_reasoning(client):
+    """The marker and the rationale are one row, so a careless re-mark loses it."""
+    write_pending()
+    client.post("/api/mobility/transfer", json={"date": "2026-08-11"})
+
+    client.put("/api/mobility/day/2026-08-11", json={"is_mobility": True})
+
+    body = client.get("/api/mobility/day/2026-08-11").json()
+    assert body["rationale"] == "Pigeon leads, right side first."
+
+
+def test_marking_a_day_leaves_a_pending_session_alone(client):
+    """Marking a day the user already logged says nothing about one still waiting."""
+    log_a_set(client, "2026-08-11")
+    write_pending()
+
+    client.put("/api/mobility/day/2026-08-11", json={"is_mobility": True})
+
+    assert client.get("/api/mobility/pending").json()["ready"] is True
+
+
+def test_unmarking_removes_the_day_from_the_agents_view(client):
+    log_a_set(client, "2026-08-09")
+    log_a_set(client, "2026-08-11")
+    client.put("/api/mobility/day/2026-08-09", json={"is_mobility": True})
+    client.put("/api/mobility/day/2026-08-11", json={"is_mobility": True})
+
+    body = client.put(
+        "/api/mobility/day/2026-08-11", json={"is_mobility": False}
+    ).json()
+    assert body["is_mobility"] is False
+
+    # The one before it becomes the session the next prescription is written
+    # from, which is what unmarking a day mistakenly marked has to mean.
+    assert client.get("/api/mobility/pending").json()["last_session"]["date"] == (
+        "2026-08-09"
+    )
+
+
+def test_unmarking_a_day_that_was_never_marked_is_not_an_error(client):
+    assert (
+        client.put(
+            "/api/mobility/day/2026-08-11", json={"is_mobility": False}
+        ).status_code
+        == 200
+    )
+
+
+def test_a_malformed_date_is_rejected_rather_than_stored(client):
+    """It would become a marker dated to nonsense, sorting after every real day.
+
+    `note.date` is computed from `substr(noted_at, 1, 10)`, so nothing
+    downstream rejects it, and `ORDER BY noted_at DESC` would hand it to the
+    agent as the last session performed - forever.
+    """
+    assert client.put(
+        "/api/mobility/day/last-tuesday", json={"is_mobility": True}
+    ).status_code == 422
+
+    with database.SessionLocal() as session:
+        assert session.execute(text("SELECT COUNT(*) FROM note")).scalar() == 0
+
+
+def test_marking_does_not_disturb_the_days_sets(client):
+    """The marker is a note. Nothing about the logged rows changes."""
+    log_a_set(client, "2026-08-11")
+    before = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
+
+    client.put("/api/mobility/day/2026-08-11", json={"is_mobility": True})
+
+    assert client.get("/api/workouts/", params={"date": "2026-08-11"}).json() == before
+
+
+# --------------------------------------------------------------------------
 # The cost of sharing a table with the lifting planner
 # --------------------------------------------------------------------------
 def test_generating_a_lifting_program_leaves_mobility_alone(client):

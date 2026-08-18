@@ -43,6 +43,7 @@ import type {
     PresetContent,
 } from "../types/upcoming";
 import type {
+    MobilityDay,
     MobilityPending,
     MobilityTransferResponse,
 } from "../types/mobility";
@@ -205,6 +206,17 @@ export const mobilityApi = {
         api.post<MobilityTransferResponse>("/api/mobility/transfer", { date }),
 
     clearPending: () => api.delete("/api/mobility/pending"),
+
+    // Marking a day is the other way the marker gets written — transfer does
+    // it for a session that came from the agent, this does it for one that did
+    // not. PUT, not POST/DELETE: the caller is a checkbox and knows the state
+    // it wants rather than the transition.
+    getDay: (date: string) => api.get<MobilityDay>(`/api/mobility/day/${date}`),
+
+    setDay: (date: string, isMobility: boolean) =>
+        api.put<MobilityDay>(`/api/mobility/day/${date}`, {
+            is_mobility: isMobility,
+        }),
 };
 
 // Body Composition

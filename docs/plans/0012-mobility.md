@@ -97,8 +97,10 @@ mobility routine borrows movements that are also lifting movements — the good
 morning is in both programs — so "the last day containing a mobility exercise"
 finds lifting days too. 2026-06-25 in the live database is precisely that: a
 weighted pigeon squat and a single-leg calf raise logged beside a Romanian
-deadlift. Only the act of transferring a session knows the day is a mobility
-day.
+deadlift. Nothing about the rows says it, so something has to assert it —
+transfer, at the moment a prescribed session acquires a date. **Amended
+2026-08-15**: transfer is not the only such moment, because not every session
+comes from the planner. See §10.
 
 **Why this session looks the way it does.** The agent's reasoning is the
 substance of the feature; without it the tab is a list of stretches.
@@ -261,3 +263,51 @@ a mobility day, so `read_latest_mobility_session()` will never return it.
 
 Verification: 9,292 → 9,357 workout rows, 4 `mobility_session` notes, a re-run
 is a clean no-op. Backup `data/helf.db.pre-mobility-backfill.bak`.
+
+## 10. Marking a day by hand (2026-08-15)
+
+§3 said only transfer knows a day is a mobility day. That was true of sessions
+the planner produced and false of every other kind, and the gap has a cost that
+compounds: `read_latest_mobility_session()` reads the **last marked day**, so a
+session run without going through `/mobility` — built by hand in the day view,
+or run away from the app and logged afterwards — leaves the agent writing the
+next prescription from a session that is no longer the last one. The backfill
+(§9) was this same hole paid off retroactively, one script, four days.
+
+**The fix is a checkbox on `/day/:date`**, `Mobility session`, backed by
+`GET`/`PUT /api/mobility/day/{date}`. It writes the same `mobility_session`
+marker that transfer promotes. No new table, no new kind, no flag on the day.
+
+Four decisions worth keeping:
+
+- **PUT, not POST plus DELETE.** The caller knows the state it wants, not the
+  transition. Idempotent in both directions, so a double tap on a phone means
+  what one tap meant.
+- **Re-marking never rewrites the body.** The marker and the agent's reasoning
+  are one row (§3). A day already marked by transfer carries the rationale in
+  that body; a checkbox that says *whether* must not overwrite *why*.
+- **A hand-marked day gets an empty body, not a stand-in sentence.** The agent
+  reads that field as what the session was written to achieve. Nothing was
+  prescribed, and an invented rationale would be read as one that was tried.
+  Same reasoning as §9's "a load never written down is NULL, not a guess".
+- **An empty day cannot be marked.** The control is disabled until something is
+  logged, because the marker's whole function is to point the agent at a day's
+  sets, and a day with none is a worse input than no day at all. It stays
+  enabled while marked, so a day emptied afterwards can still be corrected.
+
+**The date is pattern-checked in the path.** `note.date` is `substr(noted_at,
+1, 10)` computed, so nothing downstream rejects a malformed one — it becomes a
+marker dated to nonsense, and `ORDER BY noted_at DESC` sorts nonsense above
+every real date, which would hand the agent that row as the last session
+performed for good. A regex in the path costs nothing and closes it.
+
+**Unchecking deletes the row**, rationale included, since the two facts share
+it. Recoverable from `audit_log` (0007) and not from the UI, so the control
+says so when there is something to lose.
+
+Verification: `pytest tests/test_api_mobility.py` — 21 passing, including that
+marking a transferred day leaves its rationale intact, that unmarking hands the
+agent the previous marked day, and that a malformed date is a 422 with `note`
+still empty. `npm test` mounts the day view: 7 cases over the toggle, including
+the optimistic state mid-flight and its rollback on a failed write. No
+migration, so no backup — this adds no schema.

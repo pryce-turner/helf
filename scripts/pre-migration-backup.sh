@@ -53,11 +53,11 @@ fi
 
 echo "$out" >&2
 
-# Keep the newest 10 auto-backups. The pre-<label> ones are deliberate and are
-# never pruned; these are automatic and would otherwise grow without bound.
-find "$(dirname "$db")" -maxdepth 1 -name "$(basename "$db").auto-*.bak" -print0 2>/dev/null \
-    | xargs -0 ls -t 2>/dev/null \
-    | tail -n +11 \
-    | while read -r stale; do rm -f "$stale"; done
+# Nothing is pruned. This used to keep only the newest 10 auto-backups, which
+# contradicts the retention policy in AGENTS.md ("Backups, and why none are
+# deleted"): at ~3MB each the entire history is cheaper than one bad restore,
+# and the snapshot a cap discards is the one you turn out to need. The 10-minute
+# freshness check above is what keeps a back-to-back migration sequence from
+# writing a snapshot per step, so growth is per-session, not per-command.
 
 exit 0

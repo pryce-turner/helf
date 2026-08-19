@@ -36,7 +36,7 @@ table.
 | 0009 | [Drop AMRAP notation](0009-drop-amrap-notation.md) | Implemented 2026-08-08 | `fd709c41eb19` | — |
 | 0010 | [Retire `body_composition`](0010-retire-body-composition.md) | Implemented 2026-08-09 | `86c8bbc9e2d7` | — |
 | 0011 | [Supplement stacks](0011-supplement-stacks.md) | Implemented 2026-08-09 | `9ffbe9c21a0f` | — |
-| 0012 | [Mobility](0012-mobility.md) | Implemented 2026-08-10 | `c4a92f18de07` | §3 and §10 superseded by 0013 (the vault backfill, §9, still stands) |
+| 0012 | [Mobility](0012-mobility.md) | Implemented 2026-08-10 | `c4a92f18de07` | **Partly superseded by 0013** — §1, §3, §4's first mitigation, §9 and §10. Stale passages are marked in place; see the banner at the top of the plan |
 | 0013 | [Mobility belongs to the set](0013-mobility-belongs-to-the-set.md) | Implemented 2026-08-19 | `d7e4f2a91b83` | Retires `exercises.is_mobility` and the day marker |
 
 ## Where things stand
@@ -54,7 +54,7 @@ too, but it is **gitignored** — this is the copy a fresh clone gets.
 
 | Thing | Where it is argued |
 |---|---|
-| Agent **write** tools — `QS_MCP_MODE` defaults to `read-only`. **One exception since 0012**: `write_next_mobility_session` is registered in both modes, so read-only now means "the general-purpose write tools are absent", not "this process cannot write" | 0006 §8, 0012 §5 |
+| Agent **write** tools — `QS_MCP_MODE` defaults to `read-only`. **Two exceptions**: `write_next_mobility_session` (0012 §5) and `update_mobility_movement` (added 2026-08-13) are registered in both modes, so read-only means "the general-purpose write tools are absent", not "this process cannot write" | 0006 §8, 0012 §5, ADR-0004 amendments |
 | Notes have an API and no UI | 0005 §7 |
 | `v_blood_results` is not built — no data source | 0001 §5 |
 | Plan 0004, the workout regrain | 0004 §1 |
@@ -142,6 +142,16 @@ sqlite3 data/helf.db "SELECT name, n_rows, first_seen, last_seen FROM v_metric_c
 
 Each of these cost real debugging time at least once.
 
+- **`alembic check` currently reports drift, and CI is red because of it.** One
+  case: `ck_upcoming_kind`, declared as a *named* CheckConstraint in
+  `app/db/models.py` but created as an anonymous inline CHECK by
+  `c4a92f18de07`, so autogenerate sees a constraint to add.
+  `test_database.py::test_models_match_migrations` fails for the same reason.
+  **It is not something you just broke.** `ck_exercises_rating` was the same
+  bug and was fixed in passing by `d7e4f2a91b83`, which had to rebuild
+  `exercises` anyway; fixing the last one means rebuilding `upcoming_workouts`
+  to name the constraint, which nothing has needed badly enough yet.
+
 - **The plans predate the schema.** 0008 was written against a `metric` table
   that had `source` and `observed_at` columns; 0003 moved both onto
   `observation` and dropped the `UNIQUE (observed_at, name, source)` constraint
@@ -169,9 +179,11 @@ Each of these cost real debugging time at least once.
 - **A column added to an audited table is invisible to the log until its
   triggers are rebuilt.** They enumerate their columns into `json_object`, so
   the log keeps working and quietly stops recording the new field. Migration
-  `b3d1c07a4e21` rebuilds the three `exercises` triggers for `rating` and
-  `is_mobility`; a test in `test_db_audit_log.py` fails if the next one
-  forgets.
+  `b3d1c07a4e21` rebuilt the three `exercises` triggers when it added `rating`
+  and `is_mobility`, and `d7e4f2a91b83` rebuilt them again when it dropped
+  `is_mobility` and rebuilt the `workouts` pair to add it there — SQLite will
+  not even drop a column a trigger names. Tests in `test_db_audit_log.py` fail
+  if the next one forgets.
 - **A CSS custom property declared in both the design-system block and the
   shadcn block silently loses.** `--border` was `#2a2a2d` in one and `0 0% 16%`
   in the other; the later won, so every `var(--border)` got a bare HSL triplet,

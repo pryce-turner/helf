@@ -1,7 +1,20 @@
 # 0012 — Mobility: the loop the agent drives
 
-**Status:** Implemented 2026-08-10
+**Status:** Implemented 2026-08-10 · **partly superseded 2026-08-19**
 **Landed in:** `c4a92f18de07`, `backend/app/mcp/qs_mcp.py`, `/mobility`
+
+> **Read this first.** [Plan 0013](0013-mobility-belongs-to-the-set.md)
+> (`d7e4f2a91b83`) moved the mobility flag onto the *set*. Everything below
+> that treats mobility as a property of a **movement** (`exercises.is_mobility`)
+> or of a **day** (a `mobility_session` marker note) describes a shape that no
+> longer exists. Affected: **§1** (the pool import), **§3** (the marker),
+> **§4**'s first mitigation, **§9** (the backfill) and **§10** (the checkbox,
+> withdrawn entirely). The stale passages are marked in place rather than
+> deleted, because why they were wrong is the useful part.
+>
+> Still current: §2 (`upcoming_workouts.kind`), §4's core claim that set
+> comments are the only feedback channel, §5 (the MCP write exception), §6
+> (the page's two states), §7 and §8.
 
 A rolling mobility routine that the agent adjusts one session at a time from
 the user's own feedback. Unlike every other plan here, the interesting part is
@@ -29,6 +42,10 @@ it, the mobility work did not count toward the streak, and nothing in
 `exercises` rows with `is_mobility = 1`, and each movement's markdown — *How to
 perform* plus the *Application* section whose Reads are written as symptom →
 cause → programming response — goes into `exercises.notes`.
+
+> **Stale (0013).** There is no `is_mobility` on `exercises` and no pool table.
+> The *notes* half of this decision stands and is the part that mattered; the
+> flag half was the mistake. `import_mobility_pool.py` will not run as written.
 
 `notes` is a single TEXT column, so the Reads are prose rather than queryable
 rows. That was chosen over a structured `exercise_doc` table deliberately:
@@ -88,7 +105,15 @@ does not error — it silently mixes two programs. The two that would have hurt:
 Both are defaulted to `'lifting'` so existing callers keep their behaviour, and
 both have a test whose name says what breaks.
 
-## 3. What the single table cannot hold: a `note` row per session
+## 3. What the single table cannot hold: a `note` row per session — superseded
+
+> **Superseded 2026-08-19 by [plan 0013](0013-mobility-belongs-to-the-set.md).**
+> Only one of the two facts below turned out to need a `note` row. "Which days
+> were mobility days" is answered by `workouts.is_mobility` and the day is
+> derived from the sets; there is no marker, and **none is to be reintroduced**
+> ([0013 §6](0013-mobility-belongs-to-the-set.md#6-settled-there-is-no-day-level-assertion-and-none-is-wanted)).
+> The rationale half stands: `note` still carries *why*, and only why.
+> Kept as the record of why the marker looked necessary.
 
 Two facts have no column, and both are load-bearing:
 
@@ -116,7 +141,10 @@ substance of the feature; without it the tab is a list of stretches.
 
 One `note` row carries both and changes kind as it changes meaning:
 `mobility_plan` while pending, `mobility_session` once run and dated to the day
-it was run on. That is the day marker the read path keys on.
+it was run on. ~~That is the day marker the read path keys on.~~ **Stale
+(0013):** the read path keys on `workouts.is_mobility`. The note asserts
+nothing now — carrying both facts in one row is exactly what made unticking the
+old checkbox destroy the agent's reasoning.
 
 This is a deliberate narrowing of §4's "feedback goes only in set comments" —
 which governs the *user's* feedback. Agent-authored prose in `note` is what
@@ -133,8 +161,12 @@ session produced *"in general keep this program to 7 movements MAX"* — a rule
 about the program, which under this design gets attached to whichever set was
 on screen when it was thought of. Mitigations:
 
-- `read_latest_mobility_session()` returns **every** comment on the day, not
-  just those on flagged movements, so nothing is dropped.
+- ~~`read_latest_mobility_session()` returns **every** comment on the day, not
+  just those on flagged movements, so nothing is dropped.~~ **Stale (0013):**
+  it returns the day's *mobility-flagged sets* and their comments, so a
+  program-level remark left on a lifting set that day is dropped. The tool
+  description says so and tells the agent to `query` the whole day when a
+  session reads as though feedback is missing.
 - The tool description tells the agent that some comments describe the program
   rather than the movement they hang off.
 - Standing program rules were moved into `docs/design/mcp-instructions.md`,
@@ -195,7 +227,10 @@ alembic check          — no drift
 downgrade/upgrade      — round trip, 30 lifting rows preserved
 ```
 
-Against the live database, after the pool import:
+Against the live database, after the pool import — **a snapshot of 2026-08-10,
+not a current description**. `exercises.is_mobility` was dropped by
+`d7e4f2a91b83` (0013), and `Bosu Heel Toe` and the `Mobility` *category* were
+deleted outright on 2026-08-19 along with their four sets from 2024-03-10:
 
 ```
 exercises where is_mobility = 1 : 19   (18 imported + Bosu Heel Toe)
@@ -230,7 +265,17 @@ Backups: `data/helf.db.pre-mobility.bak` (before the migration),
   right *shape* — two sets were performed — but the reader has to take the
   asymmetry from the comment rather than from the numbers.
 
-## 9. The backfill (2026-08-11)
+## 9. The backfill (2026-08-11) — partly superseded
+
+> **Stale (0013).** The mechanism described here is gone: the backfill's whole
+> job was writing `mobility_session` **marker** notes, and there is no marker.
+> Its *data* stands — the sets it wrote are still in the calendar — but they
+> are found now by `workouts.is_mobility`, and the notes it left carry only the
+> rationale. The three-tier provenance discipline below is the part worth
+> keeping and is why this section is not deleted.
+>
+> Worth noticing in hindsight: this backfill existed because days had sets and
+> no marker. That is the marker being the wrong mechanism, stated as a chore.
 
 §8 argued against this and the argument was about invention, not about value.
 Doing it anyway, with the invention labelled, is better than a six-week hole:
@@ -259,16 +304,19 @@ a point on a progression chart and the baseline the next session is programmed
 against — strictly worse than a gap. So the unweighted pigeon regressions and
 every calf raise load before 08-08 are NULL.
 
-Each day carries its `mobility_session` marker note with the vault's rationale
-plus a provenance paragraph stating it was backfilled and which numbers were
-inferred. `source = 'import'`: nobody typed it into the app today and no model
-wrote it today — it was moved.
+Each day carries its `mobility_session` ~~marker~~ note with the vault's
+rationale plus a provenance paragraph stating it was backfilled and which
+numbers were inferred. `source = 'import'`: nobody typed it into the app today
+and no model wrote it today — it was moved. **Stale (0013):** that note no
+longer marks anything; the sets do.
 
 **2026-06-25 was left alone.** It is already in the calendar with mobility
 movements on it — a pigeon squat and a single-leg calf raise beside a Romanian
 deadlift — and it is not one of the vault's sessions; the earliest of those is
-06-27, whose rationale is that the RDL is *being replaced*. It is not marked as
-a mobility day, so `read_latest_mobility_session()` will never return it.
+06-27, whose rationale is that the RDL is *being replaced*. ~~It is not marked
+as a mobility day, so~~ **(0013)** none of its sets are flagged, so
+`read_latest_mobility_session()` will never return it — the conclusion survives
+the mechanism it was argued from.
 
 Verification: 9,292 → 9,357 workout rows, 4 `mobility_session` notes, a re-run
 is a clean no-op. Backup `data/helf.db.pre-mobility-backfill.bak`.

@@ -124,6 +124,15 @@ Against the live database, at `d7e4f2a91b83`:
 
 Backup `data/helf.db.pre-0013-mobility-flag.bak`, taken before any of it.
 
+Those figures are a snapshot of the migration. Later the same day the `Mobility`
+*category*, its only movement `Bosu Heel Toe` and that movement's four sets from
+2024-03-10 were deleted outright, so the live counts are now 9,322 workouts,
+178 exercises and 9 categories. None of it was mobility-flagged work — the sets
+predate the flag by two years and carried `is_mobility = 0`. Backup
+`data/helf.db.pre-delete-mobility-category.bak`; the deletes are in `audit_log`
+with `actor = 'agent'`, except the category itself, which `audit_log` does not
+cover.
+
 ## 6. Settled: there is no day-level assertion, and none is wanted
 
 Marking a whole day is gone and **is not coming back**. This is a decision, not

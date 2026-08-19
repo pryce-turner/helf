@@ -26,9 +26,35 @@ except Exception:
     print("")
 ' 2>/dev/null || true)"
 
-# Only migrations. `alembic current`/`check`/`history` are reads and need no
-# backup; matching them would back up on every status poll.
-if ! printf '%s' "$command_text" | grep -Eq 'alembic[^|;&]*\b(upgrade|downgrade|stamp)\b'; then
+# Newlines are flattened *first*. `grep` matches within a line, and the previous
+# pattern required `alembic` and the verb on one — so it caught
+# `alembic upgrade head` and missed this, which is how a migration reached
+# production untouched on 2026-08-19:
+#
+#     python - <<PY
+#     from alembic import command      <- "alembic" here
+#     command.upgrade(cfg, "head")     <- "upgrade" on another line
+#     PY
+#
+# The Python API is not an exotic way to run a migration; it is what you reach
+# for the moment the console script is unusable (a venv built at a different
+# path has a dead shebang), which is exactly when the hook matters most.
+flat="$(printf '%s' "$command_text" | tr '\n\r\t' '   ')"
+
+# Two independent signals rather than one pattern: does this involve alembic at
+# all, and does it name a verb that changes the schema. `current`, `check`,
+# `history` and `heads` carry no verb and so still cost nothing.
+#
+# **Deliberately biased toward false positives.** Backing up because someone
+# grepped a migration file for the word "upgrade" costs 3MB and 200ms, at most
+# once per 10 minutes. Missing a real migration costs the database. Anything
+# that reaches alembic without naming it — a Makefile target, a shell alias —
+# is still invisible here; that is the remaining hole, and it is why AGENTS.md
+# keeps saying to back up by hand before anything unusual.
+if ! printf '%s' "$flat" | grep -Eqi 'alembic'; then
+    exit 0
+fi
+if ! printf '%s' "$flat" | grep -Eq '\b(upgrade|downgrade|stamp)\b'; then
     exit 0
 fi
 

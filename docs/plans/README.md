@@ -142,6 +142,19 @@ sqlite3 data/helf.db "SELECT name, n_rows, first_seen, last_seen FROM v_metric_c
 
 Each of these cost real debugging time at least once.
 
+- **You cannot round-trip a migration on a copy of the database.**
+  `migrations/alembic/env.py` resolves the URL from `settings.db_path` and
+  ignores `sqlalchemy.url`, deliberately — it is wired to the application's own
+  settings so a stray `alembic.ini` cannot point a migration somewhere
+  unexpected. The cost is that `cfg.set_main_option("sqlalchemy.url", …)` is
+  silently a no-op, so a "round trip on a scratch copy" runs **against
+  production**, and the copy comes back untouched. That happened twice on
+  2026-08-19 (`a1c8e5f30b64`, `e2b9c4d17a05`); no data was lost, but
+  commit `9b1e8a8`'s message claims a round trip "on a copy of production"
+  that was in fact on production. To exercise a migration off-line, point
+  `DATA_DIR` (or `HELF_DB_PATH`, whatever `Settings` reads) at a scratch
+  directory and check `alembic current` against the file you meant *before*
+  trusting the result.
 - **A CHECK added by `ALTER TABLE ... ADD COLUMN` is anonymous, and the ORM's
   is named — so `alembic check` reports drift forever.** Autogenerate compares
   constraints by name, so a `CheckConstraint(..., name="ck_x")` in
@@ -153,6 +166,14 @@ Each of these cost real debugging time at least once.
   the ADD COLUMN** and the rebuild is never needed. A permanently red drift
   check is worse than none: it trains everyone to ignore the one signal that
   catches the ORM and the schema diverging.
+- **The pre-migration backup hook only sees what it can pattern-match.** It
+  reads the Bash command text, so a migration driven through alembic's Python
+  API used to slip past — `grep` is line-oriented and the matcher wanted
+  `alembic` and the verb on one line. Fixed on 2026-08-19 and pinned by
+  `backend/tests/test_pre_migration_hook.py`, which drives the real script with
+  real payloads. Anything reaching alembic without naming it (a Makefile
+  target, a shell alias) is still invisible to it — **back up by hand before
+  anything unusual**.
 - **Rebuilding a table with `batch_alter_table` drops inline unnamed CHECKs.**
   Batch mode rebuilds by *reflection*, which does not carry them across.
   `d7e4f2a91b83` silently dropped `ck_exercises_rating` that way on its first

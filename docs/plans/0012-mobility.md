@@ -283,7 +283,10 @@ is a clean no-op. Backup `data/helf.db.pre-mobility-backfill.bak`.
 > as the record of a design that worked and was still wrong — in particular
 > the third bullet below, which apologises for the marker and the rationale
 > sharing a row, is the tell that the marker was in the wrong place.
-> **Do not build on anything in this section.**
+>
+> **Do not build on anything in this section, and do not reintroduce a
+> day-level marker in any form.** That is settled — see
+> [0013 §6](0013-mobility-belongs-to-the-set.md#6-settled-there-is-no-day-level-assertion-and-none-is-wanted).
 
 §3 said only transfer knows a day is a mobility day. That was true of sessions
 the planner produced and false of every other kind, and the gap has a cost that

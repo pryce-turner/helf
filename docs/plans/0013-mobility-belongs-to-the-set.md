@@ -124,10 +124,22 @@ Against the live database, at `d7e4f2a91b83`:
 
 Backup `data/helf.db.pre-0013-mobility-flag.bak`, taken before any of it.
 
-## 6. Not done
+## 6. Settled: there is no day-level assertion, and none is wanted
 
-**The day view has no session-level anything.** Marking a whole day is gone and
-was not replaced. If "this day was a rehab day" turns out to be a fact worth
-recording separately from its sets, the place for it is a session entity
-(plan 0004, deferred) and not another note row — see 0012 §10 for what that
-costs.
+Marking a whole day is gone and **is not coming back**. This is a decision, not
+a gap waiting to be filled — recorded here because the absence otherwise reads
+as an oversight and gets proposed again.
+
+Nothing needs to assert that a day was a mobility day, because the sets already
+say so. A stored day-level flag can only do one of two things: agree with the
+rows, in which case it is redundant, or disagree with them, in which case it is
+wrong and something has to decide which to believe. The old marker managed both
+failure modes in eleven days — 0012 §9's backfill existed because days had sets
+and no marker, and §10's checkbox existed because the marker needed a writer
+the planner did not provide.
+
+So: no marker note, no `is_mobility` on a day, no "session focus", no rehab or
+deload day-type beside it. If a future session finds itself wanting to record
+something about a day as a whole, that is a signal the fact belongs on the sets
+— or that training needs a real session entity (plan 0004), which is a
+different plan and not an excuse to reintroduce a marker in the meantime.

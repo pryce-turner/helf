@@ -300,6 +300,13 @@ shoulder day. A **mobility day is derived**: the most recent date carrying any
 flagged set, and the read path returns *those sets*, not the whole day. There
 is no marker that can disagree with the rows.
 
+**There is deliberately no day-level marker, and one is not to be added back**
+(plan 0013 §6). Not a note, not a column, not a "session focus". The sets
+already say which day it was; anything stored beside them can only agree and be
+redundant or disagree and be wrong. The version that existed for eleven days
+needed a retroactive backfill *and* a second writer, and shared its row with
+the agent's rationale so unticking it destroyed the reasoning.
+
 One thing to know when editing a set: the flag is **sticky unless explicitly
 sent**. Every other field on `WorkoutUpdate` is a full replace, so a PUT
 carrying only a comment would clear it — and adding feedback to a set after

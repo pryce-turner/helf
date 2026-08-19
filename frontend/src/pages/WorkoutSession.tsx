@@ -475,7 +475,7 @@ const SortableWorkoutCard = ({
                 <Input
                   id="comment-edit"
                   type="text"
-                  placeholder="Optional note"
+                  placeholder="Optional comment"
                   value={formData.comment || ""}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     setFormData({
@@ -1446,7 +1446,7 @@ const WorkoutSession = () => {
                     <Input
                       id="comment"
                       type="text"
-                      placeholder="Optional note"
+                      placeholder="Optional comment"
                       value={formData.comment || ""}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         setFormData({

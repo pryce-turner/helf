@@ -760,15 +760,26 @@
         min-height: 120px;
     }
 
+    /* Two columns, not one. The stack held three controls when it was a
+       single column stretched between the insets; the mobility toggle made it
+       four, which needs ~136px of the ~88px a 120px row leaves — and flex
+       `space-between` spends an overflow by pushing the last item out, so the
+       delete button hung below the bottom edge of the card.
+
+       A 2x2 grid halves the height needed and keeps every target in the same
+       thumb corner, rather than making every row taller to fit a control that
+       is used once a session. */
     .set-row__actions {
         position: absolute;
         top: var(--space-4);
         right: var(--space-4);
         bottom: var(--space-4);
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: repeat(2, auto);
+        align-content: space-between;
+        justify-items: center;
         align-items: center;
-        justify-content: space-between;
+        gap: var(--space-2);
     }
 
     .set-row__icon {
@@ -776,9 +787,10 @@
         height: 26px;
     }
 
-    /* Clears the action stack, which is positioned out of flow. */
+    /* Clears the action stack, which is positioned out of flow. Two columns
+       of 26px icons plus their padding and gap, not one. */
     .set-row__body {
-        padding-right: 50px;
+        padding-right: 92px;
     }
 
     /* One entry in a log — a set logged, a set planned. Name and category
@@ -806,6 +818,7 @@
         .set-row__actions {
             bottom: auto;
             top: var(--space-3);
+            display: flex;
             flex-direction: row;
             gap: var(--space-1);
         }
@@ -816,7 +829,8 @@
         }
 
         .set-row__body {
-            padding-right: 110px;
+            /* Four controls in a row: 4x26px + 3x4px gap + the 16px inset. */
+            padding-right: 136px;
         }
     }
 

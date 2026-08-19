@@ -245,7 +245,10 @@ const SortableWorkoutCard = ({
 
             {/* Delete button */}
             {confirmingDelete === workout.doc_id ? (
-              <div className="flex" style={{ gap: "4px" }}>
+              <div
+                className="flex"
+                style={{ gap: "4px", gridColumn: "1 / -1" }}
+              >
                 <button
                   className="action-btn action-btn--danger"
                   onClick={() => handleDeleteConfirm(workout.doc_id)}
@@ -1180,10 +1183,14 @@ const WorkoutSession = () => {
               }}
             >
               <CardHeader
+                className="flex items-center"
                 style={{
                   background:
                     "linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)",
                   borderBottom: "1px solid var(--border-subtle)",
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  gap: "var(--space-3)",
                 }}
               >
                 <CardTitle
@@ -1192,6 +1199,7 @@ const WorkoutSession = () => {
                     gap: "var(--space-2)",
                     fontFamily: "var(--font-display)",
                     fontSize: "18px",
+                    minWidth: 0,
                   }}
                 >
                   {editingWorkout ? (
@@ -1213,6 +1221,25 @@ const WorkoutSession = () => {
                   )}
                   {editingWorkout ? "EDIT EXERCISE" : "ADD EXERCISE"}
                 </CardTitle>
+                {/* Closing lives here rather than as a third footer button.
+                    Three buttons on one justify-end row do not fit a phone,
+                    and with no wrapping the first one was pushed out of the
+                    left edge of the card. */}
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={resetForm}
+                  title="Close"
+                  aria-label="Close"
+                  style={{
+                    flexShrink: 0,
+                    width: "36px",
+                    height: "36px",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <X style={{ width: "20px", height: "20px" }} />
+                </button>
               </CardHeader>
               <CardContent style={{ padding: "var(--space-6)" }}>
                 {/* Recent Exercises */}
@@ -1466,7 +1493,7 @@ const WorkoutSession = () => {
                   </div>
 
                   <div
-                    className="flex justify-end"
+                    className="flex justify-end flex-wrap"
                     style={{
                       gap: "var(--space-3)",
                       marginTop: "var(--space-4)",
@@ -1482,13 +1509,6 @@ const WorkoutSession = () => {
                         Recent
                       </Button>
                     )}
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={resetForm}
-                    >
-                      Cancel
-                    </Button>
                     <Button
                       type="submit"
                       disabled={!formData.exercise || !formData.category}

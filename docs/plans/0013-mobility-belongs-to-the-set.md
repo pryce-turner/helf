@@ -97,11 +97,12 @@ the two standing `alembic check` drift cases.
 
 ## 5. Verification
 
-`pytest` — 365 passed. One pre-existing failure remains,
+`pytest` — 365 passed at the time, with one pre-existing failure:
 `test_database.py::test_models_match_migrations`, reporting `ck_upcoming_kind`
-as drift: declared named in the ORM, created anonymous by `c4a92f18de07`. It
-predates this work and is unrelated to it; this plan halved it by naming
-`ck_exercises_rating` during the rebuild above.
+as drift — declared named in the ORM, created anonymous by `c4a92f18de07`. It
+predated this work; this plan halved it by naming `ck_exercises_rating` during
+the rebuild above, and `a1c8e5f30b64` closed the other half the same day. The
+suite is green.
 
 `npm test` — 46 passed, including 7 over the per-set toggle: its optimistic
 state mid-flight, rollback on a failed write, that flagging one set of a mixed

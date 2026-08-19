@@ -142,15 +142,22 @@ sqlite3 data/helf.db "SELECT name, n_rows, first_seen, last_seen FROM v_metric_c
 
 Each of these cost real debugging time at least once.
 
-- **`alembic check` currently reports drift, and CI is red because of it.** One
-  case: `ck_upcoming_kind`, declared as a *named* CheckConstraint in
-  `app/db/models.py` but created as an anonymous inline CHECK by
-  `c4a92f18de07`, so autogenerate sees a constraint to add.
-  `test_database.py::test_models_match_migrations` fails for the same reason.
-  **It is not something you just broke.** `ck_exercises_rating` was the same
-  bug and was fixed in passing by `d7e4f2a91b83`, which had to rebuild
-  `exercises` anyway; fixing the last one means rebuilding `upcoming_workouts`
-  to name the constraint, which nothing has needed badly enough yet.
+- **A CHECK added by `ALTER TABLE ... ADD COLUMN` is anonymous, and the ORM's
+  is named — so `alembic check` reports drift forever.** Autogenerate compares
+  constraints by name, so a `CheckConstraint(..., name="ck_x")` in
+  `app/db/models.py` against an inline `CHECK (...)` in the database is a
+  constraint to add that can never be added. It happened twice
+  (`ck_exercises_rating`, `ck_upcoming_kind`), left the drift check red for
+  nine days, and both are now fixed — by rebuilding the table, since SQLite
+  cannot name a constraint in place. **Write `CONSTRAINT ck_x CHECK (...)` in
+  the ADD COLUMN** and the rebuild is never needed. A permanently red drift
+  check is worse than none: it trains everyone to ignore the one signal that
+  catches the ORM and the schema diverging.
+- **Rebuilding a table with `batch_alter_table` drops inline unnamed CHECKs.**
+  Batch mode rebuilds by *reflection*, which does not carry them across.
+  `d7e4f2a91b83` silently dropped `ck_exercises_rating` that way on its first
+  run — the constraint ADR-0002 calls the only rule both writers obey — and a
+  test caught it. Both rebuilds now spell the DDL out.
 
 - **The plans predate the schema.** 0008 was written against a `metric` table
   that had `source` and `observed_at` columns; 0003 moved both onto

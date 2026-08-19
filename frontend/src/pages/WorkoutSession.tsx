@@ -61,6 +61,7 @@ import {
   useToggleComplete,
   useMoveToDate,
   useCopyToDate,
+  useSetDayMobility,
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
 import { useCategories, useExercises, useRecentExercises } from "@/hooks/useExercises";
@@ -676,6 +677,7 @@ const WorkoutSession = () => {
   const toggleComplete = useToggleComplete();
   const moveToDate = useMoveToDate();
   const copyToDate = useCopyToDate();
+  const setDayMobility = useSetDayMobility();
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -884,6 +886,18 @@ const WorkoutSession = () => {
     // Stay on current page (unlike move which navigates)
   }, [date, copyTargetDate, copyToDate]);
 
+  // Whether every set on this day is already mobility work — which is what
+  // decides the bulk button's direction. Derived from the rows, never stored:
+  // there is no day-level fact here, and a day whose sets disagree is a valid
+  // state the button simply moves out of (plan 0013 §6).
+  const allMobility =
+    (workouts?.length ?? 0) > 0 && (workouts ?? []).every((w) => w.is_mobility);
+
+  const handleToggleDayMobility = useCallback(() => {
+    if (!date || !workouts?.length) return;
+    setDayMobility.mutate({ date, isMobility: !allMobility });
+  }, [date, workouts, allMobility, setDayMobility]);
+
   // Flipping one set's mobility flag.
   //
   // A full-shape PUT because that is what the endpoint takes; `is_mobility` is
@@ -1009,6 +1023,25 @@ const WorkoutSession = () => {
                 >
                   <Copy style={{ width: "16px", height: "16px" }} />
                   Copy
+                </Button>
+              )}
+              {workouts && workouts.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleToggleDayMobility}
+                  disabled={setDayMobility.isPending}
+                  title={
+                    allMobility
+                      ? "Clear the mobility flag on every set of this day"
+                      : "Flag every set of this day as mobility work — this is what the agent reads the next session back from"
+                  }
+                  style={{
+                    color: allMobility ? "var(--accent)" : undefined,
+                  }}
+                >
+                  <StretchHorizontal style={{ width: "16px", height: "16px" }} />
+                  {allMobility ? "Unmark all" : "Mark all mobility"}
                 </Button>
               )}
               <Button

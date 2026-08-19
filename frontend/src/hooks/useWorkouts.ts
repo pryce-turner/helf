@@ -298,6 +298,46 @@ export function useToggleComplete() {
     });
 }
 
+export function useSetDayMobility() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async ({ date, isMobility }: { date: string; isMobility: boolean }) => {
+            const response = await workoutsApi.setDayMobility(date, isMobility);
+            return response.data;
+        },
+        // Optimistic, like the per-set toggle: a bulk button that waits for a
+        // round trip over a dozen sets reads as one that did not register.
+        onMutate: async ({ date, isMobility }) => {
+            await queryClient.cancelQueries({ queryKey: ["workouts"] });
+            const previous = queryClient.getQueriesData<Workout[]>({
+                queryKey: ["workouts"],
+            });
+
+            queryClient.setQueriesData<Workout[]>({ queryKey: ["workouts"] }, (old) =>
+                old?.map((workout) =>
+                    workout.date === date
+                        ? { ...workout, is_mobility: isMobility }
+                        : workout,
+                ),
+            );
+
+            return { previous };
+        },
+        onError: (_error, _variables, context) => {
+            context?.previous?.forEach(([key, data]) =>
+                queryClient.setQueryData(key, data),
+            );
+        },
+        // Which sets are flagged decides what the agent reads back, so the
+        // mobility tab's last_session changes with this.
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["workouts"] });
+            queryClient.invalidateQueries({ queryKey: ["mobility"] });
+        },
+    });
+}
+
 export function useMoveToDate() {
     const queryClient = useQueryClient();
 

@@ -474,6 +474,13 @@ docker-compose up -d
 - `PATCH /{id}/complete` - Toggle workout completion
 - `POST /date/{source_date}/move` - Move all workouts to different date
 - `POST /date/{source_date}/copy` - Copy all workouts to different date
+- `PATCH /date/{date}/mobility` - Flag every set on a day as mobility work, or
+  clear every one. A bulk edit of the per-set flag, **not** a day-level marker
+  (plan 0013 §6): nothing is stored about the day, and a day whose sets
+  disagree stays valid. Idempotent — `changed` counts rows actually written and
+  is 0 when the day is already in that state, because every UPDATE fires an
+  audit trigger and `audit_log` cannot be tidied afterwards. 404 on a day with
+  nothing logged
 
 ### Exercises (`/api/exercises`)
 - `GET /` - List all exercises
@@ -562,7 +569,7 @@ nothing separate to assert (plan 0013).
 | Path | Page | Description |
 |---|---|---|
 | `/` | Calendar | Month view with workout count indicators + streak |
-| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag individual sets as mobility work |
+| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag sets as mobility work individually or a whole day at once |
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
@@ -626,7 +633,9 @@ model section above.*
   last mobility session's sets and every comment on them,
   `write_next_mobility_session()` replaces what is pending and records why
 - **Which sets it reads is the per-set toggle** on `/day/:date`, beside the
-  completion tick. Transfer sets it for a prescribed session; tapping it by
+  completion tick, with a **Mark all mobility** button in the day's header for
+  the common case where the whole day was one. The button writes the same
+  per-set flag N times in one request; it stores nothing about the day. Transfer sets it for a prescribed session; tapping it by
   hand is how a session that never went through the planner becomes the one the
   next prescription is written from. The last day with any flagged set is that
   session, and only its flagged sets are returned

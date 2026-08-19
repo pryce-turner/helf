@@ -84,6 +84,18 @@ export const workoutsApi = {
     toggleComplete: (id: number, completed: boolean) =>
         api.patch<Workout>(`/api/workouts/${id}/complete`, { completed }),
 
+    // Bulk-writes the same per-set flag the day view's toggle writes. Not a
+    // day-level marker: nothing is stored about the day (plan 0013 §6), and a
+    // day whose sets disagree stays valid — this just does not produce one.
+    setDayMobility: (date: string, isMobility: boolean) =>
+        api.patch<{
+            date: string;
+            is_mobility: boolean;
+            changed: number;
+            total: number;
+            message: string;
+        }>(`/api/workouts/date/${date}/mobility`, { is_mobility: isMobility }),
+
     moveToDate: (sourceDate: string, targetDate: string) =>
         api.post<{
             source_date: string;

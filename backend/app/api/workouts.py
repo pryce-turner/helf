@@ -10,6 +10,8 @@ from app.models.workout import (
     WorkoutBulkReorder,
     WorkoutComplete,
     WorkoutCopyDate,
+    WorkoutDayMobility,
+    WorkoutDayMobilityResponse,
     WorkoutCopyDateResponse,
     WorkoutCreate,
     WorkoutMoveDate,
@@ -120,6 +122,44 @@ def move_workouts_to_date(source_date: str, move: WorkoutMoveDate):
         target_date=move.target_date,
         count=count,
         message=f"Moved {count} workout(s) to {move.target_date}"
+    )
+
+
+@router.patch(
+    "/date/{date}/mobility", response_model=WorkoutDayMobilityResponse
+)
+def set_day_mobility(date: str, update: WorkoutDayMobility):
+    """Flag every set on a day as mobility work, or clear every one.
+
+    A convenience over the per-set flag, not a day-level marker: it writes the
+    same `workouts.is_mobility` the per-set toggle writes, and nothing is
+    stored about the day itself (plan 0013 §6). A day whose sets disagree stays
+    a valid state — this endpoint just does not produce one.
+
+    PATCH, and idempotent: the caller is a button that knows the state it
+    wants. Sending the state a day is already in reports `changed: 0` rather
+    than failing, because pressing it twice has to mean what pressing it once
+    meant.
+
+    No date pattern check, unlike the marker endpoint this replaces. That one
+    *created* a row keyed by the date, so a malformed one became a permanent
+    artifact; this one only ever matches existing rows, and a date that matches
+    nothing is a 404.
+    """
+    changed, total = WorkoutRepository().set_mobility_for_date(
+        date, update.is_mobility
+    )
+
+    if total == 0:
+        raise HTTPException(status_code=404, detail=f"No workouts logged on {date}")
+
+    verb = "Marked" if update.is_mobility else "Unmarked"
+    return WorkoutDayMobilityResponse(
+        date=date,
+        is_mobility=update.is_mobility,
+        changed=changed,
+        total=total,
+        message=f"{verb} {changed} of {total} set(s) on {date}",
     )
 
 

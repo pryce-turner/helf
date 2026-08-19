@@ -24,10 +24,22 @@ class MobilityLoggedSet(BaseModel):
 
 
 class MobilityLastSession(BaseModel):
-    """The last mobility session that reached the calendar."""
+    """The last mobility session that reached the calendar.
+
+    `rationale` is **nullable, and usually null**. It exists only when a plan
+    note was promoted at transfer, which means the agent prescribed the
+    session; a day whose sets the user flagged by hand has no note and never
+    will, because nothing prescribed it and an invented rationale would read as
+    an instruction that was tried.
+
+    This was non-optional until 2026-08-19 and it 500'd the whole endpoint the
+    first time a hand-flagged day became the last session — which, since the
+    flag moved to the set (0013), is the ordinary case rather than the exotic
+    one.
+    """
 
     date: str
-    rationale: str
+    rationale: str | None = None
     sets: list[MobilityLoggedSet]
 
 

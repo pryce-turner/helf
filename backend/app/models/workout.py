@@ -97,6 +97,27 @@ class WorkoutCopyDateResponse(BaseModel):
     message: str
 
 
+class WorkoutDayMobility(BaseModel):
+    """Set or clear the mobility flag on every set of a day."""
+
+    is_mobility: bool
+
+
+class WorkoutDayMobilityResponse(BaseModel):
+    """`changed` counts rows actually written, which is not `total`.
+
+    Sending the state a day is already in is a no-op that reports `changed: 0`
+    rather than an error — the caller is a button that knows the state it
+    wants, and pressing it twice should mean what pressing it once meant.
+    """
+
+    date: str
+    is_mobility: bool
+    changed: int
+    total: int
+    message: str
+
+
 class CalendarResponse(BaseModel):
     """Response for calendar workout counts."""
 

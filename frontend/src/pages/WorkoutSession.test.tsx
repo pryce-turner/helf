@@ -38,6 +38,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
             toggleComplete: vi.fn(),
             moveToDate: vi.fn(),
             copyToDate: vi.fn(),
+            setDayMobility: vi.fn(),
         },
         exercisesApi: {
             getAll: vi.fn(),
@@ -225,5 +226,80 @@ it("rolls back when the write fails, rather than showing a flag that was never s
 
     // The flag decides which day the agent reads back, so a false positive
     // here sends the next prescription off a session that never happened.
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "false"));
+});
+
+it("marks every set on the day as mobility in one press", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ doc_id: 1, order: 1 }), set({ doc_id: 2, exercise: "Lock 3", order: 2 })],
+    } as never);
+    workouts.setDayMobility.mockImplementation((async (date: string, isMobility: boolean) => {
+        workouts.getAll.mockResolvedValue({
+            data: [
+                set({ doc_id: 1, order: 1, is_mobility: isMobility }),
+                set({ doc_id: 2, exercise: "Lock 3", order: 2, is_mobility: isMobility }),
+            ],
+        } as never);
+        return { data: { date, is_mobility: isMobility, changed: 2, total: 2, message: "" } };
+    }) as never);
+    renderDay();
+    const button = await screen.findByRole("button", { name: /mark all mobility/i });
+
+    await userEvent.click(button);
+
+    await waitFor(() =>
+        expect(workouts.setDayMobility).toHaveBeenCalledWith(DATE, true),
+    );
+    // One request, not one per set — every UPDATE writes an audit row.
+    expect(workouts.setDayMobility).toHaveBeenCalledTimes(1);
+    expect(workouts.update).not.toHaveBeenCalled();
+});
+
+it("offers to clear the day once every set is already mobility", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ doc_id: 1, is_mobility: true })],
+    } as never);
+    renderDay();
+
+    const button = await screen.findByRole("button", { name: /unmark all/i });
+    await userEvent.click(button);
+
+    await waitFor(() =>
+        expect(workouts.setDayMobility).toHaveBeenCalledWith(DATE, false),
+    );
+});
+
+it("still offers to mark when only some sets are flagged", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [
+            set({ doc_id: 1, is_mobility: true, order: 1 }),
+            set({ doc_id: 2, exercise: "Overhead Press", is_mobility: false, order: 2 }),
+        ],
+    } as never);
+    renderDay();
+
+    // A mixed day is a valid state, and the button's job is to leave it.
+    expect(await screen.findByRole("button", { name: /mark all mobility/i })).toBeInTheDocument();
+});
+
+it("offers no bulk button on a day with nothing logged", async () => {
+    workouts.getAll.mockResolvedValue({ data: [] } as never);
+    renderDay();
+
+    await waitFor(() => expect(workouts.getAll).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /mark all mobility|unmark all/i })).not.toBeInTheDocument();
+});
+
+it("rolls the whole day back when the bulk write fails", async () => {
+    const write = deferred<{ data: unknown }>();
+    workouts.setDayMobility.mockReturnValue(write.promise as never);
+    renderDay();
+    const button = await screen.findByRole("button", { name: /mark all mobility/i });
+
+    await userEvent.click(button);
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "true"));
+
+    write.reject(new Error("offline"));
+
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "false"));
 });

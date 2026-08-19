@@ -13,7 +13,8 @@ export interface MobilityLoggedSet {
 
 export interface MobilityLastSession {
     date: string;
-    rationale: string;
+    /** Null for a session the user flagged by hand: nothing prescribed it. */
+    rationale: string | null;
     sets: MobilityLoggedSet[];
 }
 

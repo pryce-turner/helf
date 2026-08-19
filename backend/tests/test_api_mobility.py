@@ -262,3 +262,117 @@ def test_plan_note_is_replaced_not_accumulated():
         ).all()
 
     assert rows == [("second",)]
+
+
+# --------------------------------------------------------------------------
+# Flagging a whole day at once
+# --------------------------------------------------------------------------
+def log_a_set(client, date: str, exercise: str = "Weighted Pigeon Squat") -> None:
+    client.post(
+        "/api/workouts/",
+        json={"date": date, "exercise": exercise, "category": "Legs", "reps": 5},
+    )
+
+
+def test_marking_a_whole_day_flags_every_set(client):
+    log_a_set(client, "2026-08-11", "Hanging Knee Raise")
+    log_a_set(client, "2026-08-11", "Weighted Pigeon Squat")
+
+    body = client.patch(
+        "/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True}
+    ).json()
+
+    assert (body["changed"], body["total"]) == (2, 2)
+    assert client.get("/api/mobility/pending").json()["last_session"]["date"] == (
+        "2026-08-11"
+    )
+
+
+def test_marking_a_day_twice_writes_nothing_the_second_time(client):
+    """Every UPDATE fires an audit trigger, and `audit_log` cannot be tidied.
+
+    A bulk button is the easy way to fill it with rows whose old and new values
+    are identical, so the repository skips rows already holding the value.
+    """
+    log_a_set(client, "2026-08-11")
+    client.patch("/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True})
+
+    second = client.patch(
+        "/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True}
+    ).json()
+
+    assert (second["changed"], second["total"]) == (0, 1)
+    with database.SessionLocal() as session:
+        writes = session.execute(
+            text("SELECT COUNT(*) FROM audit_log WHERE table_name = 'workouts'")
+        ).scalar()
+    assert writes == 1
+
+
+def test_unmarking_a_whole_day_clears_every_set(client):
+    log_a_set(client, "2026-08-11", "Hanging Knee Raise")
+    log_a_set(client, "2026-08-11", "Weighted Pigeon Squat")
+    client.patch("/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True})
+
+    body = client.patch(
+        "/api/workouts/date/2026-08-11/mobility", json={"is_mobility": False}
+    ).json()
+
+    assert body["changed"] == 2
+    assert client.get("/api/mobility/pending").json()["last_session"] is None
+
+
+def test_marking_a_day_leaves_other_days_alone(client):
+    log_a_set(client, "2026-08-09")
+    log_a_set(client, "2026-08-11")
+
+    client.patch("/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True})
+
+    other = client.get("/api/workouts/", params={"date": "2026-08-09"}).json()
+    assert [w["is_mobility"] for w in other] == [False]
+
+
+def test_marking_a_day_with_nothing_logged_is_a_404(client):
+    """Not a silent success. There is no day-level row to create (0013 §6), so
+    a day with no sets is a day this cannot say anything about."""
+    assert client.patch(
+        "/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True}
+    ).status_code == 404
+
+
+def test_marking_a_mixed_day_only_writes_the_sets_that_differ(client):
+    log_a_set(client, "2026-08-11", "Hanging Knee Raise")
+    log_a_set(client, "2026-08-11", "Weighted Pigeon Squat")
+    first = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()[0]
+    client.put(
+        f"/api/workouts/{first['doc_id']}",
+        json={
+            "date": "2026-08-11",
+            "exercise": first["exercise"],
+            "category": "Legs",
+            "reps": 5,
+            "is_mobility": True,
+        },
+    )
+
+    body = client.patch(
+        "/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True}
+    ).json()
+
+    assert (body["changed"], body["total"]) == (1, 2)
+
+
+def test_a_hand_flagged_day_reads_back_without_a_rationale(client):
+    """Regression: `rationale` was non-optional and 500'd the endpoint.
+
+    Since the flag moved to the set, a session the user assembled by hand is
+    the ordinary case, and nothing prescribed it — so there is no note and
+    never will be. The page has to render that, not fail on it.
+    """
+    log_a_set(client, "2026-08-11")
+    client.patch("/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True})
+
+    response = client.get("/api/mobility/pending")
+
+    assert response.status_code == 200
+    assert response.json()["last_session"]["rationale"] is None

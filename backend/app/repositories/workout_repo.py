@@ -278,6 +278,39 @@ class WorkoutRepository:
             session.commit()
             return len(source_workouts)
 
+    def set_mobility_for_date(self, date: str, is_mobility: bool) -> tuple[int, int]:
+        """Flag every set on `date` as mobility work, or clear every one.
+
+        Returns `(changed, total)`. **Only rows whose flag actually differs are
+        written.** Every UPDATE on `workouts` fires an audit trigger, so
+        touching rows that already hold the value would fill `audit_log` with
+        entries whose old and new values are identical — noise in the one table
+        that cannot be cleaned up afterwards.
+
+        This is a bulk edit of per-set flags, not a day-level marker. The
+        distinction is the whole of plan 0013 §6: nothing is stored about the
+        day, and a day whose sets disagree is a perfectly good state that this
+        endpoint simply does not happen to produce.
+        """
+        with SessionLocal() as session:
+            workouts = session.execute(
+                select(Workout).where(Workout.date == date)
+            ).scalars().all()
+            if not workouts:
+                return 0, 0
+
+            now = get_current_datetime()
+            changed = 0
+            for workout in workouts:
+                if bool(workout.is_mobility) == is_mobility:
+                    continue
+                workout.is_mobility = is_mobility
+                workout.updated_at = now
+                changed += 1
+
+            session.commit()
+            return changed, len(workouts)
+
     def copy_to_date(self, source_date: str, target_date: str) -> int:
         """Copy all workouts from one date to another."""
         with SessionLocal() as session:

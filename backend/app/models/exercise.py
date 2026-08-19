@@ -31,7 +31,8 @@ class ExerciseBase(BaseModel):
 
 class ExerciseCreate(ExerciseBase):
     """Model for creating an exercise."""
-    notes: str | None = None
+    form: str | None = None
+    application: str | None = None
     # Bounded here *and* by a CHECK: the agent writes raw SQL and never passes
     # through Pydantic (ADR-0002), so the constraint is the rule both obey.
     rating: int | None = Field(None, ge=1, le=5)
@@ -47,14 +48,16 @@ class ExerciseUpdate(BaseModel):
     """
     name: str | None = None
     category: str | None = None
-    notes: str | None = None
+    form: str | None = None
+    application: str | None = None
     rating: int | None = Field(None, ge=1, le=5)
 
 
 class Exercise(ExerciseBase):
     """Full exercise model with metadata."""
     id: int = Field(..., alias="doc_id")
-    notes: str | None = None
+    form: str | None = None
+    application: str | None = None
     rating: int | None = None
     last_used: str | None = None
     use_count: int = 0

@@ -647,14 +647,17 @@ model section above.*
   loaded movement — that file is loaded verbatim into the agent's context at
   startup, so a copy here is a copy that changes without it. Do not restate
   them in this file; read them there
-- There is no movement pool table and no flag on the exercise; each movement's
-  `notes` carry how to perform it and an Application section whose *Reads* are
-  written as symptom → likely cause → what to change. That is what turns a
-  comment into a programming decision
+- There is no movement pool table and no flag on the exercise. Each movement
+  carries **two** fields: `form` (how to perform it — reference material) and
+  `application` (symptom → likely cause → what to change). The second is what
+  turns a comment into a programming decision, and it is separate from `form`
+  so that the agent recording what a session taught it cannot damage how the
+  movement is performed — with one blob it had to re-emit the setup
+  instructions from memory on every write
 - `rating` on those movements is **enjoyment**, not value. It protects
-  adherence; how much a movement is worth lives in the notes, and the
+  adherence; how much a movement is worth lives in `application`, and the
   divergence between the two is the useful signal
-- Movement notes were imported from an Obsidian vault by
+- Movement `form` text was imported from an Obsidian vault by
   `backend/migrations/import_mobility_pool.py` (one-shot, and it predates
   plan 0013 — see the header note in that file)
 
@@ -675,6 +678,12 @@ model section above.*
   on the exercise rather than copied onto its sets, so re-rating rewrites no
   history. Edited inline on `/exercises`, and audited — which is why the
   migrations that added and later reshaped it rebuilt the `exercises` triggers.
+- **`form` and `application`** are the two halves of what used to be one
+  `notes` blob (`e2b9c4d17a05`). Form is how to perform the movement;
+  application is symptom → likely cause → what to change. Different authors,
+  different lifetimes: the user writes form once, the agent supersedes
+  application as it learns. Both are edited on `/exercises` and both are
+  audited.
 - There is **no mobility flag on an exercise** (plan 0013). Whether a movement
   is mobility work depends on the objective that day, so it lives on the set;
   `rating` stays here precisely because it is an opinion about the movement and

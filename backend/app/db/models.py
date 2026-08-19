@@ -47,13 +47,23 @@ class Exercise(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How to perform the movement. Reference material: written once, changed
+    # only when the movement itself is set up differently.
+    form: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # symptom -> likely cause -> what to change. What the mobility loop
+    # *learns*, and the layer that turns a comment on a set into a programming
+    # decision. Split from `form` by e2b9c4d17a05 because the agent replaces
+    # what it writes wholesale: with one field it had to re-emit the form
+    # instructions from memory every time it recorded something, and any drift
+    # there silently rewrote reference material it never meant to touch.
+    application: Mapped[str | None] = mapped_column(Text, nullable=True)
     # **Enjoyment**, 1-5 — how much this person wants to do the movement, and
     # nothing else. It exists to protect adherence: a routine only works if it
     # gets run. NULL is unrated, a different fact from a bad rating, which is
     # why there is no default.
     #
-    # Emphatically *not* how valuable the movement is; that lives in `notes`.
+    # Emphatically *not* how valuable the movement is; that lives in
+    # `application`.
     # The divergence is the signal (Plan 0012 §8) — a 5-rated movement of low
     # value is a candidate to cut, and a 1-rated movement of high value needs
     # its friction diagnosed rather than its place defended.

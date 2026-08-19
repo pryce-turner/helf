@@ -89,23 +89,27 @@ in both modes.
    alongside lifting is its own session. The cost is that a program-level
    remark left on a lifting set is not in the result — `query` the whole day
    if a session reads as though feedback is missing.
-3. Read the movement's entry in `exercises` (`SELECT id, name, notes, rating
-   FROM exercises`). `notes` holds how to perform it and an **Application**
-   section whose *Reads* are written as symptom → likely cause → what to
-   change. That is the layer that turns a comment into a programming decision;
-   use it rather than reasoning from the movement name.
+3. Read the movement's entry in `exercises` (`SELECT id, name, form,
+   application, rating FROM exercises`). **`form`** is how to perform it.
+   **`application`** is written as symptom → likely cause → what to change,
+   and is the layer that turns a comment into a programming decision — use it
+   rather than reasoning from the movement name.
 
    There is no mobility flag on the exercise and no pool table. Whether a
-   movement suits an objective is a judgement you make from its notes, not a
+   movement suits an objective is a judgement you make from its `form` and
+   `application`, not a
    membership you can look up — which is the point: prescribing a good morning
    as a loaded stretch does not make it stop being a lifting movement.
 4. `write_next_mobility_session(items, rationale)`.
-5. `update_mobility_movement(exercise_id, notes=…, rating=…)` when a session
-   teaches you something durable about a movement. `notes` is **current state,
-   not a log** — supersede what is no longer true rather than appending to it.
-   The running history is the sessions themselves. This is the step that
-   compounds: a lesson left unwritten is one you re-derive next week from the
-   same comment.
+5. `update_mobility_movement(exercise_id, application=…, form=…, rating=…)`
+   when a session teaches you something durable about a movement. **Usually
+   you are writing `application`** — `form` changes only when the movement is
+   genuinely set up differently, and it is a separate field so that recording
+   what you learned cannot damage how the movement is performed. Each is
+   **current state, not a log**: supersede what is no longer true in that
+   field rather than appending. The running history is the sessions
+   themselves. This is the step that compounds — a lesson left unwritten is
+   one you re-derive next week from the same comment.
 
 **The philosophy is loaded stretching**: strengthen through full range of
 motion rather than holding static stretches. The lengthened, loaded position is
@@ -124,7 +128,8 @@ the point of most of these movements, and prescriptions should say so.
 
 **`rating` is enjoyment, not value.** 1–5, NULL meaning unrated. It measures how
 much the user wants to do a movement and exists to protect adherence. How much
-a movement is *worth* belongs in the notes. The divergence is the useful signal:
+a movement is *worth* belongs in `application`. The divergence is the useful
+signal:
 a 5-rated movement of little value is a candidate to cut, and a 1-rated movement
 of high value needs its friction diagnosed — load, setup, position — rather than
 its place defended. **Only rate from a direct statement of liking or disliking.**

@@ -65,9 +65,32 @@ def test_explicit_null_rating_clears_it_over_http(client):
     # And an unrelated edit must not clear it.
     client.put(f"/api/exercises/{created['doc_id']}", json={"rating": 2})
     renamed = client.put(
-        f"/api/exercises/{created['doc_id']}", json={"notes": "slow eccentric"}
+        f"/api/exercises/{created['doc_id']}", json={"form": "slow eccentric"}
     )
     assert renamed.json()["rating"] == 2
+
+
+def test_form_and_application_are_edited_independently(client):
+    """The split exists so that recording what a session taught you cannot
+    damage how the movement is performed (e2b9c4d17a05)."""
+    created = client.post(
+        "/api/exercises/",
+        json={
+            "name": "QL Raise",
+            "category": "Core",
+            "form": "hold the brace, ribs down",
+            "application": "second set fades -> load too high -> drop 5lb",
+        },
+    ).json()
+    assert created["form"] == "hold the brace, ribs down"
+
+    updated = client.put(
+        f"/api/exercises/{created['doc_id']}",
+        json={"application": "left lags right -> asymmetry -> lead with the left"},
+    ).json()
+
+    assert updated["application"] == "left lags right -> asymmetry -> lead with the left"
+    assert updated["form"] == "hold the brace, ribs down"
 
 
 def test_rating_out_of_range_is_rejected(client):

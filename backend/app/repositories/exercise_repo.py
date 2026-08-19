@@ -18,7 +18,8 @@ class ExerciseRepository:
             "doc_id": exercise.id,
             "name": exercise.name,
             "category": exercise.category.name if exercise.category else None,
-            "notes": exercise.notes,
+            "form": exercise.form,
+            "application": exercise.application,
             "rating": exercise.rating,
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
@@ -87,7 +88,8 @@ class ExerciseRepository:
             new_exercise = Exercise(
                 name=exercise.name,
                 category_id=category.id,
-                notes=exercise.notes,
+                form=exercise.form,
+                application=exercise.application,
                 rating=exercise.rating,
                 last_used=None,
                 use_count=0,
@@ -140,8 +142,13 @@ class ExerciseRepository:
             if data.category is not None:
                 category = self._get_or_create_category(session, data.category)
                 exercise.category_id = category.id
-            if data.notes is not None:
-                exercise.notes = data.notes if data.notes else None
+            # Two fields now, and they are edited independently: recording
+            # what a session taught you about *applying* a movement must not
+            # require restating how to perform it (e2b9c4d17a05).
+            if data.form is not None:
+                exercise.form = data.form if data.form else None
+            if data.application is not None:
+                exercise.application = data.application if data.application else None
             # `rating: null` means "unrate this", which is indistinguishable
             # from an omitted field by value alone. `model_fields_set` carries
             # what the client actually sent.

@@ -43,7 +43,8 @@ const exercise = (overrides: Record<string, unknown> = {}) => ({
     doc_id: 1,
     name: "Plate Rollup",
     category: "Arms",
-    notes: null,
+    form: null,
+    application: null,
     rating: null,
     last_used: "2026-07-08",
     use_count: 12,
@@ -168,5 +169,55 @@ describe("Exercises: choosing a category", () => {
         const field = await screen.findByPlaceholderText("New category name");
         await user.type(field, "Forearms");
         expect(field).toHaveValue("Forearms");
+    });
+});
+
+describe("Exercises: form and application", () => {
+    it("shows them as two separate blocks", async () => {
+        const user = userEvent.setup();
+        mockedExercises.getAll.mockResolvedValue({
+            data: [
+                exercise({
+                    form: "hold the brace, ribs down",
+                    application: "second set fades to load too high to drop 5lb",
+                }),
+            ],
+        } as never);
+
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+
+        expect(await screen.findByText("hold the brace, ribs down")).toBeInTheDocument();
+        expect(
+            screen.getByText("second set fades to load too high to drop 5lb"),
+        ).toBeInTheDocument();
+    });
+
+    it("edits application without restating form", async () => {
+        const user = userEvent.setup();
+        mockedExercises.getAll.mockResolvedValue({
+            data: [exercise({ form: "hold the brace", application: "old read" })],
+        } as never);
+
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+        await user.click(await screen.findByRole("button", { name: /edit/i }));
+
+        const application = screen.getByLabelText("Application");
+        await user.clear(application);
+        await user.type(application, "new read");
+        await user.click(screen.getByRole("button", { name: /save/i }));
+
+        // The whole point of the split: form goes back unchanged, and the
+        // caller never had to retype it.
+        await waitFor(() =>
+            expect(mockedExercises.update).toHaveBeenCalledWith(
+                1,
+                expect.objectContaining({
+                    form: "hold the brace",
+                    application: "new read",
+                }),
+            ),
+        );
     });
 });

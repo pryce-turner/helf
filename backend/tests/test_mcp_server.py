@@ -411,7 +411,8 @@ def test_read_latest_says_so_when_nothing_has_been_logged(mcp):
     assert result["found"] is False
     # An agent told "no data" invents a first session from nothing; told where
     # the movements and their notes are, it reads them.
-    assert "exercises" in result["hint"] and "notes" in result["hint"]
+    assert "exercises" in result["hint"]
+    assert "form" in result["hint"] and "application" in result["hint"]
 
 
 def test_read_latest_returns_the_sets_and_their_comments(mcp):
@@ -688,46 +689,75 @@ def movement(mcp):
     with database.SessionLocal() as session:
         session.execute(
             text(
-                "UPDATE exercises SET notes = 'hold the brace', rating = 3 "
-                "WHERE name = 'QL Raise'"
+                "UPDATE exercises SET form = 'hold the brace', "
+                "application = 'second set fades -> load too high -> drop 5lb', "
+                "rating = 3 WHERE name = 'QL Raise'"
             )
         )
         session.commit()
     return mcp.query("SELECT id FROM exercises WHERE name = 'QL Raise'")["rows"][0]["id"]
 
 
-def test_update_movement_supersedes_the_notes(mcp, movement):
-    result = mcp.update_mobility_movement(movement, notes="hold the brace; ribs down")
+def test_update_movement_supersedes_the_application(mcp, movement):
+    result = mcp.update_mobility_movement(
+        movement, application="left lags right -> asymmetry -> lead with the left"
+    )
 
     assert result["ok"] is True
-    assert result["updated"] == ["notes"]
-    # The previous value comes back because `notes` is current state — once
+    assert result["updated"] == ["application"]
+    # The previous value comes back because each field is current state — once
     # replaced, what it used to say exists only in `audit_log`.
-    assert result["previous"] == {"notes": "hold the brace", "rating": 3}
+    assert result["previous"] == {
+        "form": "hold the brace",
+        "application": "second set fades -> load too high -> drop 5lb",
+        "rating": 3,
+    }
+
+
+def test_writing_application_cannot_damage_form(mcp, movement):
+    """The whole point of the split (e2b9c4d17a05).
+
+    One blob meant the agent re-emitted the setup instructions from memory
+    every time it recorded something learned, and a slip silently rewrote
+    reference material it never meant to touch.
+    """
+    mcp.update_mobility_movement(movement, application="rewritten entirely")
+
+    assert mcp.query(f"SELECT form FROM exercises WHERE id = {movement}")["rows"] == [
+        {"form": "hold the brace"}
+    ]
 
 
 def test_update_movement_leaves_an_omitted_field_alone(mcp, movement):
     mcp.update_mobility_movement(movement, rating=5)
 
     assert mcp.query(
-        f"SELECT notes, rating FROM exercises WHERE id = {movement}"
-    )["rows"] == [{"notes": "hold the brace", "rating": 5}]
+        f"SELECT form, application, rating FROM exercises WHERE id = {movement}"
+    )["rows"] == [
+        {
+            "form": "hold the brace",
+            "application": "second set fades -> load too high -> drop 5lb",
+            "rating": 5,
+        }
+    ]
 
 
 def test_update_movement_needs_something_to_write(mcp, movement):
     assert mcp.update_mobility_movement(movement)["ok"] is False
 
 
-def test_update_movement_refuses_to_blank_the_notes(mcp, movement):
+def test_update_movement_refuses_to_blank_a_field(mcp, movement):
     """Blanking discards how the movement is performed. Omitting the field is
     how you leave it alone, and the two are easy to confuse from the far side
     of a tool call."""
-    result = mcp.update_mobility_movement(movement, notes="   ")
+    result = mcp.update_mobility_movement(movement, application="   ")
 
     assert result["ok"] is False
     assert mcp.query(
-        f"SELECT notes FROM exercises WHERE id = {movement}"
-    )["rows"] == [{"notes": "hold the brace"}]
+        f"SELECT application FROM exercises WHERE id = {movement}"
+    )["rows"] == [
+        {"application": "second set fades -> load too high -> drop 5lb"}
+    ]
 
 
 def test_update_movement_refuses_a_rating_outside_the_scale(mcp, movement):

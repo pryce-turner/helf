@@ -582,9 +582,10 @@ def read_latest_mobility_session() -> dict:
             return {
                 "ok": True,
                 "found": False,
-                "hint": "No mobility set has been logged yet. Movements and "
-                        "their notes are in `exercises`; a movement is not "
-                        "mobility work in itself, so read the notes and pick "
+                "hint": "No mobility set has been logged yet. Movements are "
+                        "in `exercises`, where `form` says how to perform one "
+                        "and `application` says what to change when. A movement "
+                        "is not mobility work in itself, so read those and pick "
                         "for the objective when writing a first session.",
             }
 
@@ -746,18 +747,30 @@ def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
 
 def update_mobility_movement(
     exercise_id: int,
-    notes: str | None = None,
+    form: str | None = None,
+    application: str | None = None,
     rating: int | None = None,
 ) -> dict:
     """Record what a session taught you about a movement — the write-back step
     of the loop, after the next session has been prescribed.
 
-    `notes` is **current state, not a log.** It replaces what is there, so
-    carry forward everything still true and supersede only what is not. The
-    running history is the sessions themselves; a notes field that accumulates
-    becomes a changelog nobody reads, including you. The **Application**
-    section and its symptom → cause → change *Reads* are the part that earns
-    its keep — that is what turns next session's comment into a decision.
+**`application` is the field you are usually here for.** Write it as
+    symptom → likely cause → what to change: "second set drops 3+ reps →
+    load too high to hold → take 5lb off rather than cutting the set". That is
+    what turns next session's comment into a decision, and it is the only part
+    of this database that compounds.
+
+    **`form` is how to perform the movement** — reference material, changed
+    only when the movement is genuinely set up differently. You will rarely
+    touch it. It is a separate field precisely so that recording what you
+    learned cannot damage it: this was one `notes` blob until e2b9c4d17a05, and
+    writing to it meant re-emitting the setup instructions from memory every
+    time, where a single slip silently rewrote reference material.
+
+    Both are **current state, not a log.** Each replaces what is there, so
+    carry forward everything still true in *that* field and supersede only what
+    is not. The running history is the sessions themselves; a field that
+    accumulates becomes a changelog nobody reads, including you.
 
     `rating` is 1-5 enjoyment and exists to protect adherence, so set it
     **only from a direct statement of liking or disliking**. "Hard" and
@@ -772,16 +785,17 @@ def update_mobility_movement(
     is the user's judgement expressed in the log rather than in a checkbox.
     Returns the previous values so you can see what you superseded.
     """
-    if notes is None and rating is None:
-        return {"ok": False, "error": "provide notes or rating"}
-    if notes is not None and not notes.strip():
-        return {
-            "ok": False,
-            "error": "notes cannot be blank",
-            "hint": "notes replaces what is there, so blanking it discards how "
-                    "the movement is performed. Omit the field to leave it "
-                    "alone.",
-        }
+    if form is None and application is None and rating is None:
+        return {"ok": False, "error": "provide form, application or rating"}
+    for field_name, value in (("form", form), ("application", application)):
+        if value is not None and not value.strip():
+            return {
+                "ok": False,
+                "error": f"{field_name} cannot be blank",
+                "hint": f"{field_name} replaces what is there, so blanking it "
+                        "discards what it held. Omit the field to leave it "
+                        "alone.",
+            }
     if rating is not None and not 1 <= int(rating) <= 5:
         return {
             "ok": False,
@@ -791,7 +805,7 @@ def update_mobility_movement(
 
     with _rw() as conn:
         found = conn.execute(
-            """SELECT e.name, e.notes, e.rating,
+            """SELECT e.name, e.form, e.application, e.rating,
                       EXISTS (SELECT 1 FROM workouts w
                               WHERE w.exercise_id = e.id AND w.is_mobility = 1)
                           AS used_as_mobility
@@ -814,7 +828,8 @@ def update_mobility_movement(
         # so the interpolation below has no injection surface; the values stay
         # parameterised.
         fields = {
-            "notes": notes,
+            "form": form,
+            "application": application,
             "rating": int(rating) if rating is not None else None,
         }
         changed = [name for name, value in fields.items() if value is not None]
@@ -828,7 +843,11 @@ def update_mobility_movement(
             "ok": True,
             "exercise": found["name"],
             "updated": changed,
-            "previous": {"notes": found["notes"], "rating": found["rating"]},
+            "previous": {
+                "form": found["form"],
+                "application": found["application"],
+                "rating": found["rating"],
+            },
         }
 
 
@@ -853,11 +872,11 @@ WRITE_TOOLS = (add_metric, add_note, log_food, log_workout)
 # argument is the same one: the documented loop ends in *write down what this
 # session taught you about the movement*, and without a tool for it the
 # instructions were asking for something no client could perform. The pool's
-# `notes` are where a comment becomes a programming decision, so a loop that
+# `application` notes are where a comment becomes a decision, so a loop that
 # cannot update them re-derives the same lesson every week.
 #
 # Both are scoped as narrowly as the idea allows. Between them they write
-# planned rows for one session, its rationale, and the `notes`/`rating` of a
+# planned rows for one session, its rationale, and the form/application/rating of a
 # movement already performed as mobility work. Neither can log a workout, record a
 # measurement, add a movement to the pool, or touch anything already in the
 # calendar. ADR-0004's real claim — that the *connection* is the privilege

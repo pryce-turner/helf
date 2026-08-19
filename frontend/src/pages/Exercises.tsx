@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Sparkles, ChevronDown } from 'lucide-react';
+import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Sparkles, ChevronDown } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import CategoryField from '@/components/CategoryField';
 import StarRating from '@/components/StarRating';
@@ -60,11 +60,13 @@ const Exercises = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState('');
-  const [newNotes, setNewNotes] = useState('');
+  const [newForm, setNewForm] = useState('');
+  const [newApplication, setNewApplication] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('');
-  const [editNotes, setEditNotes] = useState('');
+  const [editForm, setEditForm] = useState('');
+  const [editApplication, setEditApplication] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -120,11 +122,13 @@ const Exercises = () => {
     await createExercise.mutateAsync({
       name: newName.trim(),
       category: newCategory.trim(),
-      notes: newNotes.trim() || undefined,
+      form: newForm.trim() || undefined,
+      application: newApplication.trim() || undefined,
     });
     setNewName('');
     setNewCategory('');
-    setNewNotes('');
+    setNewForm('');
+    setNewApplication('');
     setShowAddForm(false);
   };
 
@@ -132,14 +136,16 @@ const Exercises = () => {
     setEditingId(exercise.doc_id);
     setEditName(exercise.name);
     setEditCategory(exercise.category);
-    setEditNotes(exercise.notes || '');
+    setEditForm(exercise.form || '');
+    setEditApplication(exercise.application || '');
   };
 
   const cancelEditing = () => {
     setEditingId(null);
     setEditName('');
     setEditCategory('');
-    setEditNotes('');
+    setEditForm('');
+    setEditApplication('');
   };
 
   const saveEditing = async () => {
@@ -149,7 +155,8 @@ const Exercises = () => {
       data: {
         name: editName.trim(),
         category: editCategory.trim(),
-        notes: editNotes.trim() || '',
+        form: editForm.trim() || '',
+        application: editApplication.trim() || '',
       },
     });
     cancelEditing();
@@ -268,15 +275,29 @@ const Exercises = () => {
                     </div>
                   </div>
                   <div>
-                    <Label htmlFor="new-notes" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                      Notes <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(form cues, tips)</span>
+                    <Label htmlFor="new-form" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                      Form <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(how to perform it)</span>
                     </Label>
                     <textarea
-                      id="new-notes"
+                      id="new-form"
                       className="input"
-                      value={newNotes}
-                      onChange={(e) => setNewNotes(e.target.value)}
+                      value={newForm}
+                      onChange={(e) => setNewForm(e.target.value)}
                       placeholder="e.g., Keep elbows tucked, drive feet into floor"
+                      rows={2}
+                      style={{ resize: 'vertical', minHeight: '60px' }}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="new-application" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
+                      Application <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(symptom &rarr; cause &rarr; what to change)</span>
+                    </Label>
+                    <textarea
+                      id="new-application"
+                      className="input"
+                      value={newApplication}
+                      onChange={(e) => setNewApplication(e.target.value)}
+                      placeholder="e.g., Second set drops 3+ reps &rarr; load too high to hold &rarr; take 5lb off rather than cutting the set"
                       rows={2}
                       style={{ resize: 'vertical', minHeight: '60px' }}
                     />
@@ -417,9 +438,19 @@ const Exercises = () => {
                                 </div>
                                 <textarea
                                   className="input"
-                                  value={editNotes}
-                                  onChange={(e) => setEditNotes(e.target.value)}
-                                  placeholder="Form cues, tips..."
+                                  aria-label="Form"
+                                  value={editForm}
+                                  onChange={(e) => setEditForm(e.target.value)}
+                                  placeholder="Form — how to perform it..."
+                                  rows={2}
+                                  style={{ resize: 'vertical', minHeight: '60px' }}
+                                />
+                                <textarea
+                                  className="input"
+                                  aria-label="Application"
+                                  value={editApplication}
+                                  onChange={(e) => setEditApplication(e.target.value)}
+                                  placeholder="Application — symptom, likely cause, what to change..."
                                   rows={2}
                                   style={{ resize: 'vertical', minHeight: '60px' }}
                                 />
@@ -466,7 +497,7 @@ const Exercises = () => {
                                         fontSize: '16px',
                                         fontWeight: 600,
                                         color: 'var(--text-primary)',
-                                        marginBottom: (exercise.use_count > 0 || exercise.notes) ? 'var(--space-2)' : 0,
+                                        marginBottom: (exercise.use_count > 0 || exercise.form || exercise.application) ? 'var(--space-2)' : 0,
                                         wordBreak: 'break-word',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -476,12 +507,18 @@ const Exercises = () => {
                                     >
                                       {exercise.name}
                                     </h3>
-                                    {exercise.notes && (
+                                    {/* Two fields, shown separately and
+                                        labelled, because they answer different
+                                        questions: form is how to perform the
+                                        movement, application is what to change
+                                        when something goes wrong. The agent
+                                        writes the second one. */}
+                                    {exercise.form && (
                                       <div
                                         className="flex items-start"
                                         style={{
                                           gap: 'var(--space-2)',
-                                          marginBottom: exercise.use_count > 0 ? 'var(--space-2)' : 0,
+                                          marginBottom: 'var(--space-2)',
                                           padding: 'var(--space-2) var(--space-3)',
                                           background: 'var(--bg-secondary)',
                                           borderRadius: 'var(--radius-sm)',
@@ -490,7 +527,25 @@ const Exercises = () => {
                                       >
                                         <FileText style={{ width: '14px', height: '14px', color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
                                         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-                                          {exercise.notes}
+                                          {exercise.form}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {exercise.application && (
+                                      <div
+                                        className="flex items-start"
+                                        style={{
+                                          gap: 'var(--space-2)',
+                                          marginBottom: exercise.use_count > 0 ? 'var(--space-2)' : 0,
+                                          padding: 'var(--space-2) var(--space-3)',
+                                          background: 'var(--bg-secondary)',
+                                          borderRadius: 'var(--radius-sm)',
+                                          borderLeft: '3px solid var(--accent)',
+                                        }}
+                                      >
+                                        <Lightbulb style={{ width: '14px', height: '14px', color: 'var(--accent)', flexShrink: 0, marginTop: '2px' }} />
+                                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                                          {exercise.application}
                                         </p>
                                       </div>
                                     )}

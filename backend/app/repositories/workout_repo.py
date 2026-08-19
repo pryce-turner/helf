@@ -31,6 +31,7 @@ class WorkoutRepository:
             "created_at": workout.created_at,
             "updated_at": workout.updated_at,
             "completed_at": workout.completed_at,
+            "is_mobility": bool(workout.is_mobility),
         }
 
     def _get_or_create_category(self, session, name: str) -> Category:
@@ -132,6 +133,7 @@ class WorkoutRepository:
                 created_at=now,
                 updated_at=now,
                 completed_at=workout_dict.get("completed_at"),
+                is_mobility=bool(workout_dict.get("is_mobility")),
             )
             session.add(new_workout)
             session.commit()
@@ -164,6 +166,15 @@ class WorkoutRepository:
             if workout_dict.get("order") is not None:
                 existing.order = workout_dict.get("order")
             existing.completed_at = workout_dict.get("completed_at")
+            # Sticky unless explicitly sent, distinguished by `model_fields_set`
+            # the way `ExerciseUpdate.rating` is. Every other field here is a
+            # full replace, but this one defaults to False, so a PUT that only
+            # meant to change a comment would silently unflag the set - and
+            # editing a comment to add feedback is precisely what happens to a
+            # mobility set after it is run. The flag would disappear at the
+            # moment the loop depends on it.
+            if "is_mobility" in workout.model_fields_set:
+                existing.is_mobility = bool(workout_dict.get("is_mobility"))
             existing.updated_at = get_current_datetime()
 
             session.commit()
@@ -300,7 +311,10 @@ class WorkoutRepository:
                     order=starting_order + i,
                     created_at=now,
                     updated_at=now,
-                    completed_at=None  # Reset completion status for copies
+                    completed_at=None,  # Reset completion status for copies
+                    # Copied sets keep their intent: a mobility session
+                    # copied to another date is still mobility work.
+                    is_mobility=source_workout.is_mobility,
                 )
                 session.add(new_workout)
 

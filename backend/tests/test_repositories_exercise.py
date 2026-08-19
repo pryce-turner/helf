@@ -51,23 +51,27 @@ def test_category_get_all_sorts_by_name():
     assert [r["name"] for r in results] == ["Alpha", "Zed"]
 
 
-def test_exercise_rating_and_mobility_default_to_unset():
-    """Unrated is not zero-rated, and nothing is mobility work by default."""
+def test_exercise_rating_defaults_to_unrated():
+    """Unrated is not zero-rated, which is why there is no default."""
     repo = ExerciseRepository()
     created = repo.create(ExerciseCreate(name="Hip Airplane", category="Legs"))
     assert created["rating"] is None
-    assert created["is_mobility"] is False
 
 
-def test_exercise_update_sets_rating_and_mobility():
+def test_an_exercise_carries_no_mobility_judgement():
+    """Mobility is a property of the set now (d7e4f2a91b83).
+
+    The movement cannot answer it: a good morning is a loaded hinge in one
+    session and a loaded stretch in the next. `rating` stays here because it
+    *is* an opinion about the movement.
+    """
     repo = ExerciseRepository()
     created = repo.create(ExerciseCreate(name="Cossack Squat", category="Legs"))
 
-    updated = repo.update(
-        created["doc_id"], ExerciseUpdate(rating=5, is_mobility=True)
-    )
+    assert "is_mobility" not in created
+
+    updated = repo.update(created["doc_id"], ExerciseUpdate(rating=5))
     assert updated["rating"] == 5
-    assert updated["is_mobility"] is True
 
 
 def test_exercise_update_can_clear_a_rating():

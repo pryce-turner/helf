@@ -224,25 +224,53 @@ def test_exercise_creation_is_audited():
     assert json.loads(entry["new_values"])["name"] == "Bnech Press"
 
 
-def test_exercise_rating_and_mobility_are_audited():
+def test_exercise_rating_is_audited():
     """A column added to an audited table is invisible to the log until the
     triggers are rebuilt, because they enumerate their columns into
-    `json_object`. Migration b3d1c07a4e21 rebuilds all three; this is what
-    fails if a later one forgets."""
+    `json_object`. b3d1c07a4e21 rebuilt them to add it; d7e4f2a91b83 rebuilt
+    them again to drop `is_mobility`. This is what fails if a later one
+    forgets."""
     conn = _raw()
     conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-08-10')")
     conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
                  "VALUES ('Hip Airplane', 1, 0, '2026-08-10')")
     conn.commit()
-    conn.execute("UPDATE exercises SET rating = 5, is_mobility = 1 WHERE name = 'Hip Airplane'")
+    conn.execute("UPDATE exercises SET rating = 5 WHERE name = 'Hip Airplane'")
     conn.commit()
     conn.close()
 
     entry = _log("table_name = 'exercises' AND op = 'UPDATE'")[0]
     before = json.loads(entry["old_values"])
     after = json.loads(entry["new_values"])
-    assert before["rating"] is None and before["is_mobility"] == 0
-    assert after["rating"] == 5 and after["is_mobility"] == 1
+    assert before["rating"] is None and after["rating"] == 5
+    # The dropped column is gone from the payload, not merely always-null.
+    assert "is_mobility" not in before and "is_mobility" not in after
+
+
+def test_the_set_level_mobility_flag_is_audited():
+    """The flag moved to `workouts`, whose triggers had to learn it.
+
+    It is a user-editable judgement about a logged set, so an edit that
+    silently unflagged one would otherwise leave no trace - and the flag is
+    what the agent reads the next session back from.
+    """
+    conn = _raw()
+    conn.execute("INSERT INTO categories (name, created_at) VALUES ('Core', '2026-08-10')")
+    conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
+                 "VALUES ('Hanging Knee Raise', 1, 0, '2026-08-10')")
+    conn.execute(
+        "INSERT INTO workouts (date, exercise_id, category_id, reps, \"order\", "
+        "created_at, updated_at) "
+        "VALUES ('2026-08-11', 1, 1, 10, 1, '2026-08-11', '2026-08-11')"
+    )
+    conn.commit()
+    conn.execute("UPDATE workouts SET is_mobility = 1 WHERE id = 1")
+    conn.commit()
+    conn.close()
+
+    entry = _log("table_name = 'workouts' AND op = 'UPDATE'")[0]
+    assert json.loads(entry["old_values"])["is_mobility"] == 0
+    assert json.loads(entry["new_values"])["is_mobility"] == 1
 
 
 def test_exercise_rating_is_bounded_for_the_raw_writer_too():

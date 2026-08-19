@@ -6,7 +6,6 @@ export interface Exercise {
   /** 1-5. `null` is unrated, which is not the same as a bad rating. */
   rating: number | null;
   /** Also mobility work. A flag across categories, not a category. */
-  is_mobility: boolean;
   last_used: string | null;
   use_count: number;
   created_at: string;
@@ -17,7 +16,6 @@ export interface ExerciseCreate {
   category: string;
   notes?: string;
   rating?: number | null;
-  is_mobility?: boolean;
 }
 
 export interface ExerciseUpdate {
@@ -26,7 +24,6 @@ export interface ExerciseUpdate {
   notes?: string;
   /** Sending `null` clears the rating; omitting the key leaves it alone. */
   rating?: number | null;
-  is_mobility?: boolean;
 }
 
 export interface Category {

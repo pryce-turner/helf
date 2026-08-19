@@ -281,32 +281,45 @@ deliberately: a target no measurement supports is worse than a blank.
 Adding a column per tracked thing would rebuild the wide table Plan 0010 just
 retired. `supplements_taken` is a count for that reason.
 
-### A mobility day is marked by a `note`, not by `is_mobility`
+### Mobility is a property of the set, and the day is derived
 
-`exercises.is_mobility` marks the *movement pool*. It cannot tell you which
-**days** were mobility sessions, because a mobility routine borrows movements
-that are also lifting movements — the good morning is in both — so "the last day
-containing a mobility exercise" finds lifting days too. 2026-06-25 is exactly
-that: a pigeon squat and a calf raise logged beside a Romanian deadlift.
+`workouts.is_mobility` is one boolean per logged set. Not per movement, and not
+per day.
 
-The marker is one `note` row that changes kind as it changes meaning:
-`mobility_plan` while the session is pending, `mobility_session` once it has
-been transferred and dated to the day it was run. That row also carries the
-agent's reasoning for the session, which is what the mobility tab renders.
+**Not per movement**, because a mobility routine borrows movements that are
+also lifting movements — a good morning is a loaded hinge in one session and a
+loaded stretch in the next, and one exercise row cannot hold both answers. This
+was `exercises.is_mobility` until plan 0013 and the flag was in the wrong
+place: "the last day containing a mobility exercise" finds lifting days too, as
+2026-06-25 does — a pigeon squat and a calf raise logged beside a Romanian
+deadlift.
 
-**Two things write that marker**, because not every mobility session comes from
-the planner: transfer promotes the plan note, and the day view's checkbox
-(`PUT /api/mobility/day/{date}`) marks a day the user built by hand or ran
-before the loop existed. Hand-marked days get an **empty body** rather than a
-stand-in sentence — the agent reads that field as what the session was written
-to achieve, and an invented rationale would be read as one that was tried.
-Unchecking **deletes the row**, rationale included, since the two facts share
-it; that is recoverable from `audit_log` but not from the UI.
+**Not per day**, because a mobility session run alongside lifting is one day
+and two sessions. 2026-08-13 is two sets of rehab work opening a twelve-set
+shoulder day. A **mobility day is derived**: the most recent date carrying any
+flagged set, and the read path returns *those sets*, not the whole day. There
+is no marker that can disagree with the rows.
+
+One thing to know when editing a set: the flag is **sticky unless explicitly
+sent**. Every other field on `WorkoutUpdate` is a full replace, so a PUT
+carrying only a comment would clear it — and adding feedback to a set after
+running it is precisely what happens to a mobility set. Told apart by
+`model_fields_set`, the way `ExerciseUpdate.rating` distinguishes omitted from
+null.
+
+The `note` kinds still exist and no longer assert anything: `mobility_plan`
+carries the pending session's rationale, `mobility_session` carries a run
+session's, dated to its day. Delete one and the session is still a mobility
+session with no recorded reason — a gap in the record rather than a change to
+what happened. That is the fix for the old marker, which shared a row with the
+rationale so unticking a checkbox destroyed the reasoning.
 
 The user's feedback is **only** in `workouts.comment` on the logged sets. There
 is no per-session feedback field, so program-level remarks ("keep this to 7
-movements max") arrive attached to whichever set was on screen — the read tool
-returns every comment on the day for that reason (Plan 0012 §4).
+movements max") arrive attached to whichever set was on screen (Plan 0012 §4).
+The read tool returns every comment on the *mobility sets* it hands back — so a
+program-level remark left on a lifting set that day is not in the result, which
+is the price of returning the session rather than the day.
 
 ### The journal is not the audit log
 
@@ -519,18 +532,12 @@ docker-compose up -d
 - `POST /transfer` - Copy the pending session onto a date, appending after
   anything already logged that day, and mark the day as a mobility session
 - `DELETE /pending` - Discard the pending session without running it
-- `GET /day/{date}` / `PUT /day/{date}` - Whether the day was a mobility
-  session. PUT because the caller is a checkbox and knows the state it wants,
-  not the transition; idempotent in both directions, and re-marking never
-  rewrites a rationale transfer already put there. The date is pattern-checked
-  in the path — `note.date` is computed from `noted_at`, so a malformed one is
-  not rejected downstream, it becomes a marker dated to nonsense that sorts
-  after every real day and is handed to the agent forever
-
-There is deliberately **no create endpoint for the session itself**: it is
-written by the agent over MCP, which is the point of the feature. `day` is the
-exception that proves it — it asserts that a session *happened*, not what was
-in it.
+There are deliberately **no endpoints here for creating a session or for
+marking one**. The session is written by the agent over MCP, which is the point
+of the feature; and which sets were mobility work is a field on the set,
+written through the normal workout routes (`PUT /api/workouts/{id}` with
+`is_mobility`). A day carrying any flagged set *is* a mobility day — there is
+nothing separate to assert (plan 0013).
 
 ### Notes (`/api/notes`)
 - `GET /?kind=&start=&end=` - Notes, most recent first
@@ -548,7 +555,7 @@ in it.
 | Path | Page | Description |
 |---|---|---|
 | `/` | Calendar | Month view with workout count indicators + streak |
-| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, mark the day a mobility session |
+| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag individual sets as mobility work |
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
@@ -609,13 +616,13 @@ model section above.*
 - **One rolling routine**, adjusted a session at a time from the last session's
   feedback — not a program generated in advance and then followed
 - The agent drives it over MCP: `read_latest_mobility_session()` returns the
-  day's sets and every comment on them, `write_next_mobility_session()` replaces
-  what is pending and records why
-- **Which day it reads is the day view's checkbox**, `Mobility session` on
-  `/day/:date`. Transfer ticks it; ticking it by hand is how a session that
-  never went through the planner becomes the one the next prescription is
-  written from. A day with nothing logged cannot be ticked — that would hand
-  the agent an empty day as its most recent input
+  last mobility session's sets and every comment on them,
+  `write_next_mobility_session()` replaces what is pending and records why
+- **Which sets it reads is the per-set toggle** on `/day/:date`, beside the
+  completion tick. Transfer sets it for a prescribed session; tapping it by
+  hand is how a session that never went through the planner becomes the one the
+  next prescription is written from. The last day with any flagged set is that
+  session, and only its flagged sets are returned
 - The philosophy is **loaded stretching** — strengthen through full range rather
   than holding static stretches
 - **The standing program rules are the user's, and `docs/design/mcp-instructions.md`
@@ -624,14 +631,16 @@ model section above.*
   loaded movement — that file is loaded verbatim into the agent's context at
   startup, so a copy here is a copy that changes without it. Do not restate
   them in this file; read them there
-- The movement pool is `exercises` with `is_mobility = 1`; each movement's
+- There is no movement pool table and no flag on the exercise; each movement's
   `notes` carry how to perform it and an Application section whose *Reads* are
   written as symptom → likely cause → what to change. That is what turns a
   comment into a programming decision
 - `rating` on those movements is **enjoyment**, not value. It protects
   adherence; how much a movement is worth lives in the notes, and the
   divergence between the two is the useful signal
-- Imported from an Obsidian vault by `backend/migrations/import_mobility_pool.py`
+- Movement notes were imported from an Obsidian vault by
+  `backend/migrations/import_mobility_pool.py` (one-shot, and it predates
+  plan 0013 — see the header note in that file)
 
 ### Body Composition
 - MQTT ingest from a smart scale (openScale-sync format), near-daily
@@ -646,12 +655,14 @@ model section above.*
 - Seed database with 16 preset exercises across 6 categories
 - Track usage count and last-used date
 - CRUD for exercises and categories
-- **`rating`** (1–5, NULL is *unrated*) and **`is_mobility`** are judgements
-  about the movement, kept on the exercise rather than copied onto its sets, so
-  re-rating rewrites no history. `is_mobility` is a flag and not a category
-  because a movement has exactly one category and "is also mobility" cuts
-  across them. Both are edited inline on `/exercises`; both are audited, which
-  is why the migration that added them rebuilt the `exercises` triggers.
+- **`rating`** (1–5, NULL is *unrated*) is a judgement about the movement, kept
+  on the exercise rather than copied onto its sets, so re-rating rewrites no
+  history. Edited inline on `/exercises`, and audited — which is why the
+  migrations that added and later reshaped it rebuilt the `exercises` triggers.
+- There is **no mobility flag on an exercise** (plan 0013). Whether a movement
+  is mobility work depends on the objective that day, so it lives on the set;
+  `rating` stays here precisely because it is an opinion about the movement and
+  not about one performance of it.
 
 ### PWA Features
 - Offline support with service worker (Workbox)

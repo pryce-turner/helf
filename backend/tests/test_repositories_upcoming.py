@@ -121,7 +121,13 @@ def test_get_by_exercise_excludes_mobility_by_default():
     assert repo.get_by_exercise("Good Morning") == []
 
 
-def test_creating_a_mobility_row_flags_a_new_exercise(db_session):
+def test_a_mobility_row_records_nothing_on_the_exercise(db_session):
+    """Planning a movement as mobility work says nothing about the movement.
+
+    The kind lives on the planned row and becomes `workouts.is_mobility` at
+    transfer. The same good morning can be prescribed as a loaded stretch this
+    week and pulled heavy the next, and one exercise row serves both.
+    """
     from app.db.models import Exercise
 
     UpcomingWorkoutRepository().create(
@@ -133,19 +139,4 @@ def test_creating_a_mobility_row_flags_a_new_exercise(db_session):
     exercise = (
         db_session.query(Exercise).filter(Exercise.name == "Copenhagen Raise").one()
     )
-    assert exercise.is_mobility is True
-
-
-def test_creating_a_mobility_row_leaves_an_existing_flag_alone(db_session):
-    from app.db.models import Exercise
-
-    repo = UpcomingWorkoutRepository()
-    repo.create(UpcomingWorkoutCreate(session=1, exercise="Good Morning", category="Back"))
-    repo.create(
-        UpcomingWorkoutCreate(
-            session=1, kind="mobility", exercise="Good Morning", category="Back"
-        )
-    )
-
-    exercise = db_session.query(Exercise).filter(Exercise.name == "Good Morning").one()
-    assert exercise.is_mobility is False
+    assert not hasattr(exercise, "is_mobility")

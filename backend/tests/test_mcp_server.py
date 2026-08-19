@@ -383,15 +383,15 @@ def _run_session(mcp, date: str, comment: str | None = None) -> None:
         )
         session.execute(
             text(
-                "INSERT INTO exercises (name, category_id, is_mobility, use_count, "
-                "created_at) VALUES ('QL Raise', 1, 1, 0, '2026-08-07')"
+                "INSERT INTO exercises (name, category_id, use_count, "
+                "created_at) VALUES ('QL Raise', 1, 0, '2026-08-07')"
             )
         )
         session.execute(
             text(
                 'INSERT INTO workouts (date, exercise_id, category_id, reps, comment, '
-                '"order", created_at, updated_at) '
-                "VALUES (:d, 1, 1, 8, :c, 1, '2026-08-07', '2026-08-07')"
+                '"order", is_mobility, created_at, updated_at) '
+                "VALUES (:d, 1, 1, 8, :c, 1, 1, '2026-08-07', '2026-08-07')"
             ),
             {"d": date, "c": comment},
         )
@@ -410,8 +410,8 @@ def test_read_latest_says_so_when_nothing_has_been_logged(mcp):
 
     assert result["found"] is False
     # An agent told "no data" invents a first session from nothing; told where
-    # the pool is, it reads it.
-    assert "is_mobility" in result["hint"]
+    # the movements and their notes are, it reads them.
+    assert "exercises" in result["hint"] and "notes" in result["hint"]
 
 
 def test_read_latest_returns_the_sets_and_their_comments(mcp):
@@ -426,26 +426,60 @@ def test_read_latest_returns_the_sets_and_their_comments(mcp):
     assert result["sets"][0]["comment"] == "8 then 10, up to 35 next"
 
 
-def test_read_latest_ignores_a_lifting_day_that_borrows_a_mobility_movement(mcp):
-    """The day marker is a note, not `exercises.is_mobility`.
+def test_read_latest_ignores_the_same_movement_used_as_lifting(mcp):
+    """The same movement, two objectives — and only the set says which.
 
     A mobility routine borrows movements that are also lifting movements, so
-    "the last day containing a mobility exercise" finds lifting days too —
+    "the last day containing a mobility exercise" finds lifting days too:
     2026-06-25 in the real database is a pigeon squat logged beside a Romanian
-    deadlift. Only a transferred session writes the marker.
+    deadlift. The flag is on the set, so the later *unflagged* day is not a
+    mobility session even though it uses the very same exercise row.
     """
     _run_session(mcp, "2026-08-11")
     with database.SessionLocal() as session:
         session.execute(
             text(
                 'INSERT INTO workouts (date, exercise_id, category_id, reps, "order", '
-                "created_at, updated_at) "
-                "VALUES ('2026-08-12', 1, 1, 8, 1, '2026-08-07', '2026-08-07')"
+                "is_mobility, created_at, updated_at) "
+                "VALUES ('2026-08-12', 1, 1, 8, 1, 0, '2026-08-07', '2026-08-07')"
             )
         )
         session.commit()
 
     assert mcp.read_latest_mobility_session()["date"] == "2026-08-11"
+
+
+def test_read_latest_returns_only_the_mobility_sets_of_a_mixed_day(mcp):
+    """A mobility session run alongside lifting is one day, two sessions.
+
+    Returning the whole day would hand the agent a shoulder workout as the
+    thing to adjust. The real 2026-08-13 is exactly this shape: two sets of
+    rehab work opening a twelve-set shoulder day.
+    """
+    _run_session(mcp, "2026-08-11")
+    with database.SessionLocal() as session:
+        session.execute(
+            text("INSERT INTO categories (name, created_at) VALUES ('Push', '2026-08-07')")
+        )
+        session.execute(
+            text(
+                "INSERT INTO exercises (name, category_id, use_count, created_at) "
+                "VALUES ('Overhead Press', 2, 0, '2026-08-07')"
+            )
+        )
+        session.execute(
+            text(
+                'INSERT INTO workouts (date, exercise_id, category_id, reps, "order", '
+                "is_mobility, created_at, updated_at) "
+                "VALUES ('2026-08-11', 2, 2, 3, 2, 0, '2026-08-07', '2026-08-07')"
+            )
+        )
+        session.commit()
+
+    result = mcp.read_latest_mobility_session()
+
+    assert result["date"] == "2026-08-11"
+    assert [row["exercise"] for row in result["sets"]] == ["QL Raise"]
 
 
 def test_write_next_expands_sets_into_rows(mcp):
@@ -467,40 +501,22 @@ def test_write_next_expands_sets_into_rows(mcp):
     ]
 
 
-def test_write_next_flags_a_movement_it_invents(mcp):
+def test_write_next_records_nothing_about_mobility_on_the_exercise(mcp):
+    """Prescribing a movement says nothing about the movement itself.
+
+    It used to flag an invented exercise `is_mobility = 1`, which made the
+    pool grow by side effect and could not express the same movement being
+    used two ways. The intent rides on the planned row's `kind` and lands on
+    `workouts.is_mobility` at transfer.
+    """
     mcp.write_next_mobility_session(
         items=[{"exercise": "Jefferson Curl", "sets": 1, "reps": 5}],
         rationale="probing the range unloaded",
     )
 
-    rows = mcp.query(
-        "SELECT name, is_mobility FROM exercises WHERE name = 'Jefferson Curl'"
-    )["rows"]
-    assert rows == [{"name": "Jefferson Curl", "is_mobility": 1}]
-
-
-def test_write_next_leaves_an_existing_movements_flag_alone(mcp):
-    """`is_mobility` is the user's judgement, made on /exercises. Borrowing a
-    lifting movement for one session must not rewrite it."""
-    with database.SessionLocal() as session:
-        session.execute(
-            text("INSERT INTO categories (name, created_at) VALUES ('Back', '2026-08-07')")
-        )
-        session.execute(
-            text(
-                "INSERT INTO exercises (name, category_id, is_mobility, use_count, "
-                "created_at) VALUES ('Good Morning', 1, 0, 0, '2026-08-07')"
-            )
-        )
-        session.commit()
-
-    mcp.write_next_mobility_session(
-        items=[{"exercise": "good morning", "sets": 2, "reps": 8}],
-        rationale="soft knees, bar only",
-    )
-
-    rows = mcp.query("SELECT name, is_mobility FROM exercises")["rows"]
-    assert rows == [{"name": "Good Morning", "is_mobility": 0}]
+    columns = mcp.query("SELECT * FROM exercises WHERE name = 'Jefferson Curl'")
+    assert columns["rows"][0]["name"] == "Jefferson Curl"
+    assert "is_mobility" not in columns["rows"][0]
 
 
 def test_write_next_replaces_the_pending_session(mcp):
@@ -662,10 +678,13 @@ def test_read_pending_ignores_a_pending_lifting_session(mcp):
 # --------------------------------------------------------------------------
 @pytest.fixture()
 def movement(mcp):
-    """A movement in the mobility pool, with notes and a rating to supersede."""
-    mcp.write_next_mobility_session(
-        items=[{"exercise": "QL Raise", "reps": 8}], rationale="baseline"
-    )
+    """A movement that has been performed as mobility work, with notes to supersede.
+
+    It has to have been *run*, not merely prescribed: the tool gates on a
+    logged set with `is_mobility = 1`, there being no flag on the exercise to
+    gate on any more.
+    """
+    _run_session(mcp, "2026-08-11")
     with database.SessionLocal() as session:
         session.execute(
             text(
@@ -724,16 +743,16 @@ def test_update_movement_refuses_an_unknown_exercise(mcp, movement):
     assert mcp.update_mobility_movement(9999, rating=4)["ok"] is False
 
 
-def test_update_movement_refuses_a_movement_outside_the_pool(mcp, catalog):
-    """`is_mobility` is the user's judgement, made on /exercises. A tool that
-    could pull any movement into the pool by writing notes at it would be a
-    general exercise editor with a mobility-shaped name."""
+def test_update_movement_refuses_a_movement_never_used_that_way(mcp, catalog):
+    """A tool that could write notes at any movement would be a general
+    exercise editor with a mobility-shaped name. A movement joins the pool by
+    having been performed as mobility work — the judgement is in the log."""
     bench = mcp.query("SELECT id FROM exercises WHERE name = 'Bench Press'")["rows"][0]
 
     result = mcp.update_mobility_movement(bench["id"], rating=5)
 
     assert result["ok"] is False
-    assert "not a mobility movement" in result["error"]
+    assert "never been logged as mobility work" in result["error"]
     assert mcp.query("SELECT rating FROM exercises WHERE name = 'Bench Press'")[
         "rows"
     ] == [{"rating": None}]

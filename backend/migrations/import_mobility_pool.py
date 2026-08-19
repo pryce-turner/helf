@@ -1,9 +1,16 @@
 """One-shot import of a mobility Overview.md into `exercises`.
 
+**Superseded by plan 0013 (2026-08-19), and it will not run as written.**
+`exercises.is_mobility` was dropped by `d7e4f2a91b83`: mobility is a property
+of the *set*, because a movement is mobility work or not depending on the
+objective that day. The two assignments below name that column and would fail.
+Kept as the record of how the movement notes arrived. If the pool is ever
+re-imported, import `notes` and `rating` and leave the mobility judgement to
+the sets that use the movement.
+
 Plan 0012 §1 moved the mobility reference layer into helf. This is the move:
 each `### Movement` block in the Obsidian note becomes one `exercises` row with
-`is_mobility = 1`, its markdown body in `notes`, and its Enjoyment stars in
-`rating`.
+its markdown body in `notes` and its Enjoyment stars in `rating`.
 
 **A script, not a migration.** The tests run the real migrations against a
 temporary database (`conftest` does `upgrade head`), so a migration carrying

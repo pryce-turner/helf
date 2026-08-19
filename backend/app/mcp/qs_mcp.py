@@ -553,46 +553,62 @@ def read_latest_mobility_session() -> dict:
     said about it. Call this **before** write_next_mobility_session — it is the
     entire input to the next prescription.
 
-    Returns the day's sets in performed order with their `comment` fields. The
+    The session is **the mobility-flagged sets of the most recent day that has
+    any**. `workouts.is_mobility` is per set, not per movement: the same
+    exercise is a lift in one row and a loaded stretch in another, so a
+    mobility session run alongside lifting comes back as its own sets rather
+    than as the whole day. Sets the user did not flag are not part of it.
+
+    Returns those sets in performed order with their `comment` fields. The
     comments are the user's feedback and the only feedback channel there is, so
     read every one: some describe the movement they hang off ("failed right
     side at 7"), and some are about the program as a whole ("keep this to 7
-    movements max") and are attached to whichever set was on screen at the time.
+    movements max") and are attached to whichever set was on screen at the
+    time. That last case is the cost of returning the subset — a program-level
+    remark left on a lifting set is not here, so `query` the day if a session
+    reads as though feedback is missing.
 
     `rationale` is what the previous session was written to achieve, so you can
-    tell an instruction that worked from one that was never tried.
+    tell an instruction that worked from one that was never tried. It is null
+    for a session the user assembled by hand, because nothing prescribed it.
     """
     conn = _ro()
     try:
-        note = conn.execute(
-            "SELECT date, body FROM note WHERE kind = ? "
-            "ORDER BY noted_at DESC LIMIT 1",
-            (SESSION_KIND,),
+        day = conn.execute(
+            "SELECT date FROM workouts WHERE is_mobility = 1 "
+            "ORDER BY date DESC LIMIT 1"
         ).fetchone()
-        if note is None:
+        if day is None:
             return {
                 "ok": True,
                 "found": False,
-                "hint": "No mobility session has been logged yet. The pool of "
-                        "movements and their notes is in `exercises` where "
-                        "is_mobility = 1; read those before writing a first "
-                        "session.",
+                "hint": "No mobility set has been logged yet. Movements and "
+                        "their notes are in `exercises`; a movement is not "
+                        "mobility work in itself, so read the notes and pick "
+                        "for the objective when writing a first session.",
             }
 
+        date = day["date"]
         sets = conn.execute(
             """SELECT e.name AS exercise, w.weight, w.reps, w.time, w.comment,
                       w."order", w.completed_at IS NOT NULL AS completed
                FROM workouts w JOIN exercises e ON e.id = w.exercise_id
-               WHERE w.date = ?
+               WHERE w.date = ? AND w.is_mobility = 1
                ORDER BY w."order", w.id""",
-            (note["date"],),
+            (date,),
         ).fetchall()
+
+        note = conn.execute(
+            "SELECT body FROM note WHERE kind = ? AND date = ? "
+            "ORDER BY noted_at DESC, id DESC LIMIT 1",
+            (SESSION_KIND, date),
+        ).fetchone()
 
         return {
             "ok": True,
             "found": True,
-            "date": note["date"],
-            "rationale": note["body"],
+            "date": date,
+            "rationale": (note["body"] or None) if note else None,
             "sets": [dict(r) for r in sets],
         }
     finally:
@@ -691,13 +707,6 @@ def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
             )
             if was_created:
                 created.append(item["exercise"])
-                # A movement invented by a mobility prescription is mobility
-                # work by construction. An exercise that already existed is
-                # left alone - the flag is the user's judgement, on /exercises.
-                conn.execute(
-                    "UPDATE exercises SET is_mobility = 1 WHERE id = ?",
-                    (exercise_id,),
-                )
 
             for _ in range(int(item.get("sets") or 1)):
                 written.append(
@@ -755,10 +764,13 @@ def update_mobility_movement(
     "frustrating" are not "disliked", and inferring it from performance
     destroys the one thing the column is for.
 
-    Omit a field to leave it alone. Restricted to movements already flagged
-    `is_mobility`: this is the mobility loop's tool, not an exercise editor,
-    and the flag is the user's judgement made on /exercises. Returns the
-    previous values so you can see what you superseded.
+    Omit a field to leave it alone. Restricted to movements that have actually
+    been performed as mobility work — at least one logged set with
+    `is_mobility = 1`. This is the mobility loop's tool, not an exercise
+    editor, and since d7e4f2a91b83 there is no flag on the exercise to gate on:
+    a movement earns its place in the pool by having been used that way, which
+    is the user's judgement expressed in the log rather than in a checkbox.
+    Returns the previous values so you can see what you superseded.
     """
     if notes is None and rating is None:
         return {"ok": False, "error": "provide notes or rating"}
@@ -779,17 +791,23 @@ def update_mobility_movement(
 
     with _rw() as conn:
         found = conn.execute(
-            "SELECT name, notes, rating, is_mobility FROM exercises WHERE id = ?",
+            """SELECT e.name, e.notes, e.rating,
+                      EXISTS (SELECT 1 FROM workouts w
+                              WHERE w.exercise_id = e.id AND w.is_mobility = 1)
+                          AS used_as_mobility
+               FROM exercises e WHERE e.id = ?""",
             (exercise_id,),
         ).fetchone()
         if found is None:
             return {"ok": False, "error": f"no exercise with id {exercise_id}"}
-        if not found["is_mobility"]:
+        if not found["used_as_mobility"]:
             return {
                 "ok": False,
-                "error": f"'{found['name']}' is not a mobility movement",
-                "hint": "This tool edits the mobility pool only. Adding a "
-                        "movement to it is the user's call, on /exercises.",
+                "error": f"'{found['name']}' has never been logged as mobility work",
+                "hint": "This tool edits movements the mobility loop actually "
+                        "uses. A movement joins that set by being performed as "
+                        "mobility work - prescribe it, or the user flags the "
+                        "set on the day view.",
             }
 
         # Column names come from this fixed mapping and never from the caller,
@@ -840,7 +858,7 @@ WRITE_TOOLS = (add_metric, add_note, log_food, log_workout)
 #
 # Both are scoped as narrowly as the idea allows. Between them they write
 # planned rows for one session, its rationale, and the `notes`/`rating` of a
-# movement already flagged `is_mobility`. Neither can log a workout, record a
+# movement already performed as mobility work. Neither can log a workout, record a
 # measurement, add a movement to the pool, or touch anything already in the
 # calendar. ADR-0004's real claim — that the *connection* is the privilege
 # boundary — is untouched: `query` is still `mode=ro`, so no amount of talking

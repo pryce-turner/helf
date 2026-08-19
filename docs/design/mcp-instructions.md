@@ -79,15 +79,26 @@ in both modes.
    there.** Writing replaces it wholesale, so a new routine written now
    discards one the user has not had the chance to run. Report what is waiting
    instead.
-2. `read_latest_mobility_session()` — the sets as performed and every comment on
-   them. **The comments are the entire feedback channel.** Read all of them
-   before changing anything.
-3. Read the movement's entry in `exercises` (`SELECT name, notes, rating,
-   is_mobility FROM exercises WHERE is_mobility = 1`). `notes` holds how to
-   perform it and an **Application** section whose *Reads* are written as
-   symptom → likely cause → what to change. That is the layer that turns a
-   comment into a programming decision; use it rather than reasoning from the
-   movement name.
+2. `read_latest_mobility_session()` — the mobility sets as performed and every
+   comment on them. **The comments are the entire feedback channel.** Read all
+   of them before changing anything.
+
+   **What comes back is the flagged sets of the last day that has any**, not
+   the whole day. `workouts.is_mobility` is per set: the same movement is a
+   lift in one row and a loaded stretch in another, so a mobility session run
+   alongside lifting is its own session. The cost is that a program-level
+   remark left on a lifting set is not in the result — `query` the whole day
+   if a session reads as though feedback is missing.
+3. Read the movement's entry in `exercises` (`SELECT id, name, notes, rating
+   FROM exercises`). `notes` holds how to perform it and an **Application**
+   section whose *Reads* are written as symptom → likely cause → what to
+   change. That is the layer that turns a comment into a programming decision;
+   use it rather than reasoning from the movement name.
+
+   There is no mobility flag on the exercise and no pool table. Whether a
+   movement suits an objective is a judgement you make from its notes, not a
+   membership you can look up — which is the point: prescribing a good morning
+   as a loaded stretch does not make it stop being a lifting movement.
 4. `write_next_mobility_session(items, rationale)`.
 5. `update_mobility_movement(exercise_id, notes=…, rating=…)` when a session
    teaches you something durable about a movement. `notes` is **current state,

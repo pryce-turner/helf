@@ -19,6 +19,11 @@ class WorkoutBase(BaseModel):
     time: str | None = None
     comment: str | None = None
     completed_at: datetime | None = None
+    # Whether *this set* was mobility work. A property of the performance, not
+    # of the movement: the same exercise is a lift one day and a loaded stretch
+    # the next. A mobility day is derived from these (d7e4f2a91b83), which is
+    # what the agent reads to write the next session.
+    is_mobility: bool = False
 
 
 class WorkoutCreate(WorkoutBase):

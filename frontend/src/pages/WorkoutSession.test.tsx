@@ -1,13 +1,15 @@
 /**
- * The day view's one assertion about the session rather than about a set in it:
- * whether the day was a mobility day.
+ * The day view's per-set mobility flag.
  *
- * Worth mounting because nothing else can answer it. The rows cannot — a
- * mobility routine borrows movements that are also lifting movements — so the
- * checkbox is the fact, and what the agent reads back over MCP to write the
- * next session from. The two rules that are easy to lose in a refactor are the
- * ones asserted here: an empty day cannot be marked, and a day already marked
- * stays togglable so a mistake can be undone.
+ * Worth mounting because nothing else can answer what it answers. The movement
+ * cannot — a good morning is a loaded hinge in one session and a loaded
+ * stretch in the next — and neither can the day, because a mobility routine
+ * run alongside lifting is one day and two sessions. The flag is on the set,
+ * and the most recent day carrying one is what the agent reads back over MCP
+ * to write the next session from.
+ *
+ * The rule easiest to lose in a refactor is the one asserted last: a PUT that
+ * only meant to change something else must not clear the flag on its way past.
  */
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -17,7 +19,6 @@ import WorkoutSession from "./WorkoutSession";
 import {
     categoriesApi,
     exercisesApi,
-    mobilityApi,
     progressionApi,
     workoutsApi,
 } from "@/lib/api";
@@ -58,18 +59,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
             getByExercise: vi.fn(),
             getExerciseList: vi.fn(),
         },
-        mobilityApi: {
-            getPending: vi.fn(),
-            transfer: vi.fn(),
-            clearPending: vi.fn(),
-            getDay: vi.fn(),
-            setDay: vi.fn(),
-        },
     };
 });
 
 const workouts = vi.mocked(workoutsApi);
-const mobility = vi.mocked(mobilityApi);
 
 const DATE = "2026-08-11";
 
@@ -87,21 +80,16 @@ const set = (overrides: Record<string, unknown> = {}) => ({
     comment: null,
     order: 1,
     completed_at: null,
-    created_at: `${DATE}T09:00:00`,
-    ...overrides,
-});
-
-const day = (overrides: Record<string, unknown> = {}) => ({
-    date: DATE,
     is_mobility: false,
-    rationale: null,
+    created_at: `${DATE}T09:00:00`,
+    updated_at: `${DATE}T09:00:00`,
     ...overrides,
 });
 
 const renderDay = () =>
     renderPage(<WorkoutSession />, `/day/${DATE}`, "/day/:date");
 
-const checkbox = () => screen.getByRole("checkbox", { name: /mobility session/i });
+const toggle = () => screen.getByRole("checkbox", { name: /mobility work/i });
 
 /** A promise the test settles by hand, to look at the page mid-flight. */
 const deferred = <T,>() => {
@@ -121,105 +109,121 @@ beforeEach(() => {
     vi.mocked(exercisesApi).getAll.mockResolvedValue({ data: [] } as never);
     vi.mocked(exercisesApi).getRecent.mockResolvedValue({ data: [] } as never);
     vi.mocked(categoriesApi).getAll.mockResolvedValue({ data: [] } as never);
-    mobility.getDay.mockResolvedValue({ data: day() } as never);
+    vi.mocked(progressionApi).getByExercise.mockResolvedValue({
+        data: { exercise: "", data_points: [] },
+    } as never);
     // A write moves what a read returns. Without that the toggle settles back
-    // to the stale stub, and every assertion after a click is about the mock.
-    mobility.setDay.mockImplementation((async (date: string, isMobility: boolean) => {
-        const written = day({ date, is_mobility: isMobility });
-        mobility.getDay.mockResolvedValue({ data: written } as never);
+    // to its old value the moment the query refetches, and every assertion
+    // about persistence passes for the wrong reason.
+    workouts.update.mockImplementation((async (id: number, body: Record<string, unknown>) => {
+        const written = set({ doc_id: id, ...body });
+        workouts.getAll.mockResolvedValue({ data: [written] } as never);
         return { data: written };
     }) as never);
-    mobility.getPending.mockResolvedValue({
-        data: { ready: false, items: [], rationale: null, generated_at: null, last_session: null },
-    } as never);
-    vi.mocked(progressionApi).getByExercise.mockResolvedValue({
-        data: { exercise: "", historical: [], projected: [] },
-    } as never);
 });
 
-it("marks the day as a mobility session", async () => {
-    const user = userEvent.setup();
+it("shows a set as not mobility work until it is marked", async () => {
     renderDay();
 
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "false"));
-    await user.click(checkbox());
-
-    expect(mobility.setDay).toHaveBeenCalledWith(DATE, true);
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "true"));
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "false"));
 });
 
-it("registers the tap before the server answers", async () => {
-    const user = userEvent.setup();
-    const write = deferred<{ data: ReturnType<typeof day> }>();
-    mobility.setDay.mockReturnValue(write.promise as never);
+it("marks a set as mobility work", async () => {
     renderDay();
+    await waitFor(() => expect(toggle()).toBeInTheDocument());
 
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "false"));
-    await user.click(checkbox());
+    await userEvent.click(toggle());
 
-    // Still in flight. A checkbox that waits for the round trip reads as one
-    // that did not register the tap, and gets tapped again.
-    expect(checkbox()).toHaveAttribute("aria-checked", "true");
-    write.resolve({ data: day({ is_mobility: true }) });
-});
-
-it("unmarks a day that is already marked", async () => {
-    const user = userEvent.setup();
-    mobility.getDay.mockResolvedValue({ data: day({ is_mobility: true }) } as never);
-    renderDay();
-
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "true"));
-    await user.click(checkbox());
-
-    expect(mobility.setDay).toHaveBeenCalledWith(DATE, false);
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "false"));
-});
-
-it("will not mark a day with nothing logged", async () => {
-    workouts.getAll.mockResolvedValue({ data: [] } as never);
-    renderDay();
-
-    // Marking one would hand the agent an empty day as its most recent input.
-    await waitFor(() => expect(checkbox()).toBeDisabled());
-});
-
-it("still lets a marked day be unmarked after its sets are gone", async () => {
-    const user = userEvent.setup();
-    workouts.getAll.mockResolvedValue({ data: [] } as never);
-    mobility.getDay.mockResolvedValue({ data: day({ is_mobility: true }) } as never);
-    renderDay();
-
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "true"));
-    expect(checkbox()).toBeEnabled();
-
-    await user.click(checkbox());
-    expect(mobility.setDay).toHaveBeenCalledWith(DATE, false);
-});
-
-it("warns before discarding reasoning the agent wrote", async () => {
-    mobility.getDay.mockResolvedValue({
-        data: day({ is_mobility: true, rationale: "Pigeon leads, right side first." }),
-    } as never);
-    renderDay();
-
-    // The marker and the rationale are one row, so unchecking deletes both.
     await waitFor(() =>
-        expect(screen.getByText(/unchecking discards its reasoning/i)).toBeInTheDocument(),
+        expect(workouts.update).toHaveBeenCalledWith(
+            1,
+            expect.objectContaining({ is_mobility: true }),
+        ),
+    );
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "true"));
+});
+
+it("unmarks a set that was marked", async () => {
+    workouts.getAll.mockResolvedValue({ data: [set({ is_mobility: true })] } as never);
+    renderDay();
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "true"));
+
+    await userEvent.click(toggle());
+
+    await waitFor(() =>
+        expect(workouts.update).toHaveBeenCalledWith(
+            1,
+            expect.objectContaining({ is_mobility: false }),
+        ),
     );
 });
 
-it("reverts the checkbox when the write fails", async () => {
-    const user = userEvent.setup();
-    const write = deferred<{ data: ReturnType<typeof day> }>();
-    mobility.setDay.mockReturnValue(write.promise as never);
+it("sends the rest of the set unchanged, so the flag is the only edit", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ comment: "right side failed at 4", reps: 4 })],
+    } as never);
     renderDay();
+    await waitFor(() => expect(toggle()).toBeInTheDocument());
 
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "false"));
-    await user.click(checkbox());
-    expect(checkbox()).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(toggle());
 
-    // The day is the agent's input, so a box left checked over a write that
-    // never landed is worse than one that never moved.
+    await waitFor(() =>
+        expect(workouts.update).toHaveBeenCalledWith(
+            1,
+            expect.objectContaining({
+                is_mobility: true,
+                comment: "right side failed at 4",
+                reps: 4,
+                exercise: "Weighted Pigeon Squat",
+            }),
+        ),
+    );
+});
+
+it("flags one set of a mixed day without touching the others", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [
+            set({ doc_id: 1, exercise: "Lock 3", order: 1 }),
+            set({ doc_id: 2, exercise: "Overhead Press", order: 2 }),
+        ],
+    } as never);
+    renderDay();
+    await waitFor(() =>
+        expect(screen.getAllByRole("checkbox", { name: /mobility work/i })).toHaveLength(2),
+    );
+
+    await userEvent.click(screen.getAllByRole("checkbox", { name: /mobility work/i })[0]);
+
+    await waitFor(() => expect(workouts.update).toHaveBeenCalledTimes(1));
+    expect(workouts.update).toHaveBeenCalledWith(1, expect.objectContaining({ is_mobility: true }));
+});
+
+it("shows the new state while the write is still in flight", async () => {
+    const write = deferred<{ data: unknown }>();
+    workouts.update.mockReturnValue(write.promise as never);
+    renderDay();
+    await waitFor(() => expect(toggle()).toBeInTheDocument());
+
+    await userEvent.click(toggle());
+
+    // Optimistic: a toggle that waits for the server reads as one that did not
+    // register the tap.
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "true"));
+    write.resolve({ data: set({ is_mobility: true }) });
+});
+
+it("rolls back when the write fails, rather than showing a flag that was never saved", async () => {
+    const write = deferred<{ data: unknown }>();
+    workouts.update.mockReturnValue(write.promise as never);
+    renderDay();
+    await waitFor(() => expect(toggle()).toBeInTheDocument());
+
+    await userEvent.click(toggle());
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "true"));
+
     write.reject(new Error("offline"));
-    await waitFor(() => expect(checkbox()).toHaveAttribute("aria-checked", "false"));
+
+    // The flag decides which day the agent reads back, so a false positive
+    // here sends the next prescription off a session that never happened.
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "false"));
 });

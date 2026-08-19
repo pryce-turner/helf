@@ -35,7 +35,6 @@ class ExerciseCreate(ExerciseBase):
     # Bounded here *and* by a CHECK: the agent writes raw SQL and never passes
     # through Pydantic (ADR-0002), so the constraint is the rule both obey.
     rating: int | None = Field(None, ge=1, le=5)
-    is_mobility: bool = False
 
 
 class ExerciseUpdate(BaseModel):
@@ -50,7 +49,6 @@ class ExerciseUpdate(BaseModel):
     category: str | None = None
     notes: str | None = None
     rating: int | None = Field(None, ge=1, le=5)
-    is_mobility: bool | None = None
 
 
 class Exercise(ExerciseBase):
@@ -58,7 +56,6 @@ class Exercise(ExerciseBase):
     id: int = Field(..., alias="doc_id")
     notes: str | None = None
     rating: int | None = None
-    is_mobility: bool = False
     last_used: str | None = None
     use_count: int = 0
     created_at: datetime

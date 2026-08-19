@@ -20,7 +20,6 @@ class ExerciseRepository:
             "category": exercise.category.name if exercise.category else None,
             "notes": exercise.notes,
             "rating": exercise.rating,
-            "is_mobility": bool(exercise.is_mobility),
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
             "created_at": exercise.created_at,
@@ -90,7 +89,6 @@ class ExerciseRepository:
                 category_id=category.id,
                 notes=exercise.notes,
                 rating=exercise.rating,
-                is_mobility=exercise.is_mobility,
                 last_used=None,
                 use_count=0,
                 created_at=now,
@@ -149,8 +147,6 @@ class ExerciseRepository:
             # what the client actually sent.
             if "rating" in data.model_fields_set:
                 exercise.rating = data.rating
-            if data.is_mobility is not None:
-                exercise.is_mobility = data.is_mobility
 
             session.commit()
             session.refresh(exercise)

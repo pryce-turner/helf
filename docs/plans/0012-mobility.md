@@ -102,6 +102,15 @@ transfer, at the moment a prescribed session acquires a date. **Amended
 2026-08-15**: transfer is not the only such moment, because not every session
 comes from the planner. See §10.
 
+> **Superseded 2026-08-19 by [plan 0013](0013-mobility-belongs-to-the-set.md).**
+> The premise above is wrong, and this section is kept only as the record of
+> why. "The last day containing a mobility exercise finds lifting days too" is
+> not a reason the rows cannot answer the question — it is the flag being on
+> the movement instead of on the set. `workouts.is_mobility` says which sets
+> were mobility work, the day is derived from them, and no marker is needed at
+> all. Nothing in the current system reads a `mobility_session` note to decide
+> whether a day happened.
+
 **Why this session looks the way it does.** The agent's reasoning is the
 substance of the feature; without it the tab is a list of stretches.
 
@@ -264,7 +273,17 @@ a mobility day, so `read_latest_mobility_session()` will never return it.
 Verification: 9,292 → 9,357 workout rows, 4 `mobility_session` notes, a re-run
 is a clean no-op. Backup `data/helf.db.pre-mobility-backfill.bak`.
 
-## 10. Marking a day by hand (2026-08-15)
+## 10. Marking a day by hand (2026-08-15) — superseded
+
+> **Superseded 2026-08-19 by [plan 0013](0013-mobility-belongs-to-the-set.md),
+> migration `d7e4f2a91b83`.** The day-level marker, its two endpoints
+> (`GET`/`PUT /api/mobility/day/{date}`) and the `Mobility session` checkbox
+> are all gone. Mobility is a property of the set now, and a mobility day is
+> derived from the sets rather than asserted beside them. This section stands
+> as the record of a design that worked and was still wrong — in particular
+> the third bullet below, which apologises for the marker and the rationale
+> sharing a row, is the tell that the marker was in the wrong place.
+> **Do not build on anything in this section.**
 
 §3 said only transfer knows a day is a mobility day. That was true of sessions
 the planner produced and false of every other kind, and the gap has a cost that

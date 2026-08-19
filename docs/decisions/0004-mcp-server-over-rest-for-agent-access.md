@@ -75,9 +75,17 @@ agent tool.
   same argument, applied to step 4 of the loop. The instructions told the agent
   to write down what a session taught it about a movement, and no tool existed
   to do it, so the one step that compounds was the one step no client could
-  perform. It is scoped to `notes` and `rating` on a movement already flagged
-  `is_mobility`; it cannot add a movement to the pool, and the flag stays the
-  user's judgement made on /exercises.
+  perform. It is scoped to `notes` and `rating` on a movement already
+  performed as mobility work — at least one logged set with
+  `is_mobility = 1`. It cannot invent that history, so a movement joins the
+  loop's reach by being used that way: the user's judgement, expressed in
+  the log rather than in a checkbox.
+
+  **Amended 2026-08-19.** That gate used to read `exercises.is_mobility`.
+  The flag moved to the set (plan 0013) because whether a movement is
+  mobility work depends on the objective that day, and an exercise row
+  cannot hold both answers. The scope is unchanged in substance: still not
+  a general exercise editor.
 
   **This ADR's actual claim is unchanged**: the privilege boundary is the
   *connection*, not the tool name. `query` is opened `mode=ro` in either mode,

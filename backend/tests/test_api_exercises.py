@@ -27,20 +27,22 @@ def test_exercise_not_found_returns_404(client):
     assert response.status_code == 404
 
 
-def test_rating_and_mobility_round_trip_over_http(client):
+def test_rating_round_trips_over_http(client):
     created = client.post(
         "/api/exercises/", json={"name": "Hip Airplane", "category": "Legs"}
     ).json()
     assert created["rating"] is None
-    assert created["is_mobility"] is False
+    # Mobility is a property of the set (d7e4f2a91b83), so the exercise
+    # contract says nothing about it in either direction.
+    assert "is_mobility" not in created
 
     rated = client.put(
         f"/api/exercises/{created['doc_id']}",
-        json={"rating": 4, "is_mobility": True},
+        json={"rating": 4},
     )
     assert rated.status_code == 200
     assert rated.json()["rating"] == 4
-    assert rated.json()["is_mobility"] is True
+    assert "is_mobility" not in rated.json()
 
 
 def test_explicit_null_rating_clears_it_over_http(client):

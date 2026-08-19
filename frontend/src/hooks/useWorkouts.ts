@@ -54,6 +54,7 @@ export function useCreateWorkout() {
 
             const optimisticWorkout: Workout = {
                 doc_id: -Date.now(),
+                is_mobility: newWorkout.is_mobility ?? false,
                 date: newWorkout.date,
                 exercise: newWorkout.exercise,
                 category: newWorkout.category,

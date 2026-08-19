@@ -475,15 +475,6 @@ const Exercises = () => {
                                       }}
                                     >
                                       {exercise.name}
-                                      {/* Reads at a glance in the list; the
-                                          checkbox that sets it is beside the
-                                          rating, with the other controls. */}
-                                      {exercise.is_mobility && (
-                                        <span className="mobility-badge">
-                                          <Check style={{ width: '11px', height: '11px' }} />
-                                          Mobility
-                                        </span>
-                                      )}
                                     </h3>
                                     {exercise.notes && (
                                       <div
@@ -519,10 +510,14 @@ const Exercises = () => {
                                   </div>
                                 </div>
                                 <div className="exercise-row__actions flex items-center flex-wrap" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
-                                  {/* Rating and mobility save on the spot.
-                                      They are one click each, and putting them
-                                      behind Edit/Save would make judging a
-                                      movement a three-step transaction. */}
+                                  {/* The rating saves on the spot: one
+                                      click, where putting it behind Edit/Save
+                                      would make judging a movement a
+                                      three-step transaction. There is no
+                                      mobility toggle here — whether a movement
+                                      is mobility work depends on the objective
+                                      that day, so it is set per set on the day
+                                      view. */}
                                   <StarRating
                                     name={exercise.name}
                                     value={exercise.rating}
@@ -534,23 +529,6 @@ const Exercises = () => {
                                       })
                                     }
                                   />
-                                  <label
-                                    className="mobility-toggle"
-                                    title="Also a mobility movement"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      className="checkbox"
-                                      checked={exercise.is_mobility}
-                                      onChange={(e) =>
-                                        updateExercise.mutate({
-                                          id: exercise.doc_id,
-                                          data: { is_mobility: e.target.checked },
-                                        })
-                                      }
-                                    />
-                                    Mobility
-                                  </label>
                                   <Button
                                     variant="secondary"
                                     size="sm"

@@ -64,15 +64,6 @@ class Exercise(Base):
         ),
         nullable=True,
     )
-    # A flag, not a category. `category_id` says which part of the body a
-    # movement trains and there is exactly one; "is also mobility" cuts across
-    # that — a hip airplane is Legs and mobility both.
-    is_mobility: Mapped[bool] = mapped_column(
-        Boolean,
-        CheckConstraint("is_mobility IN (0, 1)", name="ck_exercises_is_mobility"),
-        nullable=False,
-        server_default="0",
-    )
     last_used: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -85,7 +76,19 @@ class Exercise(Base):
 
 
 class Workout(Base):
-    """Historical workout entry."""
+    """Historical workout entry — one logged set.
+
+    `is_mobility` lives here rather than on `Exercise` because it is a fact
+    about *this performance*, not about the movement: a good morning is a
+    loaded hinge in one session and a loaded stretch in the next, and an
+    exercise row cannot hold both answers. It is also what makes a mobility
+    *day* derivable — a mobility day is a day with mobility sets — which
+    retired the `note`-row marker that used to assert it (d7e4f2a91b83).
+
+    Contrast `Exercise.rating`, which stays on the movement: that is an
+    opinion about the exercise, so re-rating rewrites no history. This is not
+    an opinion, so it is copied onto the set the way `weight` and `reps` are.
+    """
 
     __tablename__ = "workouts"
     __table_args__ = (Index("ix_workouts_date_order", "date", "order"),)
@@ -108,6 +111,12 @@ class Workout(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_mobility: Mapped[bool] = mapped_column(
+        Boolean,
+        CheckConstraint("is_mobility IN (0, 1)", name="ck_workouts_is_mobility"),
+        nullable=False,
+        server_default="0",
+    )
 
     exercise: Mapped[Exercise] = relationship("Exercise", back_populates="workouts")
     category: Mapped[Category] = relationship("Category", back_populates="workouts")

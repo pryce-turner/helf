@@ -44,17 +44,17 @@ class MobilityService:
         }
 
     def transfer(self, date: str) -> dict:
-        """Copy the pending session onto `date`, and mark that day as mobility.
+        """Copy the pending session onto `date` as mobility sets.
 
-        The order matters. Workout rows are appended **after** anything already
-        logged that day, because a mobility session run alongside lifting is
-        still one day's work and the existing `order` values are what put it in
-        sequence.
+        Workout rows are appended **after** anything already logged that day,
+        because a mobility session run alongside lifting is still one day's
+        work and the existing `order` values are what put it in sequence.
 
-        The note is promoted last. Until it is, the day is not a mobility day
-        as far as the read path is concerned, so a failure part-way through
-        leaves sets that look like ordinary training rather than a session the
-        agent will read back as complete.
+        Each row is written with `is_mobility = True`, which is what makes the
+        day findable afterwards. That used to be a separate marker written
+        after the sets, so a failure part-way through left sets that looked
+        like ordinary training; now the flag arrives with the row it describes
+        and a partial transfer is simply a partial session.
         """
         items = self.upcoming_repo.get_by_session(MOBILITY_SESSION, kind=MOBILITY)
         if not items:
@@ -80,6 +80,7 @@ class MobilityService:
                     # cue is written to be replaced, not preserved.
                     comment=item.get("comment"),
                     order=start_order + offset,
+                    is_mobility=True,
                 )
             )
 
@@ -95,34 +96,3 @@ class MobilityService:
     def clear_pending(self) -> int:
         """Discard the pending session without running it."""
         return self.upcoming_repo.delete_session(MOBILITY_SESSION, kind=MOBILITY)
-
-    def get_day(self, date: str) -> dict:
-        """Whether one day is marked as a mobility day, and why if it is."""
-        note = self.mobility_repo.get_session_note(date)
-        return {
-            "date": date,
-            "is_mobility": note is not None,
-            # Empty means the day was marked by hand rather than transferred,
-            # which is a different fact from "no rationale was recorded" only
-            # in principle: either way nothing was prescribed for it.
-            "rationale": (note["body"] or None) if note else None,
-        }
-
-    def set_day(self, date: str, is_mobility: bool) -> dict:
-        """Mark or unmark `date` as a mobility day.
-
-        The second way a day acquires the marker that `transfer` writes. It
-        exists because the agent reads the *last marked day* to write the next
-        session from, and a session run without going through the planner -
-        built by hand, or run before the loop existed - is otherwise invisible
-        to it while still being the most recent thing that happened.
-
-        Idempotent in both directions so the checkbox can be tapped twice
-        without the second tap meaning something different from the first.
-        """
-        if is_mobility:
-            self.mobility_repo.mark_session(date)
-        else:
-            self.mobility_repo.unmark_session(date)
-
-        return self.get_day(date)

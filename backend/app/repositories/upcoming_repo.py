@@ -65,25 +65,25 @@ class UpcomingWorkoutRepository:
         return category
 
     def _get_or_create_exercise(
-        self, session, name: str, category: Category, is_mobility: bool = False
+        self, session, name: str, category: Category
     ) -> Exercise:
+        """Resolve a movement by name, creating it if it is new.
+
+        Nothing about mobility is recorded here any more. A movement is not
+        mobility work or lifting work; the *set* is (d7e4f2a91b83), and the
+        planned row already knows which through `kind`. A good morning
+        prescribed as a loaded stretch and the same good morning pulled heavy
+        are one exercise row and two different sets.
+        """
         exercise = session.execute(
             select(Exercise).where(Exercise.name == name)
         ).scalar_one_or_none()
         if exercise:
-            # An existing exercise is never re-flagged. A good morning is a
-            # lifting movement that a mobility routine borrows, and setting
-            # `is_mobility` on it because it appeared in one session would
-            # rewrite a judgement the user made on /exercises.
             return exercise
 
         exercise = Exercise(
             name=name,
             category_id=category.id,
-            # A movement invented by a mobility prescription is mobility work by
-            # construction. Flagging it here is what keeps the pool complete
-            # without a second pass.
-            is_mobility=is_mobility,
             last_used=None,
             use_count=0,
             created_at=get_current_datetime(),
@@ -157,7 +157,7 @@ class UpcomingWorkoutRepository:
         with SessionLocal() as session:
             category = self._get_or_create_category(session, workout_dict["category"])
             exercise = self._get_or_create_exercise(
-                session, workout_dict["exercise"], category, is_mobility=kind == MOBILITY
+                session, workout_dict["exercise"], category
             )
 
             new_workout = UpcomingWorkout(
@@ -202,7 +202,7 @@ class UpcomingWorkoutRepository:
                 exercise = exercises_cache.get(exercise_name)
                 if not exercise:
                     exercise = self._get_or_create_exercise(
-                        session, exercise_name, category, is_mobility=kind == MOBILITY
+                        session, exercise_name, category
                     )
                     exercises_cache[exercise_name] = exercise
 

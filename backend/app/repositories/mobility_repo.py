@@ -3,27 +3,27 @@
 `database.SessionLocal` is reached through the module deliberately - see the
 header of `food_repo.py`.
 
-**Why a `note` row is involved at all.** The prescription itself lives in
-`upcoming_workouts` with `kind = 'mobility'`, and the user's feedback lives in
-`workouts.comment` on the logged sets - neither needs anything here. Two facts
-have nowhere else to go:
+**Why a `note` row is involved at all.** The prescription lives in
+`upcoming_workouts` with `kind = 'mobility'`, the user's feedback lives in
+`workouts.comment`, and which sets were mobility work lives in
+`workouts.is_mobility`. One fact has nowhere else to go: **why this session
+looks the way it does.** The agent's reasoning - what changed since last time
+and what to watch for - is prose, dated, written by a model, which is precisely
+what `note` is for.
 
-1. **Which days were mobility days.** `exercises.is_mobility` cannot answer it.
-   A mobility routine borrows movements that are also lifting movements - the
-   good morning is in both - so "the last day containing a mobility exercise"
-   finds lifting days too, and 2026-06-25 is exactly that: a pigeon squat and a
-   calf raise logged beside a Romanian deadlift. Nothing about the rows says
-   it, so someone has to: transfer writes the marker for a session that came
-   from the agent, and the day view's checkbox writes it for one that did not.
-2. **Why this session looks the way it does.** The agent's reasoning - what
-   changed since last time and what to watch for - is the substance of the
-   feature. It is prose, dated, written by a model, which is precisely what
-   `note` is for.
+It used to carry a second fact. The same row asserted *that* a day was a
+mobility session, which meant unticking the day's checkbox deleted the
+reasoning along with the assertion, because the two shared a row. Since
+d7e4f2a91b83 the sets carry their own flag and the day is derived from them, so
+this note asserts nothing: delete it and the session is still a mobility
+session, with no recorded reason. That is the right failure - a missing
+rationale is a gap in the record, not a change to what happened.
 
-One row carries both, and it changes kind as it changes meaning: `mobility_plan`
-while the session is pending, `mobility_session` once it has been run, dated to
-the day it was run on. At most one plan note exists at a time, because there is
-one rolling routine.
+The kind still changes as the meaning does: `mobility_plan` while the session
+is pending, `mobility_session` once it has been run, dated to the day it was
+run on. At most one plan note exists at a time, because there is one rolling
+routine. A session the user assembled by hand has no note at all, and that is
+not an error - nothing prescribed it.
 """
 
 from sqlalchemy import select
@@ -34,7 +34,8 @@ from app.utils.date_helpers import format_timestamp, get_current_datetime
 
 #: Pending. At most one, replaced wholesale each time the agent writes.
 PLAN_KIND = "mobility_plan"
-#: Run. Dated to the day it was logged on; this is the day marker.
+#: Run. Dated to the day it was logged on. Not a marker - the sets say
+#: whether the day was mobility work; this only says why.
 SESSION_KIND = "mobility_session"
 
 #: Notes are dated by `substr(noted_at, 1, 10)`, so the time half only has to
@@ -91,17 +92,18 @@ class MobilityRepository:
             session.refresh(created)
             return self._serialize_note(created)
 
-    def promote_plan_note(self, date: str, fallback_body: str = "") -> dict:
+    def promote_plan_note(self, date: str) -> dict | None:
         """Turn the pending plan into the record of a session that was run.
 
         Called at transfer, which is the moment the session acquires a date.
         The note keeps its body and its id - it is the same reasoning, now
-        attached to the day it was actually applied on - and changes kind, so
-        that "was this a mobility day?" has an answer for every past day.
+        attached to the day it was actually applied on - and changes kind.
 
-        Writes a marker even when no rationale exists, because the marker is
-        what the read path keys on. A session transferred with no plan note is
-        a session the user built by hand, and it still happened.
+        Returns None when there was no plan note. It used to write an empty
+        stand-in row here, because the read path keyed on the row's existence
+        to decide whether the day happened. Nothing keys on it now - the sets
+        carry that - so an empty note would be a row asserting nothing, dated
+        to a day, waiting to be mistaken for a rationale.
         """
         with database.SessionLocal() as session:
             note = session.execute(
@@ -111,8 +113,7 @@ class MobilityRepository:
             ).scalars().first()
 
             if note is None:
-                note = Note(body=fallback_body, source="app", noted_at=f"{date}{NOON}")
-                session.add(note)
+                return None
 
             note.kind = SESSION_KIND
             note.noted_at = f"{date}{NOON}"
@@ -120,112 +121,55 @@ class MobilityRepository:
             session.refresh(note)
             return self._serialize_note(note)
 
-    def get_session_note(self, date: str) -> dict | None:
-        """The marker for one day, if that day was a mobility day.
-
-        There is no unique index behind this - `note` is deliberately unshaped
-        (Plan 0005 §1a) - so the newest wins if a day somehow carries two.
-        """
-        with database.SessionLocal() as session:
-            note = session.execute(
-                select(Note)
-                .where(Note.kind == SESSION_KIND, Note.date == date)
-                .order_by(Note.noted_at.desc(), Note.id.desc())
-            ).scalars().first()
-            return self._serialize_note(note) if note else None
-
-    def mark_session(self, date: str) -> dict:
-        """Mark `date` as a mobility day, without disturbing an existing marker.
-
-        The transfer path writes this marker automatically; this is the other
-        way in, for a session the user built by hand or one they ran before the
-        loop existed. It is what `read_latest_mobility_session` keys on, so a
-        day marked here is the day the agent writes the next session from.
-
-        **Idempotent, and it never rewrites the body.** A day already marked by
-        transfer carries the agent's reasoning in that body, and re-marking must
-        not blank it - the checkbox says *whether* the day was mobility, not
-        *why*, and the two facts live in one row (see the module docstring).
-
-        A hand-marked day gets an empty body rather than a stand-in sentence.
-        The agent reads that field as "what the previous session was written to
-        achieve"; a session nobody prescribed achieved nothing in particular,
-        and an invented rationale would be read as one that was tried.
-
-        The pending plan note is left alone. Marking a day the user already
-        logged says nothing about a session that is still waiting to be run -
-        discarding that is `DELETE /pending`, deliberately.
-        """
-        with database.SessionLocal() as session:
-            note = session.execute(
-                select(Note)
-                .where(Note.kind == SESSION_KIND, Note.date == date)
-                .order_by(Note.noted_at.desc(), Note.id.desc())
-            ).scalars().first()
-
-            if note is None:
-                note = Note(
-                    noted_at=f"{date}{NOON}",
-                    kind=SESSION_KIND,
-                    body="",
-                    source="app",
-                )
-                session.add(note)
-                session.commit()
-                session.refresh(note)
-
-            return self._serialize_note(note)
-
-    def unmark_session(self, date: str) -> int:
-        """Unmark `date`, and return how many markers were removed.
-
-        This destroys the agent's rationale for that session along with the
-        marker, because the two are one row. That is recoverable - `note`
-        deletes are captured by the audit triggers (Plan 0007), which is the
-        reason the old row can be read back - but it is not undoable from the
-        UI, so the caller should mean it.
-        """
-        with database.SessionLocal() as session:
-            notes = session.execute(
-                select(Note).where(Note.kind == SESSION_KIND, Note.date == date)
-            ).scalars().all()
-            for note in notes:
-                session.delete(note)
-            session.commit()
-            return len(notes)
-
     def get_latest_logged(self) -> dict | None:
         """The last mobility session that reached the calendar, with its sets.
 
-        Returns **every** set logged on that day, not only the ones whose
-        exercise is flagged as mobility. The day is the unit: if a movement was
-        performed during the session it is part of the session, and the flag is
-        a property of the movement rather than of that performance.
+        **The day is derived, not asserted.** The most recent date carrying any
+        set with `is_mobility = 1` is the last mobility session; there is no
+        marker to agree or disagree with the rows. A day the user assembled by
+        hand is found the same way as one the agent prescribed, which is what
+        the old marker needed a second writer to achieve.
+
+        Returns **only the mobility sets** of that day. A mobility session run
+        alongside lifting is one day's work in the calendar but not one
+        session's work here, and the flag is what separates them - the same
+        movement is a lift in one row and a loaded stretch in the next.
 
         Comments come back verbatim and unattributed beyond the set they hang
-        off. They are the whole feedback channel (Plan 0012 §4), and some of
-        them are about the program rather than the movement - "keep this to 7
-        movements max" was written against whichever set was on screen.
+        off. They are the whole feedback channel (Plan 0012 §4). Note the cost
+        of returning the mobility subset: a program-level remark left on a
+        lifting set that day is not visible here.
+
+        `rationale` is None when nothing prescribed the session - a day flagged
+        by hand has sets but no note, and inventing prose for it would read as
+        an instruction that was tried.
         """
         with database.SessionLocal() as session:
-            note = session.execute(
-                select(Note)
-                .where(Note.kind == SESSION_KIND)
-                .order_by(Note.noted_at.desc())
+            date = session.execute(
+                select(Workout.date)
+                .where(Workout.is_mobility.is_(True))
+                .order_by(Workout.date.desc())
+                .limit(1)
             ).scalars().first()
-            if note is None:
+            if date is None:
                 return None
 
             rows = session.execute(
                 select(Workout, Exercise.name)
                 .join(Exercise, Workout.exercise_id == Exercise.id)
-                .where(Workout.date == note.date)
+                .where(Workout.date == date, Workout.is_mobility.is_(True))
                 .order_by(Workout.order.asc(), Workout.id.asc())
             ).all()
 
+            note = session.execute(
+                select(Note)
+                .where(Note.kind == SESSION_KIND, Note.date == date)
+                .order_by(Note.noted_at.desc(), Note.id.desc())
+            ).scalars().first()
+
             return {
-                "date": note.date,
-                "rationale": note.body,
+                "date": date,
+                "rationale": note.body if note and note.body else None,
                 "sets": [
                     {
                         "exercise": name,

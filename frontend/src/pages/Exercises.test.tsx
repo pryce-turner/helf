@@ -7,7 +7,7 @@
  * one, because clearing sends an explicit null that an `is not None` guard on
  * the server would silently drop.
  */
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
@@ -45,7 +45,6 @@ const exercise = (overrides: Record<string, unknown> = {}) => ({
     category: "Arms",
     notes: null,
     rating: null,
-    is_mobility: false,
     last_used: "2026-07-08",
     use_count: 12,
     created_at: "2026-01-01",
@@ -121,32 +120,21 @@ describe("Exercises: rating", () => {
     });
 });
 
-describe("Exercises: mobility", () => {
-    it("marks a movement as mobility work", async () => {
+describe("Exercises: mobility is not a property of the movement", () => {
+    it("offers no mobility control, because the objective decides it", async () => {
         const user = userEvent.setup();
         renderPage(<ExercisesPage />, "/exercises");
         await openCategory(user);
 
-        await user.click(await screen.findByRole("checkbox", { name: /Mobility/ }));
-
-        await waitFor(() =>
-            expect(mockedExercises.update).toHaveBeenCalledWith(1, {
-                is_mobility: true,
-            }),
-        );
-    });
-
-    it("badges a mobility movement in the list", async () => {
-        const user = userEvent.setup();
-        mockedExercises.getAll.mockResolvedValue({
-            data: [exercise({ is_mobility: true })],
-        } as never);
-
-        renderPage(<ExercisesPage />, "/exercises");
-        await openCategory(user);
-
-        const heading = await screen.findByRole("heading", { name: /Plate Rollup/ });
-        expect(within(heading).getByText("Mobility")).toBeInTheDocument();
+        // The flag moved to the set (d7e4f2a91b83). A good morning is a loaded
+        // hinge in one session and a loaded stretch in the next, so a checkbox
+        // here would force one answer onto both — and re-checking it would
+        // silently reinterpret every set of that movement ever logged.
+        await screen.findByRole("heading", { name: /Plate Rollup/ });
+        expect(
+            screen.queryByRole("checkbox", { name: /Mobility/ }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText("Mobility")).not.toBeInTheDocument();
     });
 });
 

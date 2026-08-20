@@ -43,8 +43,15 @@ def test_logging_a_stack_writes_one_entry_per_item(client):
     assert logged.status_code == 201
     assert len(logged.json()["entries"]) == 3
 
+    # Read through the log rather than `/day`: supplements are not meals and
+    # `/day` is the food page's read, which no longer carries them.
+    entries = client.get(
+        "/api/food/log", params={"date": "2026-08-09", "kind": "supplement"}
+    ).json()
+    assert len(entries) == 3
+
     day = client.get("/api/food/day", params={"date": "2026-08-09"}).json()
-    assert len(day["entries"]) == 3
+    assert day["entries"] == []
     assert day["totals"]["supplements_taken"] == 3
 
 
@@ -163,8 +170,10 @@ def test_editing_a_stack_does_not_change_what_a_past_day_recorded(client):
 
     client.put(f"/api/stacks/{stack_id}", json={"items": [{"food": VIT_D}]})
 
-    day = client.get("/api/food/day", params={"date": "2026-08-09"}).json()
-    assert len(day["entries"]) == 3
+    entries = client.get(
+        "/api/food/log", params={"date": "2026-08-09", "kind": "supplement"}
+    ).json()
+    assert len(entries) == 3
 
 
 def test_deleting_a_stack_keeps_the_foods_and_the_history(client):
@@ -175,8 +184,10 @@ def test_deleting_a_stack_keeps_the_foods_and_the_history(client):
     assert client.get(f"/api/stacks/{stack_id}").status_code == 404
 
     assert len(client.get("/api/food/", params={"kind": "supplement"}).json()) == 3
-    day = client.get("/api/food/day", params={"date": "2026-08-09"}).json()
-    assert len(day["entries"]) == 3
+    entries = client.get(
+        "/api/food/log", params={"date": "2026-08-09", "kind": "supplement"}
+    ).json()
+    assert len(entries) == 3
 
 
 def test_food_search_separates_supplements_from_meals(client):
@@ -255,7 +266,13 @@ def test_usage_of_an_unknown_food_is_404(client):
 
 def test_editing_a_supplement_rewrites_past_totals(client):
     """The whole reason the editor has to warn. Whey's calories are derived, so
-    correcting them corrects history — which is right, and surprising."""
+    correcting them corrects history — which is right, and surprising.
+
+    Also the sharp edge of splitting the two pages: a supplement carrying real
+    macros still counts toward the day's intake, while its entry is listed on
+    the supplements page rather than under a meal. Log calorie-bearing products
+    as `kind='food'` and both halves stay on the food page.
+    """
     stack_id = client.post(
         "/api/stacks/",
         json={"name": "Post-workout", "items": [{"food": WHEY, "servings": 2}]},
@@ -265,7 +282,9 @@ def test_editing_a_supplement_rewrites_past_totals(client):
     before = client.get("/api/food/day", params={"date": "2026-08-07"}).json()
     assert before["totals"]["kcal"] == 240
 
-    whey = before["entries"][0]["food_id"]
+    whey = client.get(
+        "/api/food/log", params={"date": "2026-08-07", "kind": "supplement"}
+    ).json()[0]["food_id"]
     edited = client.put(f"/api/food/{whey}", json={"kcal_per_serving": 130})
     assert edited.status_code == 200
 

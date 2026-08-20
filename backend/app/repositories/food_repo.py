@@ -23,6 +23,16 @@ from app.utils.date_helpers import format_timestamp, get_current_datetime
 # The EXISTS excludes days with nothing logged: the view's spine is every day
 # *anything* happened, and a day with three workouts and no food is not a
 # zero-calorie day, it is an unlogged one.
+#
+# `entries` counts MEALS, not every `food_log` row - a day on which only
+# supplements were swallowed is not a logged food day, for the same reason
+# `foods_missing_macros` has always ignored them. The count belongs to the food
+# page, and supplements no longer appear there at all; `supplements_taken` is
+# the adherence figure and is unaffected.
+_MEAL_ENTRIES = """(SELECT COUNT(*) FROM food_log fl
+                     JOIN food f ON f.id = fl.food_id
+                    WHERE fl.date = %(date)s AND f.kind = 'food')"""
+
 _DAILY_TOTALS_COLUMNS = """
     SELECT s.date,
            s.kcal,
@@ -32,7 +42,7 @@ _DAILY_TOTALS_COLUMNS = """
            s.foods_missing_macros,
            s.supplements_taken,
            s.kcal_target,
-           (SELECT COUNT(*) FROM food_log fl WHERE fl.date = s.date) AS entries
+           """ + _MEAL_ENTRIES % {"date": "s.date"} + """ AS entries
     FROM v_daily_summary s
 """
 
@@ -40,7 +50,9 @@ DAILY_TOTALS_SQL = text(
     _DAILY_TOTALS_COLUMNS
     + """
     WHERE s.date BETWEEN :start AND :end
-      AND EXISTS (SELECT 1 FROM food_log fl WHERE fl.date = s.date)
+      AND EXISTS (SELECT 1 FROM food_log fl
+                    JOIN food f ON f.id = fl.food_id
+                   WHERE fl.date = s.date AND f.kind = 'food')
     ORDER BY s.date
     """
 )
@@ -68,7 +80,9 @@ ONE_DAY_TOTALS_SQL = text(
                  WHERE p.date <= :date AND p.kcal_target IS NOT NULL
                  ORDER BY p.date DESC LIMIT 1)
            ) AS kcal_target,
-           (SELECT COUNT(*) FROM food_log fl WHERE fl.date = :date) AS entries
+           """
+    + _MEAL_ENTRIES % {"date": ":date"}
+    + """ AS entries
     FROM (SELECT 1) one
     LEFT JOIN v_daily_summary s ON s.date = :date
     """
@@ -244,13 +258,37 @@ class FoodRepository:
 class FoodLogRepository:
     """Consumption events."""
 
-    def get_by_date(self, date: str) -> list[dict]:
+    def get_by_date(self, date: str, kind: str | None = None) -> list[dict]:
         with database.SessionLocal() as session:
-            rows = session.execute(
+            stmt = (
                 select(FoodLog, Food)
                 .join(Food, Food.id == FoodLog.food_id)
                 .where(FoodLog.date == date)
-                .order_by(FoodLog.consumed_at)
+            )
+            if kind:
+                stmt = stmt.where(Food.kind == kind)
+            rows = session.execute(stmt.order_by(FoodLog.consumed_at)).all()
+            return [_entry(log, food) for log, food in rows]
+
+    def recent(self, kind: str | None = None, limit: int = 50) -> list[dict]:
+        """Entries across days, newest first.
+
+        The supplements page reads this the way the body page reads its
+        measurement log: a flat recent history is what makes a mistaken tap
+        findable, where a per-day view hides it the moment the date rolls over.
+
+        Ordered by `consumed_at` and broken by id, so two items of the same
+        stack - written at one instant by `POST /api/stacks/{id}/log` - keep a
+        stable order instead of shuffling between requests.
+        """
+        with database.SessionLocal() as session:
+            stmt = select(FoodLog, Food).join(Food, Food.id == FoodLog.food_id)
+            if kind:
+                stmt = stmt.where(Food.kind == kind)
+            rows = session.execute(
+                stmt.order_by(FoodLog.consumed_at.desc(), FoodLog.id.desc()).limit(
+                    limit
+                )
             ).all()
             return [_entry(log, food) for log, food in rows]
 
@@ -328,5 +366,8 @@ class FoodLogRepository:
         return {
             "date": date,
             "totals": self._totals(row),
-            "entries": self.get_by_date(date),
+            # Meals only. Supplements are logged into the same table but they
+            # are not food you ate and they are not read here - the supplements
+            # page owns that list now.
+            "entries": self.get_by_date(date, kind="food"),
         }

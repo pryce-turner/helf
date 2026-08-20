@@ -95,7 +95,7 @@ describe("Food page", () => {
         ).toBeInTheDocument();
     });
 
-    it("groups supplements apart from meals", async () => {
+    it("shows no supplements, even in a response that still carries them", async () => {
         mocked.getDay.mockResolvedValue(
             day({
                 entries: [
@@ -119,9 +119,13 @@ describe("Food page", () => {
         renderPage(<FoodPage />, "/food");
 
         expect(await screen.findByText("breakfast")).toBeInTheDocument();
-        expect(screen.getByText("supplements")).toBeInTheDocument();
-        // A supplement must not land in "unsorted" beside genuinely unfiled food.
+        // Supplements live on their own tab now. `/api/food/day` no longer
+        // returns them at all, but the service worker serves /api network-first
+        // and can hand back a day that predates the split - and a supplement
+        // must not then appear as unfiled food.
+        expect(screen.queryByText("supplements")).not.toBeInTheDocument();
         expect(screen.queryByText("unsorted")).not.toBeInTheDocument();
+        expect(screen.queryByText("Omega-3")).not.toBeInTheDocument();
     });
 
     it("says an unlogged day is unlogged rather than showing zeros", async () => {

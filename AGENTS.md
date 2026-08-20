@@ -157,7 +157,7 @@ helf/
 │   │   │   ├── Mobility.tsx           # Next mobility session, agent-written
 │   │   │   ├── BodyComposition.tsx    # Trends + stats
 │   │   │   ├── Food.tsx               # Daily log vs measured kcal target
-│   │   │   ├── Supplements.tsx        # Stacks, logged in one tap
+│   │   │   ├── Supplements.tsx        # Stacks, logged in one tap, and the dose log
 │   │   │   └── Exercises.tsx          # Exercise catalog
 │   │   ├── types/            # TypeScript type definitions
 │   │   │   ├── workout.ts, exercise.ts
@@ -262,6 +262,20 @@ A **supplement is a `food` row** with `kind = 'supplement'`, not a separate
 table: whey is food by any definition at 120 kcal a scoop, and the boundary is
 not somewhere a schema can put it. `stack` + `stack_item` are the grouping, with
 `servings` on the membership so one product can be taken two ways.
+
+**One table, two reads** (plan 0016). That storage argument is about storage,
+and it was taken to settle presentation too, which it does not: a dose that
+carries no meal, no macros and no calories has no business under breakfast.
+Every read on the food side is now `kind='food'` — `/api/food/day`, the
+`entries` count, and which days the summary considers logged — and supplements
+are listed only on `/supplements`. The boundary the schema cannot draw is drawn
+by hand instead: **anything carrying calories is logged as `kind='food'`**,
+whey included.
+
+The edge that leaves: a supplement *with* macros still counts toward the day's
+totals while its entry sits on the other tab, because `v_daily_summary` sums
+`food_log` without regard to kind and filtering it would hide a real calorie
+entirely. The supplements log prints the kcal on any dose that has them.
 
 **`food_log` carries no `stack_id`.** A log row records what was consumed; the
 stack is only how it was entered. `taken_today` is derived — every one of the
@@ -530,9 +544,15 @@ docker-compose up -d
 - `DELETE /{id}` - Delete measurement
 
 ### Food (`/api/food`)
-- `GET /day?date=` - One day's totals *and* entries, read together
-- `GET /log?date=` - Entries for a day
-- `GET /log/summary?start&end` - Daily kcal + macro totals (days with nothing logged are absent, not zero)
+- `GET /day?date=` - One day's totals *and* entries, read together. **Meals
+  only** — supplements share the table but not this page (plan 0016), and
+  `totals.entries` counts meals for the same reason
+- `GET /log?date=&kind=` - The whole log for a day; `kind` narrows it to one of
+  the two. Unfiltered it returns both, because it is the log for a date
+- `GET /log/recent?kind=&limit=` - Entries across days, newest first. The
+  supplements page's log. Deliberately not date-scoped: a dose filed against
+  the wrong day is invisible to any per-day view
+- `GET /log/summary?start&end` - Daily kcal + macro totals (days with nothing logged are absent, not zero; a day of supplements alone is not a logged day)
 - `POST /log` - Log a consumption event (by `food_id`, or name a food to create it)
 - `DELETE /log/{id}`
 - `GET /?q=&kind=` - Search the catalog; `kind` is `food` or `supplement`
@@ -587,7 +607,7 @@ nothing separate to assert (plan 0013).
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Body section (ADR-0006) |
-| `/supplements` | Supplements | Preset groups logged in one tap — tab 3 of the Body section |
+| `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 3 of the Body section |
 | `/upcoming` | Upcoming | Session planner, Liftoscript editor, presets — tab 1 of the Upcoming section |
 | `/mobility` | Mobility | The next mobility session, ready to copy or awaiting generation — tab 2 of the Upcoming section |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category |
@@ -626,6 +646,7 @@ nothing separate to assert (plan 0013).
   scan's measured resting rate rather than a formula
 - Days with nothing logged are absent from the summary, not zero — an unlogged
   day and a fasted day are different facts
+- Supplements are **not** listed here — separate page, separate read (plan 0016)
 - Lives at `/food`, tab 2 of the Body section (ADR-0006)
 
 ### Supplements and stacks
@@ -634,6 +655,11 @@ nothing separate to assert (plan 0013).
 - A product can sit in several groups at different servings
 - Adherence shows as "taken today", derived from the log rather than from the
   button
+- **Recent doses** at the bottom of the page: every dose across days, newest
+  first, with a two-tap delete — the counterpart of the body page's measurement
+  log, and not date-scoped for the same reason
+- **Nothing appears on the Food tab.** The two pages are separate reads over
+  one table (plan 0016); log anything with calories as a food
 - Lives at `/supplements`, tab 3 of the Body section
 
 *Why supplements are `food` rows and why the log has no `stack_id`: see the data

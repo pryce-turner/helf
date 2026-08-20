@@ -66,6 +66,21 @@ export function useSupplementCatalog() {
     });
 }
 
+/**
+ * The supplement log, newest first across days.
+ *
+ * Under the `["food"]` key namespace on purpose: logging a stack, deleting an
+ * entry and editing a supplement all invalidate `["food"]` already, so this
+ * list refreshes with everything else that changes it.
+ */
+export function useSupplementLog(limit: number = 50) {
+    return useQuery({
+        queryKey: ["food", "log", "recent", "supplement", limit],
+        queryFn: async () => (await foodApi.getRecentLog("supplement", limit)).data,
+        staleTime: 0,
+    });
+}
+
 export function useLogFood() {
     const queryClient = useQueryClient();
     return useMutation({
@@ -91,6 +106,10 @@ export function useDeleteFoodLog() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["food"] });
+            // `taken_today` is derived from exactly these rows, so deleting
+            // one can flip a group back to untaken. Cheap, and wrong the other
+            // way: a stale badge is how you take a stack twice.
+            queryClient.invalidateQueries({ queryKey: ["stacks"] });
         },
     });
 }

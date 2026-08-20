@@ -302,6 +302,17 @@ export const foodApi = {
             params: { start, end },
         }),
 
+    /**
+     * Entries across days, newest first — the supplements page's log.
+     *
+     * Not date-scoped, deliberately: a dose filed against the wrong day is
+     * exactly what a per-day view cannot show you.
+     */
+    getRecentLog: (kind?: string, limit: number = 50) =>
+        api.get<FoodLogEntry[]>("/api/food/log/recent", {
+            params: { kind, limit },
+        }),
+
     /** `kind` keeps the food page's typeahead from offering magnesium. */
     search: (q?: string, limit: number = 50, kind?: string) =>
         api.get<Food[]>("/api/food/", { params: { q, limit, kind } }),

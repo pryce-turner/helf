@@ -7,7 +7,12 @@ import BodySectionTabs from "@/components/BodySectionTabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useFoodSearch, useSupplementCatalog } from "@/hooks/useFood";
+import {
+    useDeleteFoodLog,
+    useFoodSearch,
+    useSupplementCatalog,
+    useSupplementLog,
+} from "@/hooks/useFood";
 import {
     useCreateStack,
     useDeleteStack,
@@ -443,6 +448,159 @@ const Catalog = () => {
     );
 };
 
+/**
+ * What was actually swallowed, newest first — the counterpart of the body
+ * page's measurement log.
+ *
+ * Not scoped to a day. `taken_today` answers "did I take it this morning",
+ * which is the question the groups above are for; this answers "what did I
+ * take, and was that right", and the mistake it exists to catch is a dose
+ * filed against the wrong date — invisible to any per-day view.
+ *
+ * Reads across every supplement, not just the ones in a group: a product
+ * logged by hand and a product logged by tapping a group produce the same row,
+ * which is the reason `food_log` carries no `stack_id`.
+ */
+const SupplementLog = () => {
+    const { data: entries, isLoading } = useSupplementLog();
+    const remove = useDeleteFoodLog();
+    const [confirming, setConfirming] = useState<number | null>(null);
+
+    if (isLoading || !entries?.length) return null;
+
+    const cell: React.CSSProperties = {
+        padding: "var(--space-2) var(--space-3)",
+        borderBottom: "1px solid var(--border)",
+        whiteSpace: "nowrap",
+    };
+    const head: React.CSSProperties = {
+        ...cell,
+        fontSize: "11px",
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        color: "var(--text-muted)",
+        textAlign: "left",
+    };
+
+    return (
+        <>
+            <div className="section-heading">Recent doses</div>
+            <Card className="animate-in">
+                <CardContent style={{ padding: "var(--space-2)" }}>
+                    {/* Wide content scrolls inside its own box; the page must not. */}
+                    <div style={{ overflowX: "auto" }}>
+                        <table
+                            style={{
+                                width: "100%",
+                                borderCollapse: "collapse",
+                                fontSize: "13px",
+                            }}
+                        >
+                            <thead>
+                                <tr>
+                                    <th style={head}>Taken</th>
+                                    <th style={head}>Supplement</th>
+                                    <th style={{ ...head, textAlign: "right" }}>Dose</th>
+                                    <th style={head} aria-label="Actions" />
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {entries.map((entry) => (
+                                    <tr key={entry.doc_id}>
+                                        <td
+                                            style={{
+                                                ...cell,
+                                                fontFamily: "var(--font-mono, monospace)",
+                                                color: "var(--text-secondary)",
+                                            }}
+                                        >
+                                            {format(
+                                                parseISO(entry.consumed_at),
+                                                "yyyy-MM-dd HH:mm",
+                                            )}
+                                        </td>
+                                        <td style={{ ...cell, whiteSpace: "normal" }}>
+                                            {entry.name}
+                                            {entry.brand && (
+                                                <span style={{ color: "var(--text-muted)" }}>
+                                                    {" "}· {entry.brand}
+                                                </span>
+                                            )}
+                                            {/* A supplement with real calories still
+                                                counts toward the day's intake even
+                                                though it is not listed under a meal.
+                                                Showing it here is the only place that
+                                                is visible. */}
+                                            {entry.kcal != null && entry.kcal > 0 && (
+                                                <span style={{ color: "var(--text-muted)" }}>
+                                                    {" "}· {Math.round(entry.kcal)} kcal
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td
+                                            style={{
+                                                ...cell,
+                                                textAlign: "right",
+                                                fontFamily: "var(--font-mono, monospace)",
+                                            }}
+                                        >
+                                            ×{entry.servings}
+                                        </td>
+                                        <td style={{ ...cell, textAlign: "right" }}>
+                                            {/* Two taps, not a browser confirm(), for the
+                                                same reason as the measurement log. */}
+                                            {confirming === entry.doc_id ? (
+                                                <span
+                                                    style={{
+                                                        display: "inline-flex",
+                                                        gap: "var(--space-2)",
+                                                    }}
+                                                >
+                                                    <Button
+                                                        style={{
+                                                            background: "var(--error)",
+                                                            height: "28px",
+                                                            padding: "0 10px",
+                                                        }}
+                                                        onClick={() => {
+                                                            remove.mutate(entry.doc_id);
+                                                            setConfirming(null);
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        style={{ height: "28px", padding: "0 10px" }}
+                                                        onClick={() => setConfirming(null)}
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    className="action-btn action-btn--danger"
+                                                    aria-label={`Delete ${entry.name} logged ${entry.consumed_at}`}
+                                                    onClick={() => setConfirming(entry.doc_id)}
+                                                >
+                                                    <Trash2
+                                                        style={{ width: "15px", height: "15px" }}
+                                                    />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </CardContent>
+            </Card>
+        </>
+    );
+};
+
 const Supplements = () => {
     const [creating, setCreating] = useState(false);
     const { data: stacks, isLoading } = useStacks();
@@ -497,6 +655,8 @@ const Supplements = () => {
 
                             <Catalog />
 
+                            <SupplementLog />
+
                             {stacks && stacks.length === 0 && !creating && (
                                 <div className="empty-state animate-in">
                                     <div className="empty-state__icon">
@@ -506,8 +666,8 @@ const Supplements = () => {
                                     <p className="empty-state__text">
                                         A group is the things you take together — a
                                         morning stack, an evening one. Logging one writes
-                                        an entry per item, so it shows up on the Food tab
-                                        like anything else you consumed.
+                                        an entry per item, and they show up in the log at
+                                        the bottom of this page.
                                     </p>
                                 </div>
                             )}

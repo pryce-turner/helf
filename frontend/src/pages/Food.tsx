@@ -462,16 +462,21 @@ const FoodPage = () => {
 
     const { data: day, isLoading } = useFoodDay(date);
 
-    // Supplements come out of the meal grouping entirely. They are logged with
-    // no meal — swallowing omega at 7am is not breakfast — so without this they
-    // would all pile into "unsorted" next to genuinely unfiled food.
+    // Meals only. `/api/food/day` returns no supplements at all — they are
+    // logged with no meal, they moved nothing on this page, and they live on
+    // the supplements tab with their own log. `unsorted` is for food that
+    // genuinely has no meal on it, which is now the only thing that lands
+    // there.
     const byMeal = useMemo(() => {
         const groups = new Map<string, FoodLogEntry[]>();
-        for (const meal of [...MEALS, "unsorted", "supplements"]) groups.set(meal, []);
+        for (const meal of [...MEALS, "unsorted"]) groups.set(meal, []);
         for (const entry of day?.entries ?? []) {
-            const group =
-                entry.kind === "supplement" ? "supplements" : (entry.meal ?? "unsorted");
-            groups.get(group)!.push(entry);
+            // The server already filters these out. The guard is for a
+            // response that predates it — the service worker caches /api
+            // network-first, so a stale day can still carry supplements, and
+            // they would land in "unsorted" looking like unfiled food.
+            if (entry.kind === "supplement") continue;
+            groups.get(entry.meal ?? "unsorted")!.push(entry);
         }
         return [...groups].filter(([, entries]) => entries.length > 0);
     }, [day]);

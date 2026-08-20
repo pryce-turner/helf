@@ -15,7 +15,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
     const actual = await importOriginal<typeof import("@/lib/api")>();
     return {
         ...actual,
-        foodApi: { ...actual.foodApi, search: vi.fn() },
+        foodApi: {
+            ...actual.foodApi,
+            search: vi.fn(),
+            getRecentLog: vi.fn(),
+            deleteLog: vi.fn(),
+        },
         stacksApi: {
             getAll: vi.fn(),
             create: vi.fn(),
@@ -48,9 +53,28 @@ const MORNING = {
     last_taken: "2026-08-08",
 };
 
+const dose = (id: number, name: string, at: string, servings: number) => ({
+    doc_id: id,
+    consumed_at: at,
+    date: at.slice(0, 10),
+    servings,
+    meal: null,
+    food_id: id,
+    name,
+    brand: "",
+    kind: "supplement" as const,
+    serving_desc: null,
+    kcal: null,
+    protein_g: null,
+    carb_g: null,
+    fat_g: null,
+});
+
 beforeEach(() => {
     vi.clearAllMocks();
     foods.search.mockResolvedValue({ data: [] } as never);
+    foods.getRecentLog.mockResolvedValue({ data: [] } as never);
+    foods.deleteLog.mockResolvedValue({ data: {} } as never);
 });
 
 describe("Supplements page", () => {
@@ -217,5 +241,53 @@ describe("Supplements page", () => {
         expect(
             within(empty.parentElement!).getByText(/things you take together/),
         ).toBeInTheDocument();
+    });
+
+    it("lists what was actually swallowed, newest first", async () => {
+        // The counterpart of the body page's measurement log. `taken_today`
+        // answers "did I take it this morning"; this answers "what did I take",
+        // and it reads across days because a dose filed against the wrong date
+        // is invisible to any per-day view.
+        stacks.getAll.mockResolvedValue({ data: [] } as never);
+        foods.getRecentLog.mockResolvedValue({
+            data: [
+                dose(2, "Vitamin D3", "2026-08-09T07:02:00", 1),
+                dose(1, "Omega-3", "2026-08-08T07:01:00", 2),
+            ],
+        } as never);
+        renderPage(<Supplements />, "/supplements");
+
+        await screen.findByText("Recent doses");
+        expect(foods.getRecentLog).toHaveBeenCalledWith("supplement", 50);
+
+        const rows = screen.getAllByRole("row").slice(1);
+        expect(within(rows[0]).getByText("2026-08-09 07:02")).toBeInTheDocument();
+        expect(within(rows[0]).getByText("Vitamin D3")).toBeInTheDocument();
+        expect(within(rows[1]).getByText("×2")).toBeInTheDocument();
+    });
+
+    it("takes two taps to delete a dose", async () => {
+        // Same rule as the measurement log: a native confirm() blocks the page
+        // and cannot be dismissed, and two taps is harder to do by accident.
+        stacks.getAll.mockResolvedValue({ data: [] } as never);
+        foods.getRecentLog.mockResolvedValue({
+            data: [dose(1, "Omega-3", "2026-08-08T07:01:00", 2)],
+        } as never);
+        const user = userEvent.setup();
+        renderPage(<Supplements />, "/supplements");
+
+        await user.click(await screen.findByRole("button", { name: /Delete Omega-3/ }));
+        expect(foods.deleteLog).not.toHaveBeenCalled();
+
+        await user.click(screen.getByRole("button", { name: /^Delete$/ }));
+        await waitFor(() => expect(foods.deleteLog).toHaveBeenCalledWith(1));
+    });
+
+    it("says nothing at all when nothing has been logged", async () => {
+        stacks.getAll.mockResolvedValue({ data: [] } as never);
+        renderPage(<Supplements />, "/supplements");
+
+        await screen.findByText(/No groups yet/);
+        expect(screen.queryByText("Recent doses")).not.toBeInTheDocument();
     });
 });

@@ -31,9 +31,29 @@ def get_food_day(date: str | None = None):
 
 
 @router.get("/log", response_model=list[FoodLogEntry])
-def get_food_log(date: str | None = None):
-    """Entries for one day. Defaults to today."""
-    return FoodLogRepository().get_by_date(date or get_current_date())
+def get_food_log(
+    date: str | None = None,
+    kind: str | None = Query(None, description="'food' or 'supplement'"),
+):
+    """Entries for one day. Defaults to today.
+
+    Unfiltered this still returns both kinds - it is the whole log for a date.
+    `/day`, which is what the food page reads, is meals only.
+    """
+    return FoodLogRepository().get_by_date(date or get_current_date(), kind)
+
+
+@router.get("/log/recent", response_model=list[FoodLogEntry])
+def get_recent_food_log(
+    kind: str | None = Query(None, description="'food' or 'supplement'"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Entries across days, newest first.
+
+    The supplements page's log. A date-scoped read cannot show a dose logged
+    against the wrong day, which is the mistake worth finding.
+    """
+    return FoodLogRepository().recent(kind, limit)
 
 
 @router.get("/log/summary", response_model=list[FoodDaySummary])

@@ -134,27 +134,42 @@ function consentPayload({
 }
 
 /**
- * Ask for the scale, preferring a grant we already hold.
+ * How long a remembered device gets to answer.
  *
- * `getDevices()` sits behind `#enable-experimental-web-platform-features`. With
- * it, a drain reconnects silently; without it every drain raises the chooser.
- * Both work, so this degrades rather than requiring the flag.
+ * Generous on purpose. `gatt.connect()` is what *wakes* the scale — it pages
+ * the device rather than waiting for it to speak — and a sleeping peripheral
+ * takes seconds to come up. A short cap turns "waking" into "did not answer",
+ * which is the whole point of the button.
  */
-async function findDevice(): Promise<BluetoothDevice> {
-    const bluetooth = navigator.bluetooth;
+const WAKE_TIMEOUT_MS = 12_000;
 
-    if (typeof bluetooth.getDevices === "function") {
-        try {
-            const known = await bluetooth.getDevices();
-            const previously = known.find((d) =>
-                (d.name ?? "").toUpperCase().includes("BF720"),
-            );
-            if (previously) return previously;
-        } catch {
-            // Flag off or permission backend unavailable - fall through to the
-            // chooser, which always works.
-        }
+/**
+ * A device we already hold a grant for, if there is one.
+ *
+ * `getDevices()` sits behind `#enable-experimental-web-platform-features`, so
+ * this is often simply absent and every drain raises the chooser instead.
+ */
+async function knownDevice(): Promise<BluetoothDevice | null> {
+    const bluetooth = navigator.bluetooth;
+    if (typeof bluetooth.getDevices !== "function") return null;
+    try {
+        const known = await bluetooth.getDevices();
+        return (
+            known.find((d) => (d.name ?? "").toUpperCase().includes("BF720")) ??
+            null
+        );
+    } catch {
+        return null;
     }
+}
+
+/**
+ * Prompt for the scale. **Must be reached inside the tap** that started the
+ * drain: `requestDevice()` requires transient user activation, which expires a
+ * few seconds after the click — so this can never follow a long wait.
+ */
+async function requestDevice(): Promise<BluetoothDevice> {
+    const bluetooth = navigator.bluetooth;
 
     return bluetooth.requestDevice({
         filters: [
@@ -200,6 +215,75 @@ async function subscribe(
 export class ScaleError extends Error {}
 
 /**
+ * Get a connected GATT server, preferring a grant we already hold.
+ *
+ * The remembered device is tried first and **is not trusted**. Chrome caches
+ * the address a grant was issued against, and the scale does not keep one: it
+ * sleeps between weighings and comes back on a different address. So a device
+ * from `getDevices()` reliably fails with "Bluetooth Device is no longer in
+ * range" — every drain, forever, until the site's Bluetooth permission is
+ * cleared by hand in Chrome settings. Which is exactly what `forget()` does,
+ * so the fallback does it automatically.
+ *
+ * Ordering matters. `requestDevice()` needs transient user activation and that
+ * expires a few seconds after the tap, so the doomed attempt is capped at
+ * `CACHED_CONNECT_MS` — long enough for a live device, short enough that the
+ * chooser can still open afterwards.
+ */
+async function connect(): Promise<{
+    device: BluetoothDevice;
+    server: BluetoothRemoteGATTServer;
+}> {
+    const remembered = await knownDevice();
+
+    if (remembered?.gatt) {
+        const gatt = remembered.gatt;
+        try {
+            const server = await Promise.race([
+                gatt.connect(),
+                new Promise<never>((_, reject) =>
+                    setTimeout(
+                        () => reject(new Error("scale did not answer")),
+                        WAKE_TIMEOUT_MS,
+                    ),
+                ),
+            ]);
+            return { device: remembered, server };
+        } catch {
+            // Two different failures land here and cannot be told apart from
+            // the error: the scale is genuinely absent, or Chrome's grant is
+            // pointing at an address it no longer uses. The second is
+            // permanent — every drain fails until the site's Bluetooth
+            // permission is cleared by hand — so the grant is dropped, which
+            // is what that manual step does.
+            //
+            // Stop rather than raise the chooser here: `requestDevice()` needs
+            // transient user activation and the wait above has spent it, so
+            // calling it now throws "must be handling a user gesture" instead
+            // of opening anything.
+            try {
+                await gatt.disconnect();
+            } catch {
+                // Never connected.
+            }
+            try {
+                await remembered.forget?.();
+            } catch {
+                // Older Chrome without the permissions backend cannot tidy up.
+            }
+            throw new ScaleError(
+                "The scale did not answer, so the saved device has been cleared. Tap Read scale again and pick it from the list.",
+            );
+        }
+    }
+
+    const device = await requestDevice();
+    const server = await device.gatt?.connect();
+    if (!server) throw new ScaleError("Could not connect to the scale.");
+    return { device, server };
+}
+
+/**
  * Connect, authorise, collect whatever the scale replays, disconnect.
  *
  * Completion is inferred from silence: the replay has no terminator, so the
@@ -219,11 +303,9 @@ export async function drainScale(
     const comps: RawBodyComposition[] = [];
     let packets = 0;
 
-    const device = await findDevice();
     onProgress?.({ stage: "connecting", packets });
 
-    const server = await device.gatt?.connect();
-    if (!server) throw new ScaleError("Could not connect to the scale.");
+    const { device, server } = await connect();
 
     try {
         let settle: () => void = () => {};

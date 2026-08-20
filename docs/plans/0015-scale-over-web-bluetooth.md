@@ -1,6 +1,6 @@
 # 0015 — The scale talks to the browser
 
-**Status**: In progress — everything but the hardware contact
+**Status**: In progress — running on real hardware; §11's premise revised
 
 Retires the MQTT ingest path built for plan 0003 and the phone-side chain in
 front of it.
@@ -70,10 +70,22 @@ watch a count of readings appear. Seconds, and it replaces opening openScale.
 
 ## 4. One batch endpoint, and the browser holds no state
 
-The scale replays its whole buffer on every connect, so a drain re-sends
-readings helf already has — most of them, most of the time. The client must
-therefore be free to send everything it read, every time, and let the server
-sort it out.
+The client must be free to send everything it read, every time, and let the
+server decide what is new.
+
+> **Revised against hardware, 2026-08-20.** This section assumed the scale
+> replays its *whole* buffer on every connect. It does not: the BF720 sends
+> only measurements it has not yet delivered. Three drains showed it — a fresh
+> weighing yielded one reading, the next drain after a second weighing reported
+> "1 new, 0 already held" rather than "1 new, 1 already held", and a drain with
+> no weighing in between returned nothing at all.
+>
+> The design is unaffected and the endpoint is unchanged, but the *reason* is.
+> Server-side deduplication is no longer what makes a re-drain safe — the scale
+> already does that — it is what makes the client able to stay stateless
+> without depending on the scale's bookkeeping being right. Keep it: a scale
+> that forgets what it delivered would otherwise duplicate history, and that
+> failure is silent.
 
 `POST /api/body-composition` **cannot be that endpoint**, and this is easy to
 miss: it calls `repo.create(measurement)` with no `source`, so it writes
@@ -184,12 +196,15 @@ thing to reconsider — and §9's Phase 4 is where the evidence would show up.
 
 ## 9. Order of work
 
-1. **Spike against the real scale.** ← *the only step left.* Tap **Read
-   scale** on the bathroom Android with the console open. This answers the
-   three questions no amount of code can: whether history replays on
-   subscribe, which unit bit the scale sets, and whether the consent code is
-   accepted. Everything below is written and tested; none of it has met the
-   hardware.
+1. ✓ **Spike against the real scale.** Done, on desktop Chrome and on
+   Android. The scale connects, bonds, accepts the consent code, and yields
+   readings; the unit bit is read correctly (197.89 lb against a last-known
+   191.3 — a double conversion would have written ~436). Two things only
+   hardware could have taught: the app's Current Time write *fixes the scale's
+   clock*, so a reset scale stamps correctly from the first drain onward; and
+   `gatt.connect()` is what wakes a sleeping scale, where
+   `watchAdvertisements()` cannot, because a sleeping peripheral advertises
+   nothing.
 2. ✓ Payload parser as a pure function with fixture bytes from the spike, tested
    in both unit modes. No BLE involved, so it runs in CI.
 3. ✓ `POST /api/body-composition/sync/scale` — §4. Testable without a browser,
@@ -244,9 +259,13 @@ registration path beside it.
 
 ## 10. What is not decided
 
-- **Whether history replays over the standard characteristic** or needs a
-  vendor-specific one. openScale marks History supported for this model, which
-  is evidence but not proof about the mechanism. Phase 1 settles it.
+- ~~Whether history replays over the standard characteristic.~~ **Answered:**
+  measurements arrive on the standard characteristics, but only the undelivered
+  ones — see §4. What is *still* open is whether several weighings taken
+  between drains all arrive together, or only the most recent survives. The
+  first would mean the feature works as designed; the second would mean a drain
+  is required after every single weighing, which is a materially worse feature.
+  Two weighings and one drain settles it.
 - **Whether the characteristics require encryption at all.** If they do not,
   bonding is irrelevant and §7's last paragraph is merely reassuring.
 - **What happens to openScale afterwards.** Keeping it installed costs nothing

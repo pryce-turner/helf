@@ -39,12 +39,12 @@ table.
 | 0012 | [Mobility](0012-mobility.md) | Implemented 2026-08-10 | `c4a92f18de07` | **Partly superseded by 0013** — §1, §3, §4's first mitigation, §9 and §10. Stale passages are marked in place; see the banner at the top of the plan |
 | 0013 | [Mobility belongs to the set](0013-mobility-belongs-to-the-set.md) | Implemented 2026-08-19 | `d7e4f2a91b83` | Retires `exercises.is_mobility` and the day marker |
 | 0014 | [Several mobility sessions](0014-several-mobility-sessions.md) | Implemented 2026-08-20 | `b6f31a90c4de` | Retires 0012 §2's "one rolling routine, not a queue" |
-| 0015 | [The scale talks to the browser](0015-scale-over-web-bluetooth.md) | **In progress** | not yet committed | Decoder, endpoint and UI are built and tested; **nothing has touched the scale**. §9 phase 1 is the whole remaining risk — see "What landed, and what it is worth". §11 says when to abandon rather than escalate |
+| 0015 | [The scale talks to the browser](0015-scale-over-web-bluetooth.md) | **In progress** | `f8a9cbb`, `00672bf` | Working on real hardware, desktop and Android. One question left (§10): whether several weighings between drains all arrive, or only the latest. §4 is revised — the scale sends undelivered readings, not its whole buffer |
 
 ## Where things stand
 
 Every plan is landed except 0004, which is deferred on purpose, and 0015, which
-is built but has never been run against the scale it is for. Two things are built, tested, and deliberately
+works on real hardware but has one open question in §10. Two things are built, tested, and deliberately
 **not switched on**: the general-purpose agent write tools
 (`QS_MCP_MODE=read-write`) and a notes UI. Both are decisions, not
 omissions — 0006 §8 and 0005 §7. Mobility's write tool is the one exception and

@@ -34,6 +34,7 @@ the constraint is the only rule both writers obey.
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b3d1c07a4e21"
@@ -114,7 +115,25 @@ def downgrade() -> None:
     # triggers have to go first and come back describing the old shape.
     _drop_triggers()
 
-    with op.batch_alter_table("exercises") as batch:
+    # Both columns carry a named CHECK, and `batch_alter_table` reflects the
+    # table before rebuilding it - so the temp table was emitted with
+    # `ck_exercises_is_mobility` and `ck_exercises_rating` still naming the
+    # columns being dropped, and the rebuild died on `no such column:
+    # is_mobility`. SQLite has no DROP CONSTRAINT and will not drop a column a
+    # CHECK references, so they have to leave in the same rebuild.
+    #
+    # No view selects from `exercises`, so unlike the `workouts` rebuild in
+    # d7e4f2a91b83 there is nothing to drop and restore around this.
+    exercises = sa.Table("exercises", sa.MetaData(), autoload_with=op.get_bind())
+    doomed = {"ck_exercises_is_mobility", "ck_exercises_rating"}
+    for constraint in list(exercises.constraints):
+        if (
+            isinstance(constraint, sa.CheckConstraint)
+            and constraint.name in doomed
+        ):
+            exercises.constraints.discard(constraint)
+
+    with op.batch_alter_table("exercises", copy_from=exercises) as batch:
         batch.drop_column("is_mobility")
         batch.drop_column("rating")
 

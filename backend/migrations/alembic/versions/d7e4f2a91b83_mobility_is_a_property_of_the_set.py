@@ -45,6 +45,7 @@ the new shape.
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d7e4f2a91b83"
@@ -199,7 +200,53 @@ def downgrade() -> None:
         op.execute(statement)
 
     _drop("workouts", WORKOUT_OPS)
-    with op.batch_alter_table("workouts") as batch:
+
+    # `batch_alter_table` reflects the table and rebuilds it, and reflection
+    # brings `ck_workouts_is_mobility` along - so the temp table was emitted
+    # carrying a CHECK that names the very column being dropped, and every
+    # downgrade past this revision died on `no such column: is_mobility`. The
+    # upgrade never hit it because it hand-writes its rebuild
+    # (`_rebuild_exercises`) and simply omits both the column and its CHECK.
+    #
+    # SQLite has no DROP CONSTRAINT, and it refuses to drop a column a CHECK
+    # references, so the constraint has to leave in the same rebuild as the
+    # column. Handing `copy_from` a reflected table with it discarded is how
+    # that becomes one operation rather than two impossible ones.
+    workouts = sa.Table("workouts", sa.MetaData(), autoload_with=op.get_bind())
+    for constraint in list(workouts.constraints):
+        if (
+            isinstance(constraint, sa.CheckConstraint)
+            and constraint.name == "ck_workouts_is_mobility"
+        ):
+            workouts.constraints.discard(constraint)
+
+    # Second hazard in the same rebuild, and it only becomes reachable once the
+    # CHECK above is fixed: batch drops and recreates `workouts`, and SQLite
+    # validates every view against the new shape while it does so, so this died
+    # on "error in view v_daily_summary: no such table: main.workouts". The
+    # same shape of bug as 0011's rollback (docs/plans/README.md).
+    #
+    # Captured from `sqlite_master` rather than restated, so it cannot drift
+    # from whatever definition the surrounding revisions left in place. The
+    # view does not select `is_mobility`, so it is valid again verbatim - if a
+    # later revision teaches it to, this has to become a real re-CREATE.
+    view_sql = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type = 'view' AND name = 'v_daily_summary'"
+            )
+        )
+        .scalar()
+    )
+    if view_sql:
+        op.execute("DROP VIEW v_daily_summary")
+
+    with op.batch_alter_table("workouts", copy_from=workouts) as batch:
         batch.drop_column("is_mobility")
+
+    if view_sql:
+        op.execute(view_sql)
     for statement in _triggers("workouts", WORKOUT_OPS, WORKOUT_BEFORE):
         op.execute(statement)

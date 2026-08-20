@@ -1,9 +1,10 @@
 """Main FastAPI application."""
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +24,10 @@ from app.config import settings
 from app.database import close_db, init_db
 from app.services.mqtt_service import MQTTService
 
-# Global MQTT service instance
+logger = logging.getLogger(__name__)
+
+# Global MQTT service instance. None whenever ingest is disabled, which since
+# plan 0015 is the default.
 mqtt_service: MQTTService | None = None
 
 
@@ -34,11 +38,20 @@ async def lifespan(app: FastAPI):
 
     # Startup
     init_db()
-    mqtt_service = MQTTService(
-        broker_host=settings.mqtt_broker_host,
-        broker_port=settings.mqtt_broker_port,
-    )
-    mqtt_service.start()
+
+    # Retired by plan 0015, kept as the fallback for scales the browser cannot
+    # read. `MQTT_ENABLED=true` brings it back; see `config.py`.
+    if settings.mqtt_enabled:
+        mqtt_service = MQTTService(
+            broker_host=settings.mqtt_broker_host,
+            broker_port=settings.mqtt_broker_port,
+        )
+        mqtt_service.start()
+    else:
+        logger.info(
+            "MQTT ingest disabled (MQTT_ENABLED unset). The scale is read over "
+            "Web Bluetooth from the browser — plan 0015."
+        )
 
     yield
 
@@ -87,10 +100,23 @@ def health_check():
 
 @app.get("/api/mqtt/status")
 def mqtt_status():
-    """Get MQTT connection status."""
+    """Get MQTT connection status.
+
+    Reports `enabled` separately from `connected` so a deliberately retired
+    ingest path cannot be mistaken for a broken one — "not connected" was the
+    same answer for both, and that is the reading you get at 2am.
+    """
     if mqtt_service:
-        return mqtt_service.get_status()
-    return {"connected": False, "broker": "not initialized"}
+        return {"enabled": True, **mqtt_service.get_status()}
+    return {
+        "enabled": False,
+        "connected": False,
+        "broker": None,
+        "detail": (
+            "MQTT ingest is retired (plan 0015); the scale is read over Web "
+            "Bluetooth. Set MQTT_ENABLED=true to use it for another scale."
+        ),
+    }
 
 
 @app.post("/api/mqtt/reconnect")
@@ -103,7 +129,13 @@ def mqtt_reconnect():
         mqtt_service.start()
         return {"message": "MQTT reconnection triggered"}
 
-    return {"message": "MQTT service not initialized"}
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "MQTT ingest is disabled. Set MQTT_ENABLED=true and restart to "
+            "use it as a fallback for a scale the browser cannot read."
+        ),
+    )
 
 
 # Serve static files (React app) if they exist

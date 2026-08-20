@@ -35,7 +35,7 @@ Helf is a modern Progressive Web App (PWA) for tracking workouts, monitoring bod
 ### Backend
 - **Framework**: FastAPI 0.127+
 - **Database**: SQLite + SQLAlchemy 2.x
-- **MQTT**: Paho-MQTT 2.1+ (smart scale integration)
+- **MQTT**: Paho-MQTT 2.1+ — **retired fallback** (plan 0015), off unless `MQTT_ENABLED=true`
 - **Validation**: Pydantic v2
 - **Server**: Uvicorn with multi-worker support
 - **Package Manager**: UV (with pyproject.toml)
@@ -99,7 +99,7 @@ helf/
 │   │   │   └── stack_repo.py
 │   │   ├── services/         # Business logic
 │   │   │   ├── progression_service.py
-│   │   │   ├── mqtt_service.py
+│   │   │   ├── mqtt_service.py   # retired ingest, kept as a fallback (0015)
 │   │   │   ├── wendler_service.py
 │   │   │   ├── mobility_service.py
 │   │   │   └── liftoscript_service.py
@@ -456,7 +456,8 @@ docker-compose up -d
 |----------|---------|-------------|
 | `HELF_DATA_PATH` | - | Host path for data volume mount |
 | `DATA_DIR` | `/app/data` | Container path for SQLite database |
-| `MQTT_BROKER_HOST` | `host.docker.internal` | MQTT broker hostname |
+| `MQTT_ENABLED` | *(unset)* | Switches the retired MQTT ingest back on |
+| `MQTT_BROKER_HOST` | `host.docker.internal` | MQTT broker hostname (only when enabled) |
 | `MQTT_BROKER_PORT` | `1883` | MQTT broker port |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins |
 | `PRODUCTION` | `true` | Production mode flag |
@@ -519,7 +520,13 @@ docker-compose up -d
 - `GET /latest` - Most recent measurement
 - `GET /stats` - Summary statistics
 - `GET /trends?days=N` - Trend data for charts (1-365 days)
-- `POST /` - Create measurement (manual or from MQTT)
+- `POST /` - Create measurement by hand. Writes `source='manual'` and has no
+  field to override it — the scale drain is a **different** endpoint for that
+  reason
+- `POST /sync/scale` - Drain the scale's onboard memory. Takes the whole
+  replay as a batch, fixes `source='openscale'` at the route, and reports
+  `imported`/`skipped`; a high `skipped` is the normal case, since the scale
+  replays everything it holds
 - `DELETE /{id}` - Delete measurement
 
 ### Food (`/api/food`)
@@ -564,8 +571,11 @@ nothing separate to assert (plan 0013).
 
 ### System
 - `GET /api/health` - Health check
-- `GET /api/mqtt/status` - MQTT connection status
-- `POST /api/mqtt/reconnect` - Trigger MQTT reconnection
+- `GET /api/mqtt/status` - Reports `enabled` **and** `connected`. They are
+  separate because a retired ingest and a dead broker used to give the same
+  answer
+- `POST /api/mqtt/reconnect` - 409 when ingest is disabled, rather than a 200
+  that reconnects nothing
 
 ## Frontend Routes
 
@@ -672,7 +682,15 @@ model section above.*
   plan 0013 — see the header note in that file)
 
 ### Body Composition
-- MQTT ingest from a smart scale (openScale-sync format), near-daily
+- **Read straight from the scale in the browser** over Web Bluetooth (plan
+  0015): the BF720 speaks the Bluetooth SIG Body Composition Service, so no
+  phone, no openScale, no broker. One tap drains its 30-reading memory;
+  duplicates are refused by `UNIQUE (observed_at, source)` rather than tracked
+  client-side
+- MQTT ingest (openScale-sync format) is **retired but not deleted** — it is
+  the fallback for a scale the browser cannot read, since the decoder handles
+  the SIG profile only while openScale drives around a hundred scales. Set
+  `MQTT_ENABLED=true`
 - BodySpec DEXA import — paste a token, used for one request and stored nowhere
 - Weight, body fat %, muscle %, water %, plus DEXA masses and a computed RMR
 - Trends with configurable periods; the scale is a line, DEXA is unjoined points
@@ -889,6 +907,10 @@ npm run build  # Includes tsc
 - Check API health: `curl http://localhost:30171/api/health`
 
 ### MQTT not connecting
+
+**First check whether it is meant to be.** Ingest is off by default since plan
+0015 — `GET /api/mqtt/status` returns `enabled: false`, and that is not a
+fault. Set `MQTT_ENABLED=true` only if you are using it for another scale.
 - Verify broker is running on host
 - Check `MQTT_BROKER_HOST` configuration
 - View status: `curl http://localhost:30171/api/mqtt/status`

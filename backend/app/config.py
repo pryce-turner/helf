@@ -20,7 +20,20 @@ class Settings(BaseSettings):
     # Database
     db_path: Path | None = None
 
-    # MQTT
+    # MQTT — **off by default** since plan 0015.
+    #
+    # The BF720 is read straight from the browser over Web Bluetooth, so the
+    # phone, the openScale app and the broker are no longer in the path. The
+    # code stays because it is the fallback for scales the browser cannot read:
+    # `app/lib/bcs.ts` decodes the Bluetooth SIG Body Composition Service and
+    # nothing else, while openScale has drivers for around a hundred scales,
+    # most of them proprietary. Swap the scale for one of those and this is the
+    # way back in.
+    #
+    # Default False rather than "connect and fail quietly": it used to log
+    # `Failed to start MQTT service: Connection refused` on every boot once the
+    # broker went away, which is noise that trains you to ignore startup errors.
+    mqtt_enabled: bool = os.getenv("MQTT_ENABLED", "").lower() in {"1", "true", "yes"}
     mqtt_broker_host: str = os.getenv("MQTT_BROKER_HOST", "localhost")
     mqtt_broker_port: int = int(os.getenv("MQTT_BROKER_PORT", "1883"))
 

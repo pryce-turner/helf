@@ -101,7 +101,7 @@ it("offers the drain once a slot and code are saved", async () => {
 
     const button = await screen.findByRole("button", { name: /^Read scale$/i });
     expect(button).toBeEnabled();
-    expect(screen.getByText(/Slot 1/)).toBeInTheDocument();
+    expect(screen.getByText(/slot 1/i)).toBeInTheDocument();
 });
 
 it("remembers the credentials across a remount", async () => {
@@ -113,7 +113,7 @@ it("remembers the credentials across a remount", async () => {
     renderPage(<BodyComposition />, "/body-composition");
 
     await screen.findByRole("button", { name: /^Read scale$/i });
-    expect(screen.getByText(/Slot 3/)).toBeInTheDocument();
+    expect(screen.getByText(/slot 3/i)).toBeInTheDocument();
 });
 
 it("reports a drain that was entirely replay as already held", async () => {
@@ -271,4 +271,31 @@ it("renders nothing at all when there are no measurements", async () => {
 
     await screen.findByText(/Import DEXA scans/i);
     expect(screen.queryByText(/All measurements/i)).not.toBeInTheDocument();
+});
+
+it("carries the measurement count on the table rather than in a tile", async () => {
+    // It was a quarter of the stats grid for a number you read once. The tile
+    // it vacated went to the drain button; the count went to the one thing it
+    // is actually about.
+    withBluetooth(false);
+    api.getAll.mockResolvedValue({
+        data: [measurement(156, "2026-08-20T11:34:37", "2026-08-20T11:36:08", 198.06)],
+    } as never);
+    renderPage(<BodyComposition />, "/body-composition");
+
+    await screen.findByText(/All measurements/i);
+    expect(screen.getByText(/2 total/)).toBeInTheDocument();
+    expect(screen.queryByText(/Total Measurements/i)).not.toBeInTheDocument();
+});
+
+it("keeps the pairing form reachable with an empty database", async () => {
+    // The empty state tells you to read the scale; it used to say that from
+    // inside the branch that renders neither control.
+    withBluetooth(true);
+    api.getStats.mockResolvedValue({ data: null } as never);
+    renderPage(<BodyComposition />, "/body-composition");
+
+    await screen.findByText(/NO DATA YET/i);
+    expect(screen.getByPlaceholderText(/Consent code/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/BodySpec access token/i)).toBeInTheDocument();
 });

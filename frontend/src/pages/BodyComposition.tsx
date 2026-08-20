@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import type { LucideIcon } from "lucide-react";
-import { Weight, TrendingDown, TrendingUp } from "lucide-react";
+import { Bluetooth, Weight, TrendingDown, TrendingUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import BodySectionTabs from "@/components/BodySectionTabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,7 @@ import {
     loadCredentials,
     saveCredentials,
 } from "@/lib/scale";
+import type { ScaleCredentials } from "@/lib/scale";
 import {
     ComposedChart,
     LineChart,
@@ -221,23 +222,30 @@ const BodySpecSync = () => {
 };
 
 /**
- * Read the BF720 over Web Bluetooth - plan 0015.
+ * Pairing for the BF720 - plan 0015.
  *
- * There is no automatic version of this control and there cannot be: Web
- * Bluetooth requires a user gesture per connection and is absent from service
- * workers, so a drain happens on a tap or not at all. The scale's 30-reading
- * ring is what makes that sufficient - weigh whenever, drain occasionally.
+ * Config only. The drain button itself lives in `ScaleTile`, up beside the
+ * stats, because reading the scale is a thing you do every few days and
+ * entering a consent code is a thing you do once. Two buttons would also mean
+ * two `useScaleDrain` mutations and so two pending states, and Web Bluetooth
+ * grants one connection per gesture - the second tap would fail.
  *
  * The whole control hides where `navigator.bluetooth` is missing rather than
  * offering a button that cannot work. That is Firefox always, and Brave until
  * Web Bluetooth is enabled at brave://flags.
  */
-const ScaleDrain = () => {
+const ScaleDrain = ({
+    credentials,
+    onCredentials,
+    busy,
+}: {
+    credentials: ScaleCredentials | null;
+    onCredentials: (next: ScaleCredentials | null) => void;
+    busy: boolean;
+}) => {
     const supported = bluetoothSupported();
-    const [credentials, setCredentials] = useState(() => loadCredentials());
     const [slot, setSlot] = useState("1");
     const [code, setCode] = useState("");
-    const drain = useScaleDrain();
 
     if (!supported) return null;
 
@@ -246,12 +254,8 @@ const ScaleDrain = () => {
         const userIndex = Number(slot);
         const consentCode = Number(code);
         if (!Number.isInteger(userIndex) || !Number.isInteger(consentCode)) return;
-        const next = { userIndex, consentCode };
-        saveCredentials(next);
-        setCredentials(next);
+        onCredentials({ userIndex, consentCode });
     };
-
-    const failed = drain.error as Error | null;
 
     return (
         <Card className="animate-in section">
@@ -264,24 +268,17 @@ const ScaleDrain = () => {
                 {credentials ? (
                     <>
                         <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
-                            The scale stores its last 30 weighings, so weigh
-                            whenever and read them all at once. Slot {credentials.userIndex}.
+                            Paired to slot {credentials.userIndex}. The scale
+                            stores its last 30 weighings, so weigh whenever and
+                            read them all at once with the button above.
                         </p>
-                        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                            <Button
-                                onClick={() => drain.mutate(credentials)}
-                                disabled={drain.isPending}
-                            >
-                                {drain.isPending ? "Reading..." : "Read scale"}
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                onClick={() => setCredentials(null)}
-                                disabled={drain.isPending}
-                            >
-                                Change slot
-                            </Button>
-                        </div>
+                        <Button
+                            variant="ghost"
+                            onClick={() => onCredentials(null)}
+                            disabled={busy}
+                        >
+                            Change slot
+                        </Button>
                     </>
                 ) : (
                     <>
@@ -315,21 +312,61 @@ const ScaleDrain = () => {
                         </form>
                     </>
                 )}
-
-                {drain.data && (
-                    <p style={{ fontSize: '12px', color: 'var(--success)', marginTop: 'var(--space-3)' }}>
-                        {drain.data.readings_received === 0
-                            ? "The scale had nothing stored."
-                            : `${drain.data.readings_received} reading${drain.data.readings_received === 1 ? "" : "s"} - ${drain.data.imported} new, ${drain.data.skipped} already held.`}
-                    </p>
-                )}
-                {drain.isError && (
-                    <p style={{ fontSize: '12px', color: 'var(--error)', marginTop: 'var(--space-3)' }}>
-                        {failed?.message ?? "Could not read the scale."}
-                    </p>
-                )}
             </CardContent>
         </Card>
+    );
+};
+
+/**
+ * The drain, sitting in the stats grid where the measurement count used to be.
+ *
+ * It takes the fourth tile only once the scale is paired; unpaired, the grid
+ * runs to three and the pairing form below is the only scale control on the
+ * page. There is no automatic version of this and there cannot be: Web
+ * Bluetooth requires a user gesture per connection and is absent from service
+ * workers, so a drain happens on a tap or not at all. The scale's 30-reading
+ * ring is what makes that sufficient - weigh whenever, drain occasionally.
+ *
+ * The outcome of the last drain reads out here rather than beside the pairing
+ * form, next to the button that caused it.
+ */
+const ScaleTile = ({
+    credentials,
+    drain,
+}: {
+    credentials: ScaleCredentials | null;
+    drain: ReturnType<typeof useScaleDrain>;
+}) => {
+    if (!bluetoothSupported() || !credentials) return null;
+
+    const failed = drain.error as Error | null;
+
+    return (
+        <div className="stat-card animate-in">
+            <div className="flex items-center justify-between stat-card__header">
+                <span>Scale</span>
+                <Bluetooth style={{ width: '18px', height: '18px', color: 'var(--text-muted)' }} />
+            </div>
+            <Button
+                onClick={() => drain.mutate(credentials)}
+                disabled={drain.isPending}
+                style={{ width: '100%', marginTop: 'var(--space-2)' }}
+            >
+                {drain.isPending ? "Reading..." : "Read scale"}
+            </Button>
+            {drain.data && !drain.isPending && (
+                <div style={{ fontSize: '11px', color: 'var(--success)', marginTop: 'var(--space-2)' }}>
+                    {drain.data.readings_received === 0
+                        ? "The scale had nothing stored."
+                        : `${drain.data.readings_received} reading${drain.data.readings_received === 1 ? "" : "s"} - ${drain.data.imported} new, ${drain.data.skipped} already held.`}
+                </div>
+            )}
+            {drain.isError && !drain.isPending && (
+                <div style={{ fontSize: '11px', color: 'var(--error)', marginTop: 'var(--space-2)' }}>
+                    {failed?.message ?? "Could not read the scale."}
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -348,6 +385,9 @@ const MeasurementLog = () => {
         limit: 50,
         sort: "ingested",
     });
+    // Shares the page's cached stats query - the count and span are one line
+    // of context on the table they describe, not a tile's worth of screen.
+    const { data: stats } = useBodyCompositionStats();
     const remove = useDeleteBodyComposition();
     const [confirming, setConfirming] = useState<number | null>(null);
 
@@ -372,9 +412,24 @@ const MeasurementLog = () => {
     return (
         <Card className="animate-in section">
             <CardHeader style={{ paddingBottom: 0 }}>
-                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-                    All measurements
-                </CardTitle>
+                <div className="flex items-center justify-between" style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                        All measurements
+                    </CardTitle>
+                    {stats && (
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap' }}>
+                            {stats.total_measurements} total
+                            {stats.first_date && stats.latest_date && (
+                                <>
+                                    {" \u00b7 "}
+                                    {format(parseISO(stats.first_date), "MMM d, yyyy")}
+                                    {" \u2013 "}
+                                    {format(parseISO(stats.latest_date), "MMM d, yyyy")}
+                                </>
+                            )}
+                        </span>
+                    )}
+                </div>
             </CardHeader>
             <CardContent>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
@@ -460,6 +515,17 @@ const MeasurementLog = () => {
 
 const BodyComposition = () => {
     const [trendDays, setTrendDays] = useState(30);
+
+    // Held here because two children read it: the tile that drains the scale
+    // and the form that pairs it. Saving from the form has to make the tile
+    // appear in the same render.
+    const [credentials, setStoredCredentials] = useState(() => loadCredentials());
+    const drain = useScaleDrain();
+
+    const setCredentials = (next: ScaleCredentials | null) => {
+        if (next) saveCredentials(next);
+        setStoredCredentials(next);
+    };
 
     const { data: stats, isLoading: statsLoading } = useBodyCompositionStats();
     const { data: trends, isLoading: trendsLoading } =
@@ -551,27 +617,12 @@ const BodyComposition = () => {
                                     icon={TrendingUp}
                                     trendDirection="up-good"
                                 />
-                                <div className="stat-card animate-in">
-                                    <div className="stat-card__header">
-                                        Total Measurements
-                                    </div>
-                                    <div className="stat-card__value">
-                                        {stats.total_measurements}
-                                    </div>
-                                    {stats.first_date && stats.latest_date && (
-                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-                                            {format(
-                                                parseISO(stats.first_date),
-                                                "MMM d, yyyy",
-                                            )}{" "}
-                                            -{" "}
-                                            {format(
-                                                parseISO(stats.latest_date),
-                                                "MMM d, yyyy",
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                                {/* The measurement count used to sit here. It
+                                    is a fact you read once and then never
+                                    again, so it moved to a line on the table
+                                    it describes, and the tile went to the one
+                                    control on this page you press repeatedly. */}
+                                <ScaleTile credentials={credentials} drain={drain} />
                             </div>
 
                             {/* The stats describe one instrument's series, and
@@ -597,9 +648,6 @@ const BodyComposition = () => {
                                     instruments.
                                 </p>
                             )}
-
-                            <ScaleDrain />
-                            <BodySpecSync />
 
                             {/* Period selector */}
                             <div className="flex items-center justify-between animate-in" style={{ marginBottom: 'var(--space-4)' }}>
@@ -928,11 +976,21 @@ const BodyComposition = () => {
                                     No body composition data available.
                                 </p>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-                                    Read your scale over Bluetooth above, or import a DEXA scan.
+                                    Read your scale over Bluetooth below, or import a DEXA scan.
                                 </p>
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Setup, not daily use: below the trends they feed, and
+                        outside the stats branch so an empty database still
+                        offers the two ways to fill it. */}
+                    <ScaleDrain
+                        credentials={credentials}
+                        onCredentials={setCredentials}
+                        busy={drain.isPending}
+                    />
+                    <BodySpecSync />
 
                     <MeasurementLog />
                 </div>

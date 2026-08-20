@@ -30,7 +30,7 @@ def get_pending_session():
 @router.post("/transfer", response_model=MobilityTransferResponse)
 def transfer_pending_session(request: MobilityTransferRequest):
     """Copy the pending session into the calendar on a date."""
-    result = MobilityService().transfer(request.date)
+    result = MobilityService().transfer(request.date, request.session)
 
     if result["count"] == 0:
         raise HTTPException(status_code=404, detail="No pending mobility session")
@@ -38,8 +38,13 @@ def transfer_pending_session(request: MobilityTransferRequest):
     return MobilityTransferResponse(**result)
 
 
-@router.delete("/pending", status_code=204)
-def clear_pending_session():
-    """Discard the pending session without running it."""
-    if MobilityService().clear_pending() == 0:
-        raise HTTPException(status_code=404, detail="No pending mobility session")
+@router.delete("/pending/{session}", status_code=204)
+def clear_pending_session(session: int):
+    """Discard one pending session without running it.
+
+    Takes a session because several can be pending: rehabbing a low back and a
+    shoulder at once means two prescriptions alive, and discarding one must
+    leave the other where it is.
+    """
+    if MobilityService().clear_pending(session) == 0:
+        raise HTTPException(status_code=404, detail="No such pending mobility session")

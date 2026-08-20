@@ -27,11 +27,24 @@ export interface MobilityLastSession {
  * when nothing is pending it is what makes the empty state actionable, because
  * it carries the comments the next session gets written from.
  */
-export interface MobilityPending {
-    ready: boolean;
+export interface MobilityPendingSession {
+    session: number;
+    /**
+     * The addressing key. The agent writes "Low back" or "Shoulder"; an
+     * existing label replaces that session and leaves the others alone, which
+     * is what lets two rehab programmes run at once.
+     */
+    label: string;
+    rationale: string;
+    generated_at: string;
     items: UpcomingWorkout[];
-    rationale: string | null;
-    generated_at: string | null;
+}
+
+export interface MobilityPending {
+    /** Any session pending. Derived from the rows, never stored. */
+    ready: boolean;
+    /** Several can be alive at once; a session with no items is omitted. */
+    sessions: MobilityPendingSession[];
     last_session: MobilityLastSession | null;
 }
 

@@ -485,6 +485,7 @@ def test_read_latest_returns_only_the_mobility_sets_of_a_mixed_day(mcp):
 
 def test_write_next_expands_sets_into_rows(mcp):
     result = mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "sets": 2, "reps": 8, "weight_lb": 30}],
         rationale="up to 35 next time",
     )
@@ -511,6 +512,7 @@ def test_write_next_records_nothing_about_mobility_on_the_exercise(mcp):
     `workouts.is_mobility` at transfer.
     """
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "Jefferson Curl", "sets": 1, "reps": 5}],
         rationale="probing the range unloaded",
     )
@@ -522,17 +524,73 @@ def test_write_next_records_nothing_about_mobility_on_the_exercise(mcp):
 
 def test_write_next_replaces_the_pending_session(mcp):
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "sets": 3, "reps": 8}], rationale="first"
     )
     result = mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "sets": 2, "reps": 8}], rationale="second"
     )
 
     assert result["replaced_pending_rows"] == 3
     assert mcp.query("SELECT count(*) n FROM upcoming_workouts")["rows"] == [{"n": 2}]
-    assert mcp.query("SELECT body FROM note WHERE kind = 'mobility_plan'")["rows"] == [
-        {"body": "second"}
+    # One plan row per label, its rationale superseded rather than accumulated.
+    assert mcp.query("SELECT label, rationale FROM mobility_plan")["rows"] == [
+        {"label": "Mobility", "rationale": "second"}
     ]
+
+
+def test_write_next_under_a_new_label_leaves_the_others_alone(mcp):
+    """The point of labels: two rehab programmes alive at once.
+
+    Writing "Shoulder" must not disturb "Low back" — under the old rolling
+    routine every write discarded whatever was pending.
+    """
+    mcp.write_next_mobility_session(
+        label="Low back", items=[{"exercise": "QL Raise", "sets": 2, "reps": 8}],
+        rationale="ql first",
+    )
+    result = mcp.write_next_mobility_session(
+        label="Shoulder", items=[{"exercise": "Lock 3", "sets": 1, "reps": 20}],
+        rationale="lock 3 daily",
+    )
+
+    assert result["replaced_pending_rows"] == 0
+    assert result["session"] != 1 or result["label"] == "Shoulder"
+    pending = mcp.read_pending_mobility_session()
+    assert [s["label"] for s in pending["sessions"]] == ["Low back", "Shoulder"]
+    assert [len(s["items"]) for s in pending["sessions"]] == [2, 1]
+
+
+def test_rewriting_one_label_leaves_the_other_untouched(mcp):
+    mcp.write_next_mobility_session(
+        label="Low back", items=[{"exercise": "QL Raise", "sets": 2, "reps": 8}],
+        rationale="ql first",
+    )
+    mcp.write_next_mobility_session(
+        label="Shoulder", items=[{"exercise": "Lock 3", "sets": 1, "reps": 20}],
+        rationale="lock 3 daily",
+    )
+    mcp.write_next_mobility_session(
+        label="Shoulder", items=[{"exercise": "Lock 3", "sets": 3, "reps": 20}],
+        rationale="up to three sets",
+    )
+
+    pending = mcp.read_pending_mobility_session()
+    by_label = {s["label"]: s for s in pending["sessions"]}
+    assert len(by_label["Shoulder"]["items"]) == 3
+    assert by_label["Shoulder"]["rationale"] == "up to three sets"
+    assert len(by_label["Low back"]["items"]) == 2
+    assert by_label["Low back"]["rationale"] == "ql first"
+
+
+def test_a_session_needs_a_label(mcp):
+    result = mcp.write_next_mobility_session(
+        label="   ", items=[{"exercise": "QL Raise", "reps": 8}], rationale="why"
+    )
+
+    assert result["ok"] is False
+    assert "label" in result["error"]
 
 
 def test_write_next_leaves_lifting_rows_untouched(mcp):
@@ -558,6 +616,7 @@ def test_write_next_leaves_lifting_rows_untouched(mcp):
         session.commit()
 
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "sets": 1, "reps": 8}], rationale="one set"
     )
 
@@ -568,6 +627,7 @@ def test_write_next_leaves_lifting_rows_untouched(mcp):
 
 def test_write_next_requires_a_rationale(mcp):
     result = mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "reps": 8}], rationale="   "
     )
 
@@ -576,7 +636,7 @@ def test_write_next_requires_a_rationale(mcp):
 
 
 def test_write_next_rejects_an_empty_session(mcp):
-    assert mcp.write_next_mobility_session(items=[], rationale="nothing")["ok"] is False
+    assert mcp.write_next_mobility_session(label="Mobility", items=[], rationale="nothing")["ok"] is False
 
 
 def test_write_next_is_attributed_to_the_agent(mcp):
@@ -589,9 +649,11 @@ def test_write_next_is_attributed_to_the_agent(mcp):
     something.
     """
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "sets": 1, "reps": 8}], rationale="first"
     )
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "sets": 1, "reps": 8}], rationale="second"
     )
 
@@ -600,7 +662,7 @@ def test_write_next_is_attributed_to_the_agent(mcp):
     )["rows"]
 
     assert {"table_name": "exercises", "op": "INSERT", "actor": "agent"} in logged
-    assert {"table_name": "note", "op": "DELETE", "actor": "agent"} in logged
+    assert {"table_name": "exercises", "op": "INSERT", "actor": "agent"} in logged
     # The claim is released inside the same transaction, so nothing later is
     # attributed to the agent by accident.
     assert mcp.query("SELECT actor FROM audit_actor")["rows"] == [{"actor": "app"}]
@@ -615,6 +677,7 @@ def test_read_pending_says_so_when_nothing_is_waiting(mcp):
 
 def test_read_pending_returns_the_routine_in_prescribed_order(mcp):
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[
             {"exercise": "Decline Bicycle Crunch", "sets": 1, "reps": 20},
             {"exercise": "QL Raise", "sets": 2, "reps": 8, "comment": "each side"},
@@ -625,15 +688,17 @@ def test_read_pending_returns_the_routine_in_prescribed_order(mcp):
     result = mcp.read_pending_mobility_session()
 
     assert result["pending"] is True
-    assert result["rationale"] == "core first, then the QL"
+    session = result["sessions"][0]
+    assert session["label"] == "Mobility"
+    assert session["rationale"] == "core first, then the QL"
     # One row per set, in insertion order. The table has no `order` column, so
     # nothing else carries the sequence the routine is to be performed in.
-    assert [item["exercise"] for item in result["items"]] == [
+    assert [item["exercise"] for item in session["items"]] == [
         "Decline Bicycle Crunch",
         "QL Raise",
         "QL Raise",
     ]
-    assert result["items"][1]["comment"] == "each side"
+    assert session["items"][1]["comment"] == "each side"
 
 
 def test_read_pending_ignores_a_rationale_with_no_items(mcp):
@@ -643,6 +708,7 @@ def test_read_pending_ignores_a_rationale_with_no_items(mcp):
     `MobilityService.get_pending` follows on the app side.
     """
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "reps": 8}], rationale="stale"
     )
     with database.SessionLocal() as session:
@@ -656,6 +722,7 @@ def test_read_pending_ignores_a_pending_lifting_session(mcp):
     """`session = 1` is the mobility slot, but lifting numbers its sessions
     from 1 as well. `kind` is what separates them, not the number."""
     mcp.write_next_mobility_session(
+        label="Mobility",
         items=[{"exercise": "QL Raise", "reps": 8}], rationale="the mobility one"
     )
     with database.SessionLocal() as session:
@@ -670,8 +737,9 @@ def test_read_pending_ignores_a_pending_lifting_session(mcp):
 
     result = mcp.read_pending_mobility_session()
 
-    assert len(result["items"]) == 1
-    assert result["items"][0]["reps"] == 8
+    assert len(result["sessions"]) == 1
+    assert len(result["sessions"][0]["items"]) == 1
+    assert result["sessions"][0]["items"][0]["reps"] == 8
 
 
 # --------------------------------------------------------------------------

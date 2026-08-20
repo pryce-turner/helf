@@ -540,12 +540,15 @@ docker-compose up -d
 - `POST /{id}/log` - Write one `food_log` row per item, at one instant
 
 ### Mobility (`/api/mobility`)
-- `GET /pending` - The pending session, its rationale, and the last session
-  that was run. `ready` is derived from whether items exist, and is the page's
-  whole state discriminator
-- `POST /transfer` - Copy the pending session onto a date, appending after
-  anything already logged that day, and mark the day as a mobility session
-- `DELETE /pending` - Discard the pending session without running it
+- `GET /pending` - **Every** pending session, each with its `label`, rationale
+  and movements, plus the last session that was run. `ready` is derived from
+  whether any session has items, and is the page's whole state discriminator.
+  A plan row with no items is omitted rather than shown as an empty heading
+- `POST /transfer` - Copy **one** pending session (named by `session`) onto a
+  date, appending after anything already logged that day, and flag the sets as
+  mobility work. Transferring one leaves the others pending
+- `DELETE /pending/{session}` - Discard one pending session without running it,
+  taking both its rows and the plan row that names them
 There are deliberately **no endpoints here for creating a session or for
 marking one**. The session is written by the agent over MCP, which is the point
 of the feature; and which sets were mobility work is a field on the set,
@@ -627,11 +630,18 @@ nothing separate to assert (plan 0013).
 model section above.*
 
 ### Mobility
-- **One rolling routine**, adjusted a session at a time from the last session's
-  feedback — not a program generated in advance and then followed
-- The agent drives it over MCP: `read_latest_mobility_session()` returns the
-  last mobility session's sets and every comment on them,
-  `write_next_mobility_session()` replaces what is pending and records why
+- **Rolling routines**, each adjusted a session at a time from the last
+  session's feedback — not programs generated in advance and then followed
+- **Several can be pending at once**, one per `label` ("Low back",
+  "Shoulder"), because rehabbing two areas means two prescriptions alive on
+  different schedules. The label is the agent's addressing key: a new one adds
+  a session, an existing one replaces *that* session and cannot touch the
+  others. The user picks which to run from `/mobility`
+- The agent drives it over MCP: `read_latest_mobility_session(date=…)` returns
+  a mobility session's sets and every comment on them — the most recent day
+  with flagged sets, or a day you name — and
+  `write_next_mobility_session(label, …)` writes one pending session and
+  records why
 - **Which sets it reads is the per-set toggle** on `/day/:date`, beside the
   completion tick, with a **Mark all mobility** button in the day's header for
   the common case where the whole day was one. The button writes the same

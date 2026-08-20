@@ -43,37 +43,57 @@ class MobilityLastSession(BaseModel):
     sets: list[MobilityLoggedSet]
 
 
+class MobilityPendingSession(BaseModel):
+    """One pending session: what it is called, why, and what is in it."""
+
+    session: int
+    #: The addressing key the agent writes against, and what the user reads on
+    #: the page to tell "Low back" from "Shoulder".
+    label: str
+    rationale: str
+    generated_at: str
+    items: list[UpcomingWorkout] = Field(default_factory=list)
+
+
 class MobilityPending(BaseModel):
-    """What the mobility tab renders, in either of its two states.
+    """What the mobility tab renders.
 
-    `ready` is the state discriminator and is derived, not stored: a session is
-    ready precisely when it has items. There is no third state and no
-    'generating' - the agent writes the session in one transaction over MCP, so
-    from the page's point of view a session either exists or does not.
+    `ready` is still derived and still the state discriminator, but it now
+    means *any* session is pending. There is no 'generating' state: the agent
+    writes a session in one transaction over MCP, so from the page's point of
+    view a session either exists or does not.
 
-    `last_session` is present in both states on purpose. When nothing is
+    `sessions` replaced a single flattened routine when rehabbing two areas at
+    once made one pending prescription untenable (b6f31a90c4de). A session with
+    no items is omitted rather than shown empty.
+
+    `last_session` is present in every state on purpose. When nothing is
     pending it is what makes the empty state actionable, because it carries the
     comments the next session has to be written from.
     """
 
     ready: bool
-    items: list[UpcomingWorkout] = Field(default_factory=list)
-    rationale: str | None = None
-    generated_at: str | None = None
+    sessions: list[MobilityPendingSession] = Field(default_factory=list)
     last_session: MobilityLastSession | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class MobilityTransferRequest(BaseModel):
-    """Request to copy the pending session onto a date."""
+    """Request to copy one pending session onto a date.
 
+    `session` names which — the page lists several and the user picks.
+    """
+
+    session: int
     date: str = Field(..., description="Target date in YYYY-MM-DD format")
 
 
 class MobilityTransferResponse(BaseModel):
-    """Response from copying the pending session into the calendar."""
+    """Response from copying one pending session into the calendar."""
 
     date: str
     count: int
+    #: Which session moved. None only when nothing matched the request.
+    label: str | None = None
     message: str

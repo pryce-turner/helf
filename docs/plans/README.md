@@ -38,6 +38,7 @@ table.
 | 0011 | [Supplement stacks](0011-supplement-stacks.md) | Implemented 2026-08-09 | `9ffbe9c21a0f` | — |
 | 0012 | [Mobility](0012-mobility.md) | Implemented 2026-08-10 | `c4a92f18de07` | **Partly superseded by 0013** — §1, §3, §4's first mitigation, §9 and §10. Stale passages are marked in place; see the banner at the top of the plan |
 | 0013 | [Mobility belongs to the set](0013-mobility-belongs-to-the-set.md) | Implemented 2026-08-19 | `d7e4f2a91b83` | Retires `exercises.is_mobility` and the day marker |
+| 0014 | [Several mobility sessions](0014-several-mobility-sessions.md) | Implemented 2026-08-20 | `b6f31a90c4de` | Retires 0012 §2's "one rolling routine, not a queue" |
 
 ## Where things stand
 

@@ -20,13 +20,22 @@ from app.repositories.upcoming_repo import (
 pytestmark = pytest.mark.usefixtures("db_engine")
 
 
-def write_pending(rationale: str = "Pigeon leads, right side first.") -> None:
-    """What `write_next_mobility_session` does, through the app's own layer."""
+def write_pending(
+    rationale: str = "Pigeon leads, right side first.",
+    label: str = "Mobility",
+) -> int:
+    """What `write_next_mobility_session` does, through the app's own layer.
+
+    Returns the session number, which callers need to transfer or discard it —
+    several can be pending now, so nothing is addressable by "the" session.
+    """
+    plan = MobilityRepository().upsert_plan(label, rationale)
+    session_id = plan["session"]
     repo = UpcomingWorkoutRepository()
     repo.create_bulk(
         [
             UpcomingWorkoutCreate(
-                session=MOBILITY_SESSION,
+                session=session_id,
                 kind=MOBILITY,
                 exercise="Hanging Knee Raise",
                 category="Core",
@@ -34,7 +43,7 @@ def write_pending(rationale: str = "Pigeon leads, right side first.") -> None:
                 comment="tuck the feet behind on extension",
             ),
             UpcomingWorkoutCreate(
-                session=MOBILITY_SESSION,
+                session=session_id,
                 kind=MOBILITY,
                 exercise="Hanging Knee Raise",
                 category="Core",
@@ -42,7 +51,7 @@ def write_pending(rationale: str = "Pigeon leads, right side first.") -> None:
                 comment="tuck the feet behind on extension",
             ),
             UpcomingWorkoutCreate(
-                session=MOBILITY_SESSION,
+                session=session_id,
                 kind=MOBILITY,
                 exercise="Weighted Pigeon Squat",
                 category="Legs",
@@ -52,28 +61,28 @@ def write_pending(rationale: str = "Pigeon leads, right side first.") -> None:
             ),
         ]
     )
-    MobilityRepository().replace_plan_note(rationale)
+    return session_id
 
 
 def test_pending_is_empty_before_anything_is_written(client):
     body = client.get("/api/mobility/pending").json()
 
     assert body["ready"] is False
-    assert body["items"] == []
+    assert body["sessions"] == []
     assert body["last_session"] is None
 
 
 def test_pending_returns_the_session_and_its_rationale(client):
-    write_pending()
+    session_id = write_pending()
 
     body = client.get("/api/mobility/pending").json()
 
     assert body["ready"] is True
-    assert len(body["items"]) == 3
-    assert body["rationale"] == "Pigeon leads, right side first."
+    assert len(body["sessions"][0]["items"]) == 3
+    assert body["sessions"][0]["rationale"] == "Pigeon leads, right side first."
     # Insertion order is the prescribed order - the table has no `order`
     # column, so nothing else carries it.
-    assert [item["exercise"] for item in body["items"]] == [
+    assert [item["exercise"] for item in body["sessions"][0]["items"]] == [
         "Hanging Knee Raise",
         "Hanging Knee Raise",
         "Weighted Pigeon Squat",
@@ -82,18 +91,19 @@ def test_pending_returns_the_session_and_its_rationale(client):
 
 def test_a_rationale_without_items_is_not_reported_as_a_plan(client):
     """A leftover note would otherwise explain a session that is not there."""
-    MobilityRepository().replace_plan_note("orphaned reasoning")
+    MobilityRepository().upsert_plan("Mobility", "orphaned reasoning")
 
     body = client.get("/api/mobility/pending").json()
 
     assert body["ready"] is False
-    assert body["rationale"] is None
+    # A plan row with no items is a heading with nothing under it.
+    assert body["sessions"] == []
 
 
 def test_transfer_writes_sets_and_marks_the_day(client):
-    write_pending()
+    session_id = write_pending()
 
-    response = client.post("/api/mobility/transfer", json={"date": "2026-08-11"})
+    response = client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
     assert response.status_code == 200
     assert response.json()["count"] == 3
 
@@ -117,9 +127,9 @@ def test_transfer_appends_after_work_already_logged_that_day(client):
         "/api/workouts/",
         json={"date": "2026-08-11", "exercise": "Bench", "category": "Push", "reps": 5},
     )
-    write_pending()
+    session_id = write_pending()
 
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11"})
+    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
 
     logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
     assert [w["order"] for w in logged] == [1, 2, 3, 4]
@@ -127,12 +137,14 @@ def test_transfer_appends_after_work_already_logged_that_day(client):
 
 
 def test_transfer_without_a_pending_session_is_404(client):
-    assert client.post("/api/mobility/transfer", json={"date": "2026-08-11"}).status_code == 404
+    assert client.post(
+        "/api/mobility/transfer", json={"date": "2026-08-11", "session": 1}
+    ).status_code == 404
 
 
 def test_last_session_carries_the_comments_forward(client):
-    write_pending()
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11"})
+    session_id = write_pending()
+    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
 
     logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
     client.put(
@@ -163,8 +175,8 @@ def test_editing_a_comment_does_not_unflag_the_set(client):
     and adding feedback to a set after running it is the whole read-back
     channel. The flag would vanish exactly when the loop needs it.
     """
-    write_pending()
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11"})
+    session_id = write_pending()
+    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
     logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
 
     client.put(
@@ -184,8 +196,8 @@ def test_editing_a_comment_does_not_unflag_the_set(client):
 
 
 def test_unflagging_a_set_is_possible_when_actually_asked_for(client):
-    write_pending()
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11"})
+    session_id = write_pending()
+    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
     logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
 
     for row in logged:
@@ -205,11 +217,11 @@ def test_unflagging_a_set_is_possible_when_actually_asked_for(client):
 
 
 def test_clearing_pending_discards_it(client):
-    write_pending()
+    session_id = write_pending()
 
-    assert client.delete("/api/mobility/pending").status_code == 204
+    assert client.delete(f"/api/mobility/pending/{session_id}").status_code == 204
     assert client.get("/api/mobility/pending").json()["ready"] is False
-    assert client.delete("/api/mobility/pending").status_code == 404
+    assert client.delete(f"/api/mobility/pending/{session_id}").status_code == 404
 
 
 # --------------------------------------------------------------------------
@@ -223,7 +235,7 @@ def test_generating_a_lifting_program_leaves_mobility_alone(client):
     mobility tab would fall back to "no session ready" for a reason nothing on
     screen could explain.
     """
-    write_pending()
+    session_id = write_pending()
 
     response = client.post(
         "/api/upcoming/liftoscript/generate",
@@ -236,7 +248,7 @@ def test_generating_a_lifting_program_leaves_mobility_alone(client):
 
 
 def test_mobility_rows_do_not_appear_in_the_lifting_planner(client):
-    write_pending()
+    session_id = write_pending()
 
     assert client.get("/api/upcoming/").json() == []
 
@@ -249,19 +261,44 @@ def test_lifting_rows_do_not_appear_on_the_mobility_tab(client):
     assert client.get("/api/mobility/pending").json()["ready"] is False
 
 
-def test_plan_note_is_replaced_not_accumulated():
-    """One rolling routine means one rationale; a stale one would be read as
-    current by whichever query reached it first."""
+def test_a_label_holds_one_plan_row_not_a_pile(client):
+    """The rationale is superseded per label, never appended to.
+
+    It describes the session that is pending under that name, and only one is.
+    """
     repo = MobilityRepository()
-    repo.replace_plan_note("first")
-    repo.replace_plan_note("second")
+    repo.upsert_plan("Mobility", "first")
+    repo.upsert_plan("Mobility", "second")
 
-    with database.SessionLocal() as session:
-        rows = session.execute(
-            text("SELECT body FROM note WHERE kind = :k"), {"k": PLAN_KIND}
-        ).all()
+    plans = repo.get_plans()
+    assert [(p["label"], p["rationale"]) for p in plans] == [("Mobility", "second")]
 
-    assert rows == [("second",)]
+
+def test_two_labels_are_two_independent_sessions(client):
+    """Rehabbing a low back and a shoulder at once is the whole feature."""
+    low = write_pending("QL first", label="Low back")
+    shoulder = write_pending("Lock 3 daily", label="Shoulder")
+    assert low != shoulder
+
+    body = client.get("/api/mobility/pending").json()
+    assert [s["label"] for s in body["sessions"]] == ["Low back", "Shoulder"]
+
+    # Transferring one leaves the other pending.
+    client.post(
+        "/api/mobility/transfer", json={"date": "2026-08-11", "session": low}
+    )
+    after = client.get("/api/mobility/pending").json()
+    assert [s["label"] for s in after["sessions"]] == ["Shoulder"]
+
+
+def test_discarding_one_session_leaves_the_other(client):
+    write_pending("QL first", label="Low back")
+    shoulder = write_pending("Lock 3 daily", label="Shoulder")
+
+    assert client.delete(f"/api/mobility/pending/{shoulder}").status_code == 204
+
+    body = client.get("/api/mobility/pending").json()
+    assert [s["label"] for s in body["sessions"]] == ["Low back"]
 
 
 # --------------------------------------------------------------------------

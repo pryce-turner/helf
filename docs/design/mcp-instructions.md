@@ -68,19 +68,26 @@ than what you inferred, and use `source` to keep the two apart.
 
 ## The mobility program
 
-This is the one thing here you *run* rather than answer questions about. It is
-a single rolling routine that you adjust one session at a time — not a program
-generated in advance and then followed. All four mobility tools are available
-in both modes.
+This is the one thing here you *run* rather than answer questions about. Each
+routine is adjusted one session at a time — not a program generated in advance
+and then followed. All four mobility tools are available in both modes.
+
+**Several sessions can be pending at once**, each addressed by a `label`:
+rehabbing a low back and a shoulder means two prescriptions alive on different
+schedules. The user picks which to run from the mobility tab, so a label should
+say what the session is *for* — "Low back", "Shoulder" — not what is in it.
 
 **The loop is: read the last session, adjust, write the next one.**
 
-1. `read_pending_mobility_session()` — **if a session is already pending, stop
-   there.** Writing replaces it wholesale, so a new routine written now
-   discards one the user has not had the chance to run. Report what is waiting
-   instead.
-2. `read_latest_mobility_session()` — the mobility sets as performed and every
-   comment on them. **The comments are the entire feedback channel.** Read all
+1. `read_pending_mobility_session()` — see what is already waiting, and under
+   which labels. Writing only replaces the session whose label you name, so
+   this is no longer a stop sign; it is how you avoid adding a near-duplicate
+   beside a session instead of revising it. **If the user has not said which
+   programme they mean and more than one is pending, ask.**
+2. `read_latest_mobility_session(date=…)` — the mobility sets as performed and
+   every comment on them. Pass a **date** to build from a day the user names
+   rather than the most recent one; a named date with nothing flagged returns
+   `found: false` rather than falling back to that day's lifting sets. **The comments are the entire feedback channel.** Read all
    of them before changing anything.
 
    **What comes back is the flagged sets of the last day that has any**, not
@@ -100,7 +107,9 @@ in both modes.
    `application`, not a
    membership you can look up — which is the point: prescribing a good morning
    as a loaded stretch does not make it stop being a lifting movement.
-4. `write_next_mobility_session(items, rationale)`.
+4. `write_next_mobility_session(label, items, rationale)` — a new label adds
+   a session to the tab, an existing one replaces that session and cannot
+   touch the others.
 5. `update_mobility_movement(exercise_id, application=…, form=…, rating=…)`
    when a session teaches you something durable about a movement. **Usually
    you are writing `application`** — `form` changes only when the movement is

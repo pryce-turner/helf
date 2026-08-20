@@ -26,13 +26,15 @@ routine. A session the user assembled by hand has no note at all, and that is
 not an error - nothing prescribed it.
 """
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app import database
-from app.db.models import Exercise, Note, Workout
+from app.db.models import Exercise, MobilityPlan, Note, Workout
 from app.utils.date_helpers import format_timestamp, get_current_datetime
 
-#: Pending. At most one, replaced wholesale each time the agent writes.
+#: Retired by b6f31a90c4de. Pending plans are rows in `mobility_plan` now,
+#: because several can be alive at once and a note has no room for a name.
+#: Kept only so a migration or an old export can still be recognised.
 PLAN_KIND = "mobility_plan"
 #: Run. Dated to the day it was logged on. Not a marker - the sets say
 #: whether the day was mobility work; this only says why.
@@ -57,76 +59,126 @@ class MobilityRepository:
             "source": note.source,
         }
 
-    def get_plan_note(self) -> dict | None:
-        """The rationale for the session currently pending, if there is one."""
-        with database.SessionLocal() as session:
-            note = session.execute(
-                select(Note)
-                .where(Note.kind == PLAN_KIND)
-                .order_by(Note.noted_at.desc())
-            ).scalars().first()
-            return self._serialize_note(note) if note else None
+    @staticmethod
+    def _serialize_plan(plan: MobilityPlan) -> dict:
+        return {
+            "session": plan.session,
+            "label": plan.label,
+            "rationale": plan.rationale,
+            "generated_at": plan.created_at,
+        }
 
-    def replace_plan_note(self, body: str, source: str = "agent") -> dict:
-        """Write the pending session's rationale, replacing any previous one.
+    def get_plans(self) -> list[dict]:
+        """Every pending mobility session, oldest first.
 
-        Replace rather than append: a plan note describes the session that is
-        pending, and only one session is ever pending. A superseded rationale
-        left behind would be read as the current one by whichever query got
-        there first.
+        Ordered by `session` rather than by creation time so the list does not
+        reshuffle when one of them is revised — the page is a list you pick
+        from, and a list that reorders under your thumb is a list you mis-tap.
         """
         with database.SessionLocal() as session:
-            for stale in session.execute(
-                select(Note).where(Note.kind == PLAN_KIND)
-            ).scalars().all():
-                session.delete(stale)
+            plans = session.execute(
+                select(MobilityPlan).order_by(MobilityPlan.session.asc())
+            ).scalars().all()
+            return [self._serialize_plan(plan) for plan in plans]
 
-            created = Note(
-                noted_at=format_timestamp(get_current_datetime()),
-                kind=PLAN_KIND,
-                body=body,
-                source=source,
-            )
-            session.add(created)
+    def get_plan_by_label(self, label: str) -> dict | None:
+        with database.SessionLocal() as session:
+            plan = session.execute(
+                select(MobilityPlan).where(MobilityPlan.label == label)
+            ).scalars().first()
+            return self._serialize_plan(plan) if plan else None
+
+    def get_plan(self, session_id: int) -> dict | None:
+        with database.SessionLocal() as session:
+            plan = session.get(MobilityPlan, session_id)
+            return self._serialize_plan(plan) if plan else None
+
+    def upsert_plan(self, label: str, rationale: str) -> dict:
+        """Create a pending session under `label`, or replace the one that has it.
+
+        **The label is the key.** Writing "Shoulder" twice revises the shoulder
+        session and cannot touch "Low back" — which is the whole difference
+        between this and the single rolling routine it replaces, where every
+        write destroyed whatever was pending.
+
+        Returns the plan including its `session`, which is what the caller
+        writes the items against. A new session takes `max + 1` **within
+        mobility**; lifting numbers its own sessions independently and the two
+        never meet, because every query names its kind.
+        """
+        with database.SessionLocal() as session:
+            plan = session.execute(
+                select(MobilityPlan).where(MobilityPlan.label == label)
+            ).scalars().first()
+
+            if plan is None:
+                highest = session.execute(
+                    select(func.max(MobilityPlan.session))
+                ).scalar()
+                plan = MobilityPlan(
+                    session=(highest or 0) + 1,
+                    label=label,
+                    rationale=rationale,
+                    created_at=format_timestamp(get_current_datetime()),
+                )
+                session.add(plan)
+            else:
+                plan.rationale = rationale
+                plan.created_at = format_timestamp(get_current_datetime())
+
             session.commit()
-            session.refresh(created)
-            return self._serialize_note(created)
+            session.refresh(plan)
+            return self._serialize_plan(plan)
 
-    def promote_plan_note(self, date: str) -> dict | None:
-        """Turn the pending plan into the record of a session that was run.
+    def delete_plan(self, session_id: int) -> int:
+        """Drop one pending session's metadata. The items are the caller's job."""
+        with database.SessionLocal() as session:
+            plan = session.get(MobilityPlan, session_id)
+            if plan is None:
+                return 0
+            session.delete(plan)
+            session.commit()
+            return 1
 
-        Called at transfer, which is the moment the session acquires a date.
-        The note keeps its body and its id - it is the same reasoning, now
-        attached to the day it was actually applied on - and changes kind.
+    def record_session_note(self, session_id: int, date: str) -> dict | None:
+        """Turn a pending plan's reasoning into the record of a session run.
 
-        Returns None when there was no plan note. It used to write an empty
-        stand-in row here, because the read path keyed on the row's existence
-        to decide whether the day happened. Nothing keys on it now - the sets
-        carry that - so an empty note would be a row asserting nothing, dated
-        to a day, waiting to be mistaken for a rationale.
+        Called at transfer, the moment the session acquires a date. The plan
+        row goes; what survives is a dated `note` carrying why the session was
+        written, which is what `read_latest_mobility_session` reports back.
+
+        Returns None if the plan has vanished — nothing to record, and an empty
+        note dated to a day would be a row asserting nothing (0013).
         """
         with database.SessionLocal() as session:
-            note = session.execute(
-                select(Note)
-                .where(Note.kind == PLAN_KIND)
-                .order_by(Note.noted_at.desc())
-            ).scalars().first()
-
-            if note is None:
+            plan = session.get(MobilityPlan, session_id)
+            if plan is None:
                 return None
 
-            note.kind = SESSION_KIND
-            note.noted_at = f"{date}{NOON}"
+            note = Note(
+                noted_at=f"{date}{NOON}",
+                kind=SESSION_KIND,
+                body=plan.rationale,
+                source="agent",
+            )
+            session.add(note)
+            session.delete(plan)
             session.commit()
             session.refresh(note)
             return self._serialize_note(note)
 
-    def get_latest_logged(self) -> dict | None:
+    def get_latest_logged(self, date: str | None = None) -> dict | None:
         """The last mobility session that reached the calendar, with its sets.
 
-        **The day is derived, not asserted.** The most recent date carrying any
-        set with `is_mobility = 1` is the last mobility session; there is no
-        marker to agree or disagree with the rows. A day the user assembled by
+        With no `date`, **the day is derived**: the most recent date carrying
+        any set with `is_mobility = 1`. Passing a date reads that day instead,
+        which is how a session gets written from a specific one rather than
+        from whatever happened last. Either way there is no marker to agree or
+        disagree with the rows.
+
+        A named date with **no flagged sets returns None**, rather than falling
+        back to everything logged that day. The flag is the only thing that
+        says a set was mobility work. A day the user assembled by
         hand is found the same way as one the agent prescribed, which is what
         the old marker needed a second writer to achieve.
 
@@ -145,13 +197,25 @@ class MobilityRepository:
         an instruction that was tried.
         """
         with database.SessionLocal() as session:
-            date = session.execute(
-                select(Workout.date)
-                .where(Workout.is_mobility.is_(True))
-                .order_by(Workout.date.desc())
-                .limit(1)
-            ).scalars().first()
             if date is None:
+                date = session.execute(
+                    select(Workout.date)
+                    .where(Workout.is_mobility.is_(True))
+                    .order_by(Workout.date.desc())
+                    .limit(1)
+                ).scalars().first()
+                if date is None:
+                    return None
+            elif not session.execute(
+                select(Workout.id)
+                .where(Workout.date == date, Workout.is_mobility.is_(True))
+                .limit(1)
+            ).scalars().first():
+                # A named date with nothing flagged comes back empty rather
+                # than falling back to the whole day. The flag is the only
+                # thing that says a set was mobility work, and programming
+                # from a day's lifting sets because they happened to be there
+                # is worse than saying there is nothing to read.
                 return None
 
             rows = session.execute(

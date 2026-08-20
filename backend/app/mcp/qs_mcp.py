@@ -539,22 +539,30 @@ def log_workout(
 # --------------------------------------------------------------------------
 # Mobility — the one loop the agent drives rather than assists
 # --------------------------------------------------------------------------
-# A mobility program is one rolling routine, so its planned rows always share
-# this session number (Plan 0012 §2). Mirrors `MOBILITY_SESSION` in
-# `app/repositories/upcoming_repo.py`; duplicated rather than imported, because
-# this process imports nothing from `app` except `config` (ADR-0002).
-MOBILITY_SESSION = 1
-PLAN_KIND = "mobility_plan"
+# Several mobility sessions can be pending at once (b6f31a90c4de), each a row
+# in `mobility_plan` keyed by `session` and addressed by `label`. Their items
+# are `upcoming_workouts` rows sharing that session number — the column always
+# supported this; mobility used to pin itself to a constant 1.
+#
+# Nothing is imported from `app` to learn any of that (ADR-0002): this process
+# knows the schema, not the application.
 SESSION_KIND = "mobility_session"
 
 
-def read_latest_mobility_session() -> dict:
+def read_latest_mobility_session(date: str | None = None) -> dict:
     """Read the last mobility session that was actually performed, and what was
     said about it. Call this **before** write_next_mobility_session — it is the
     entire input to the next prescription.
 
-    The session is **the mobility-flagged sets of the most recent day that has
-    any**. `workouts.is_mobility` is per set, not per movement: the same
+    Pass a **`date`** (YYYY-MM-DD) to read a specific day instead of the most
+    recent one — that is how you build a session from a day the user names
+    rather than from whatever happened last. A named date with no flagged sets
+    returns `found: false`: the flag is the only thing that says a set was
+    mobility work, and programming from a day's lifting sets because they
+    happened to be there is worse than reporting nothing.
+
+    With no argument the session is **the mobility-flagged sets of the most
+    recent day that has any**. `workouts.is_mobility` is per set, not per movement: the same
     exercise is a lift in one row and a loaded stretch in another, so a
     mobility session run alongside lifting comes back as its own sets rather
     than as the whole day. Sets the user did not flag are not part of it.
@@ -574,19 +582,32 @@ def read_latest_mobility_session() -> dict:
     """
     conn = _ro()
     try:
-        day = conn.execute(
-            "SELECT date FROM workouts WHERE is_mobility = 1 "
-            "ORDER BY date DESC LIMIT 1"
-        ).fetchone()
+        if date is not None:
+            day = conn.execute(
+                "SELECT date FROM workouts WHERE is_mobility = 1 AND date = ? "
+                "LIMIT 1",
+                (date,),
+            ).fetchone()
+        else:
+            day = conn.execute(
+                "SELECT date FROM workouts WHERE is_mobility = 1 "
+                "ORDER BY date DESC LIMIT 1"
+            ).fetchone()
         if day is None:
             return {
                 "ok": True,
                 "found": False,
-                "hint": "No mobility set has been logged yet. Movements are "
-                        "in `exercises`, where `form` says how to perform one "
-                        "and `application` says what to change when. A movement "
-                        "is not mobility work in itself, so read those and pick "
-                        "for the objective when writing a first session.",
+                "hint": (
+                    f"No set on {date} is flagged as mobility work. Ask the "
+                    "user to flag them on the day view - the per-set toggle, "
+                    "or 'Mark all mobility' in the day header."
+                ) if date else (
+                    "No mobility set has been logged yet. Movements are "
+                    "in `exercises`, where `form` says how to perform one and "
+                    "`application` says what to change when. A movement is not "
+                    "mobility work in itself, so read those and pick for the "
+                    "objective when writing a first session."
+                ),
             }
 
         date = day["date"]
@@ -620,9 +641,14 @@ def read_pending_mobility_session() -> dict:
     """Read the session that is on deck — written, but not yet run.
 
     Distinct from `read_latest_mobility_session`, which reads the last session
-    *performed*. Check this **before** writing: `write_next_mobility_session`
-    replaces the pending session wholesale, so writing while one is already
-    waiting discards a routine the user has not had the chance to run.
+    *performed*. **Several can be pending at once** — rehabbing a low back and
+    a shoulder means two prescriptions alive on different schedules — so this
+    returns a list, each with the `label` that addresses it.
+
+    Read it before writing, but the old rule ("stop if anything is pending") is
+    gone: a write only replaces the session whose label it names. Check here so
+    you write under the right label, and so you revise a session rather than
+    adding a near-duplicate beside it.
 
     Rows come back one per set, as they are stored — `sets: 2` on the way in is
     two identical rows on the way out, in prescribed order. `pending` is false
@@ -631,35 +657,52 @@ def read_pending_mobility_session() -> dict:
     """
     conn = _ro()
     try:
-        rows = conn.execute(
-            """SELECT e.name AS exercise, u.weight, u.reps, u.time, u.comment
-               FROM upcoming_workouts u JOIN exercises e ON e.id = u.exercise_id
-               WHERE u.kind = 'mobility' AND u.session = ?
-               ORDER BY u.id""",
-            (MOBILITY_SESSION,),
+        plans = conn.execute(
+            "SELECT session, label, rationale, created_at FROM mobility_plan "
+            "ORDER BY session"
         ).fetchall()
-        if not rows:
-            return {"ok": True, "pending": False}
 
-        note = conn.execute(
-            "SELECT noted_at, body FROM note WHERE kind = ? "
-            "ORDER BY noted_at DESC LIMIT 1",
-            (PLAN_KIND,),
-        ).fetchone()
+        sessions = []
+        for plan in plans:
+            rows = conn.execute(
+                """SELECT e.name AS exercise, u.weight, u.reps, u.time, u.comment
+                   FROM upcoming_workouts u JOIN exercises e ON e.id = u.exercise_id
+                   WHERE u.kind = 'mobility' AND u.session = ?
+                   ORDER BY u.id""",
+                (plan["session"],),
+            ).fetchall()
+            if not rows:
+                continue
+            sessions.append({
+                "label": plan["label"],
+                "rationale": plan["rationale"],
+                "generated_at": plan["created_at"],
+                "items": [dict(r) for r in rows],
+            })
+
+        if not sessions:
+            return {"ok": True, "pending": False}
 
         return {
             "ok": True,
             "pending": True,
-            "items": [dict(r) for r in rows],
-            "rationale": note["body"] if note else None,
-            "generated_at": note["noted_at"] if note else None,
+            "sessions": sessions,
         }
     finally:
         conn.close()
 
 
-def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
-    """Write the next mobility session, replacing whatever was pending.
+def write_next_mobility_session(
+    label: str, items: list[dict], rationale: str
+) -> dict:
+    """Write a pending mobility session under `label`, creating or replacing it.
+
+    **`label` is the key.** "Low back", "Shoulder" — a new one adds a session
+    to the tab, an existing one replaces *that* session and cannot touch the
+    others. This is what lets two rehab programmes run at once, and it is why
+    writing no longer discards whatever was waiting. Use the label the user
+    uses; check `read_pending_mobility_session()` first so you revise rather
+    than duplicate.
 
     `items` is the routine in the order it is to be performed. Each is
     {exercise, sets?, reps?, weight_lb?, comment?, category?}:
@@ -675,9 +718,18 @@ def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
     `rationale` is what you changed and why. The user reads it on the mobility
     tab before running the session, so write it to them, not to yourself.
 
-    Replaces the pending session wholesale — there is one rolling routine, not
-    a queue. Anything already pending and not yet run is discarded.
+    The user picks which pending session to run from the mobility tab, so a
+    label that says what the session is *for* is worth more than one that says
+    what is in it.
     """
+    if not label or not label.strip():
+        return {
+            "ok": False,
+            "error": "label is required",
+            "hint": "It is how this session is addressed and how the user "
+                    "tells it from the others on the tab. Name what it is "
+                    "for - 'Low back', 'Shoulder' - not what is in it.",
+        }
     if not items:
         return {"ok": False, "error": "a session needs at least one item"}
     if not rationale or not rationale.strip():
@@ -699,8 +751,29 @@ def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
 
     with _rw() as conn:
         replaced = conn.execute(
-            "DELETE FROM upcoming_workouts WHERE kind = 'mobility'"
+            "DELETE FROM upcoming_workouts WHERE kind = 'mobility' "
+            "AND session = (SELECT session FROM mobility_plan WHERE label = ?)",
+            (label,),
         ).rowcount
+
+        # Upsert the plan and learn its session number. A new label takes the
+        # next number *within mobility*; lifting numbers its own and the two
+        # never meet, because every query names its kind.
+        conn.execute(
+            """INSERT INTO mobility_plan (session, label, rationale, created_at)
+               VALUES (
+                   COALESCE(
+                       (SELECT session FROM mobility_plan WHERE label = ?),
+                       (SELECT COALESCE(MAX(session), 0) + 1 FROM mobility_plan)
+                   ), ?, ?, ?)
+               ON CONFLICT(label) DO UPDATE SET
+                   rationale = excluded.rationale,
+                   created_at = excluded.created_at""",
+            (label, label, rationale, _now()),
+        )
+        session_number = conn.execute(
+            "SELECT session FROM mobility_plan WHERE label = ?", (label,)
+        ).fetchone()["session"]
 
         for item in items:
             exercise_id, category_id, was_created = _resolve_exercise(
@@ -717,7 +790,7 @@ def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
                               reps, comment, created_at)
                            VALUES (?, 'mobility', ?, ?, ?, ?, ?, ?)""",
                         (
-                            MOBILITY_SESSION,
+                            session_number,
                             exercise_id,
                             category_id,
                             item.get("weight_lb"),
@@ -728,16 +801,10 @@ def write_next_mobility_session(items: list[dict], rationale: str) -> dict:
                     ).lastrowid
                 )
 
-        # The rationale replaces its predecessor rather than accumulating: it
-        # describes the session that is pending, and only one ever is.
-        conn.execute("DELETE FROM note WHERE kind = ?", (PLAN_KIND,))
-        conn.execute(
-            "INSERT INTO note (noted_at, kind, body, source) VALUES (?, ?, ?, 'agent')",
-            (_now(), PLAN_KIND, rationale),
-        )
-
     return {
         "ok": True,
+        "label": label,
+        "session": session_number,
         "sets_written": len(written),
         "movements": len(items),
         "replaced_pending_rows": replaced,

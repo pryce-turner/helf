@@ -15,8 +15,8 @@ export function useTransferMobility() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (date: string) => {
-      const response = await mobilityApi.transfer(date);
+    mutationFn: async ({ date, session }: { date: string; session: number }) => {
+      const response = await mobilityApi.transfer(date, session);
       return response.data;
     },
     // No optimistic update, deliberately. Transferring writes rows the user is
@@ -34,8 +34,8 @@ export function useClearMobilityPending() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async () => {
-      await mobilityApi.clearPending();
+    mutationFn: async (session: number) => {
+      await mobilityApi.clearPending(session);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mobility'] });

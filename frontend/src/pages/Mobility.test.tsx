@@ -87,13 +87,19 @@ it("folds consecutive sets of one movement back into a prescription", async () =
     mobility.getPending.mockResolvedValue({
         data: {
             ready: true,
-            items: [
-                row("QL Raise", 8, 30, "each side", 1),
-                row("QL Raise", 8, 30, "each side", 2),
-                row("Weighted Pigeon Squat", 5, 30, "lead with the right", 3),
+            sessions: [
+                {
+                    session: 1,
+                    label: "Low back",
+                    generated_at: "2026-08-10T09:00:00",
+                    rationale: "QL holds at 30lb; pigeon leads while you are fresh.",
+                    items: [
+                        row("QL Raise", 8, 30, "each side", 1),
+                        row("QL Raise", 8, 30, "each side", 2),
+                        row("Weighted Pigeon Squat", 5, 30, "lead with the right", 3),
+                    ],
+                },
             ],
-            rationale: "QL holds at 30lb; pigeon leads while you are fresh.",
-            generated_at: "2026-08-10T09:00:00",
             last_session: null,
         },
     } as never);
@@ -113,9 +119,15 @@ it("transfers the session using a local date, never a UTC one", async () => {
     mobility.getPending.mockResolvedValue({
         data: {
             ready: true,
-            items: [row("QL Raise", 8, 30, null, 1)],
-            rationale: "hold",
-            generated_at: "2026-08-10T09:00:00",
+            sessions: [
+                {
+                    session: 4,
+                    label: "Shoulder",
+                    generated_at: "2026-08-10T09:00:00",
+                    rationale: "hold",
+                    items: [row("QL Raise", 8, 30, null, 1)],
+                },
+            ],
             last_session: null,
         },
     } as never);
@@ -132,7 +144,9 @@ it("transfers the session using a local date, never a UTC one", async () => {
     await userEvent.click(await screen.findByText("Copy to calendar"));
     await userEvent.click(screen.getByText(/Copy to Aug 11, 2026/));
 
-    await waitFor(() => expect(mobility.transfer).toHaveBeenCalledWith("2026-08-11"));
+    await waitFor(() =>
+        expect(mobility.transfer).toHaveBeenCalledWith("2026-08-11", 4),
+    );
 });
 
 it("shows what the next session gets written from when nothing is pending", async () => {
@@ -194,4 +208,52 @@ it("offers no first session when nothing has ever been logged", async () => {
     expect(
         screen.getByText(/generate one from the mobility exercise pool/),
     ).toBeInTheDocument();
+});
+
+it("lists every pending session, each with its own label and controls", async () => {
+    mobility.getPending.mockResolvedValue({
+        data: {
+            ready: true,
+            sessions: [
+                {
+                    session: 1,
+                    label: "Low back",
+                    generated_at: "2026-08-19T09:00:00",
+                    rationale: "QL first while you are fresh.",
+                    items: [row("QL Raise", 8, 30, null, 1)],
+                },
+                {
+                    session: 2,
+                    label: "Shoulder",
+                    generated_at: "2026-08-20T09:00:00",
+                    rationale: "Lock 3 daily, light.",
+                    items: [row("Lock 3", 20, 2.5, null, 1)],
+                },
+            ],
+            last_session: null,
+        },
+    } as never);
+    mobility.transfer.mockResolvedValue({
+        data: { date: "2026-08-21", count: 1, label: "Shoulder", message: "ok" },
+    } as never);
+    vi.setSystemTime(new Date(2026, 7, 21, 9, 0));
+
+    renderPage(<Mobility />);
+
+    expect(await screen.findByText("LOW BACK")).toBeInTheDocument();
+    expect(screen.getByText("SHOULDER")).toBeInTheDocument();
+    expect(screen.getByText("QL first while you are fresh.")).toBeInTheDocument();
+    expect(screen.getByText("Lock 3 daily, light.")).toBeInTheDocument();
+
+    // Each card carries its own controls, and transferring names its session —
+    // picking one of several is the whole point of the list.
+    const copyButtons = screen.getAllByText("Copy to calendar");
+    expect(copyButtons).toHaveLength(2);
+
+    await userEvent.click(copyButtons[1]);
+    await userEvent.click(screen.getByText(/Copy to Aug 21, 2026/));
+
+    await waitFor(() =>
+        expect(mobility.transfer).toHaveBeenCalledWith("2026-08-21", 2),
+    );
 });

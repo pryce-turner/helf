@@ -132,6 +132,41 @@ class Workout(Base):
     category: Mapped[Category] = relationship("Category", back_populates="workouts")
 
 
+class MobilityPlan(Base):
+    """One pending mobility session's name and reasoning.
+
+    The *items* live in `upcoming_workouts` with `kind = 'mobility'` and this
+    row's `session`; that column always supported several sessions and mobility
+    merely pinned itself to one (b6f31a90c4de). What had nowhere to live was
+    per-session metadata, and without it two pending sessions are
+    indistinguishable on the page and unaddressable by the agent.
+
+    `label` is the **addressing key**, not decoration: the agent writes
+    "Low back" or "Shoulder", and an existing label replaces that session while
+    leaving the others alone. Unique, because a key that can repeat is not one.
+
+    Deliberately **not audited**, matching `upcoming_workouts` — 0007's audited
+    set is history, and a session that has not been run is not history yet.
+    Transfer is the moment it becomes history, and that writes a `note`.
+    """
+
+    __tablename__ = "mobility_plan"
+
+    session: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(
+        Text,
+        CheckConstraint("trim(label) <> ''", name="ck_mobility_plan_label"),
+        nullable=False,
+        unique=True,
+    )
+    rationale: Mapped[str] = mapped_column(
+        Text,
+        CheckConstraint("trim(rationale) <> ''", name="ck_mobility_plan_rationale"),
+        nullable=False,
+    )
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class UpcomingWorkout(Base):
     """Planned upcoming workout entry — lifting or mobility.
 

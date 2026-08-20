@@ -213,10 +213,14 @@ export const upcomingApi = {
 export const mobilityApi = {
     getPending: () => api.get<MobilityPending>("/api/mobility/pending"),
 
-    transfer: (date: string) =>
-        api.post<MobilityTransferResponse>("/api/mobility/transfer", { date }),
+    transfer: (date: string, session: number) =>
+        api.post<MobilityTransferResponse>("/api/mobility/transfer", {
+            date,
+            session,
+        }),
 
-    clearPending: () => api.delete("/api/mobility/pending"),
+    clearPending: (session: number) =>
+        api.delete(`/api/mobility/pending/${session}`),
 };
 
 // Body Composition

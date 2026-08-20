@@ -18,7 +18,12 @@ export default defineConfig({
                 theme_color: "#f97316",
                 background_color: "#1a1a1a",
                 display: "standalone",
-                orientation: "portrait",
+                // Deliberately not locked. `orientation: "portrait"` pins the
+                // *installed* app to portrait, and nothing on the device can
+                // override it — not rotating the phone, not the OS rotation
+                // lock being off. The layout is width-driven and simply lands
+                // on the desktop sidebar in landscape. Leave this as "any".
+                orientation: "any",
                 scope: "/",
                 start_url: "/",
                 icons: [

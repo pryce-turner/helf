@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "S=\"${CLAUDE_PROJECT_DIR:-$PWD}/scripts/pre-migration-backup.sh\"; [ -x \"$S\" ] || exit 0; exec \"$S\"",
+            "timeout": 30,
+            "statusMessage": "Backing up before migration..."
+          }
+        ]
+      }
+    ]
+  }
+}

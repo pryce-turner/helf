@@ -31,7 +31,15 @@ uv.lock
 *.swo
 *~
 .DS_Store
-.claude/
+# Claude Code scratch and per-machine settings — with one exception below.
+.claude/*
+# `.claude/settings.json` carries the pre-migration backup hook. AGENTS.md
+# describes that hook as a project mechanism, and a mechanism that lives only
+# in an ignored file is a mechanism the next clone does not have: the hook was
+# documented for nine days while being registered nowhere, and a migration
+# reached production with no backup behind it. Committed so the documentation
+# is true.
+!.claude/settings.json
 
 # Application data
 .env

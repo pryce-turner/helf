@@ -791,8 +791,16 @@ row counts and the Alembic revision. A backup that is silently corrupt is worse
 than none, because it is trusted.
 
 **You should rarely need to run it by hand.** `scripts/pre-migration-backup.sh`
-is a PreToolUse hook that fires on `alembic upgrade|downgrade|stamp` and takes
-one first. It *creates* the backup rather than blocking the command — a block
+is a PreToolUse hook on `Bash`, **registered in `.claude/settings.json`** —
+which is the one file inside `.claude/` that is *not* gitignored, so the hook
+travels with the repo. It fires on anything naming alembic and a verb that
+changes the schema, and takes a backup first.
+
+> It was described here as an active hook for nine days while being registered
+> nowhere, and `e2b9c4d17a05` reached production with no backup behind it. A
+> mechanism that lives only in an ignored file is a mechanism the next clone
+> does not have. `backend/tests/test_pre_migration_hook.py` now drives the real
+> script with real payloads, so the matcher cannot silently stop matching. It *creates* the backup rather than blocking the command — a block
 teaches a model to route around it, a backup that always exists has nothing
 worth routing around — but it does fail loud and block if the backup itself
 fails. Migrations that run back-to-back reuse a snapshot under 10 minutes old.

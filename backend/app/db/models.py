@@ -43,6 +43,18 @@ class Exercise(Base):
     """Exercise definition."""
 
     __tablename__ = "exercises"
+    # CHECK constraints belong in `__table_args__`, not in `mapped_column()`.
+    # Passed positionally to a column they bind to the *Column*, which still
+    # renders correct DDL - so the database is right either way - but
+    # `alembic check` compares `Table.constraints`, where a column-bound
+    # constraint does not appear. Every one of these read as "removed" against
+    # migrations that had in fact created them, and the drift outlived four
+    # revisions because the schema was never actually wrong.
+    __table_args__ = (
+        CheckConstraint(
+            "rating IS NULL OR rating BETWEEN 1 AND 5", name="ck_exercises_rating"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True, nullable=False)
@@ -67,13 +79,7 @@ class Exercise(Base):
     # The divergence is the signal (Plan 0012 §8) — a 5-rated movement of low
     # value is a candidate to cut, and a 1-rated movement of high value needs
     # its friction diagnosed rather than its place defended.
-    rating: Mapped[int | None] = mapped_column(
-        Integer,
-        CheckConstraint(
-            "rating IS NULL OR rating BETWEEN 1 AND 5", name="ck_exercises_rating"
-        ),
-        nullable=True,
-    )
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_used: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -101,7 +107,10 @@ class Workout(Base):
     """
 
     __tablename__ = "workouts"
-    __table_args__ = (Index("ix_workouts_date_order", "date", "order"),)
+    __table_args__ = (
+        Index("ix_workouts_date_order", "date", "order"),
+        CheckConstraint("is_mobility IN (0, 1)", name="ck_workouts_is_mobility"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     date: Mapped[str] = mapped_column(String(10), index=True, nullable=False)
@@ -123,7 +132,6 @@ class Workout(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_mobility: Mapped[bool] = mapped_column(
         Boolean,
-        CheckConstraint("is_mobility IN (0, 1)", name="ck_workouts_is_mobility"),
         nullable=False,
         server_default="0",
     )
@@ -151,19 +159,14 @@ class MobilityPlan(Base):
     """
 
     __tablename__ = "mobility_plan"
+    __table_args__ = (
+        CheckConstraint("trim(label) <> ''", name="ck_mobility_plan_label"),
+        CheckConstraint("trim(rationale) <> ''", name="ck_mobility_plan_rationale"),
+    )
 
     session: Mapped[int] = mapped_column(Integer, primary_key=True)
-    label: Mapped[str] = mapped_column(
-        Text,
-        CheckConstraint("trim(label) <> ''", name="ck_mobility_plan_label"),
-        nullable=False,
-        unique=True,
-    )
-    rationale: Mapped[str] = mapped_column(
-        Text,
-        CheckConstraint("trim(rationale) <> ''", name="ck_mobility_plan_rationale"),
-        nullable=False,
-    )
+    label: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
@@ -188,12 +191,14 @@ class UpcomingWorkout(Base):
     """
 
     __tablename__ = "upcoming_workouts"
+    __table_args__ = (
+        CheckConstraint("kind IN ('lifting', 'mobility')", name="ck_upcoming_kind"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     kind: Mapped[str] = mapped_column(
         Text,
-        CheckConstraint("kind IN ('lifting', 'mobility')", name="ck_upcoming_kind"),
         nullable=False,
         server_default="lifting",
     )

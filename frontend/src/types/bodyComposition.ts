@@ -59,3 +59,16 @@ export interface BodySpecSyncResult {
   skipped: number;
   metrics_written: number;
 }
+
+/**
+ * What one scale drain did — plan 0015 §4.
+ *
+ * `skipped` is the number already held. Unlike the BodySpec sync, a high
+ * `skipped` is the *normal* result here: the scale replays all thirty stored
+ * weighings on every connect, so most of any drain is already in the database.
+ */
+export interface ScaleSyncResult {
+    readings_received: number;
+    imported: number;
+    skipped: number;
+}

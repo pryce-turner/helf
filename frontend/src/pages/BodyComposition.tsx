@@ -15,10 +15,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+    useBodyCompositions,
     useBodyCompositionStats,
     useBodyCompositionTrends,
+    useDeleteBodyComposition,
+    useScaleDrain,
     useSyncBodySpec,
 } from "@/hooks/useBodyComposition";
+import {
+    isSupported as bluetoothSupported,
+    loadCredentials,
+    saveCredentials,
+} from "@/lib/scale";
 import {
     ComposedChart,
     LineChart,
@@ -212,6 +220,244 @@ const BodySpecSync = () => {
     );
 };
 
+/**
+ * Read the BF720 over Web Bluetooth - plan 0015.
+ *
+ * There is no automatic version of this control and there cannot be: Web
+ * Bluetooth requires a user gesture per connection and is absent from service
+ * workers, so a drain happens on a tap or not at all. The scale's 30-reading
+ * ring is what makes that sufficient - weigh whenever, drain occasionally.
+ *
+ * The whole control hides where `navigator.bluetooth` is missing rather than
+ * offering a button that cannot work. That is Firefox always, and Brave until
+ * Web Bluetooth is enabled at brave://flags.
+ */
+const ScaleDrain = () => {
+    const supported = bluetoothSupported();
+    const [credentials, setCredentials] = useState(() => loadCredentials());
+    const [slot, setSlot] = useState("1");
+    const [code, setCode] = useState("");
+    const drain = useScaleDrain();
+
+    if (!supported) return null;
+
+    const pair = (event: React.FormEvent) => {
+        event.preventDefault();
+        const userIndex = Number(slot);
+        const consentCode = Number(code);
+        if (!Number.isInteger(userIndex) || !Number.isInteger(consentCode)) return;
+        const next = { userIndex, consentCode };
+        saveCredentials(next);
+        setCredentials(next);
+    };
+
+    const failed = drain.error as Error | null;
+
+    return (
+        <Card className="animate-in section">
+            <CardHeader style={{ paddingBottom: 0 }}>
+                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: SCALE_COLOR, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                    Read scale
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                {credentials ? (
+                    <>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+                            The scale stores its last 30 weighings, so weigh
+                            whenever and read them all at once. Slot {credentials.userIndex}.
+                        </p>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                            <Button
+                                onClick={() => drain.mutate(credentials)}
+                                disabled={drain.isPending}
+                            >
+                                {drain.isPending ? "Reading..." : "Read scale"}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                onClick={() => setCredentials(null)}
+                                disabled={drain.isPending}
+                            >
+                                Change slot
+                            </Button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+                            The BF720 will not release measurements until it is
+                            given the consent code for a user slot. Both are set
+                            on the scale, under its user memory.
+                        </p>
+                        <form onSubmit={pair} style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                            <Input
+                                type="number"
+                                min={1}
+                                max={8}
+                                value={slot}
+                                onChange={(e) => setSlot(e.target.value)}
+                                placeholder="Slot"
+                                aria-label="Scale user slot"
+                                style={{ flex: '0 0 90px' }}
+                            />
+                            <Input
+                                type="number"
+                                value={code}
+                                onChange={(e) => setCode(e.target.value)}
+                                placeholder="Consent code"
+                                aria-label="Consent code"
+                                style={{ flex: '1 1 160px' }}
+                            />
+                            <Button type="submit" disabled={!code.trim()}>
+                                Save
+                            </Button>
+                        </form>
+                    </>
+                )}
+
+                {drain.data && (
+                    <p style={{ fontSize: '12px', color: 'var(--success)', marginTop: 'var(--space-3)' }}>
+                        {drain.data.readings_received === 0
+                            ? "The scale had nothing stored."
+                            : `${drain.data.readings_received} reading${drain.data.readings_received === 1 ? "" : "s"} - ${drain.data.imported} new, ${drain.data.skipped} already held.`}
+                    </p>
+                )}
+                {drain.isError && (
+                    <p style={{ fontSize: '12px', color: 'var(--error)', marginTop: 'var(--space-3)' }}>
+                        {failed?.message ?? "Could not read the scale."}
+                    </p>
+                )}
+            </CardContent>
+        </Card>
+    );
+};
+
+/**
+ * Every measurement, newest *ingestion* first, with a way to delete one.
+ *
+ * Ordered by when the row arrived rather than when the weighing happened,
+ * because that is the order that surfaces bad rows. A scale that has been
+ * reset reports its factory clock: the BF720 filed a reading taken in August
+ * 2026 under 2025-01-01, which in observed order sits buried mid-history where
+ * nobody would ever scroll. Both timestamps are shown side by side so the gap
+ * is the visible thing.
+ */
+const MeasurementLog = () => {
+    const { data: measurements, isLoading } = useBodyCompositions({
+        limit: 50,
+        sort: "ingested",
+    });
+    const remove = useDeleteBodyComposition();
+    const [confirming, setConfirming] = useState<number | null>(null);
+
+    if (isLoading || !measurements?.length) return null;
+
+    const cell: React.CSSProperties = {
+        padding: "var(--space-2) var(--space-3)",
+        borderBottom: "1px solid var(--border)",
+        whiteSpace: "nowrap",
+    };
+    const head: React.CSSProperties = {
+        ...cell,
+        fontSize: "11px",
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        color: "var(--text-muted)",
+        textAlign: "left",
+    };
+    const num = (v: number | null | undefined, dp = 1) =>
+        v == null ? "—" : v.toFixed(dp);
+
+    return (
+        <Card className="animate-in section">
+            <CardHeader style={{ paddingBottom: 0 }}>
+                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                    All measurements
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+                    Newest first by when it was ingested, not when it was
+                    weighed — a scale with a wrong clock files a reading years
+                    out of place, and this is where you find it.
+                </p>
+                {/* Wide content scrolls inside its own box; the page must not. */}
+                <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                        <thead>
+                            <tr>
+                                <th style={head}>Weighed</th>
+                                <th style={head}>Ingested</th>
+                                <th style={head}>Source</th>
+                                <th style={{ ...head, textAlign: "right" }}>Weight</th>
+                                <th style={{ ...head, textAlign: "right" }}>Fat %</th>
+                                <th style={{ ...head, textAlign: "right" }}>Muscle %</th>
+                                <th style={{ ...head, textAlign: "right" }}>Water %</th>
+                                <th style={head} aria-label="Actions" />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {measurements.map((m) => {
+                                // A gap of more than a day between weighing and
+                                // ingestion is either a late drain or a bad
+                                // clock. Both are worth seeing at a glance.
+                                const skewed =
+                                    Math.abs(
+                                        differenceInCalendarDays(
+                                            parseISO(m.created_at as unknown as string),
+                                            parseISO(m.timestamp as unknown as string),
+                                        ),
+                                    ) > 1;
+                                return (
+                                    <tr key={m.doc_id}>
+                                        <td style={{ ...cell, color: skewed ? "var(--warning)" : undefined, fontFamily: "var(--font-mono, monospace)" }}>
+                                            {format(parseISO(m.timestamp as unknown as string), "yyyy-MM-dd HH:mm")}
+                                        </td>
+                                        <td style={{ ...cell, color: "var(--text-secondary)", fontFamily: "var(--font-mono, monospace)" }}>
+                                            {format(parseISO(m.created_at as unknown as string), "yyyy-MM-dd HH:mm")}
+                                        </td>
+                                        <td style={{ ...cell, color: "var(--text-secondary)" }}>{m.source}</td>
+                                        <td style={{ ...cell, textAlign: "right", fontFamily: "var(--font-mono, monospace)" }}>{num(m.weight)}</td>
+                                        <td style={{ ...cell, textAlign: "right", fontFamily: "var(--font-mono, monospace)" }}>{num(m.body_fat_pct)}</td>
+                                        <td style={{ ...cell, textAlign: "right", fontFamily: "var(--font-mono, monospace)" }}>{num(m.muscle_mass)}</td>
+                                        <td style={{ ...cell, textAlign: "right", fontFamily: "var(--font-mono, monospace)" }}>{num(m.water_pct)}</td>
+                                        <td style={{ ...cell, textAlign: "right" }}>
+                                            {/* Two taps, not a browser confirm(): a
+                                                native dialog blocks everything and
+                                                cannot be styled or dismissed here. */}
+                                            {confirming === m.doc_id ? (
+                                                <span style={{ display: "inline-flex", gap: "var(--space-2)" }}>
+                                                    <Button
+                                                        style={{ background: "var(--error)", height: "28px", padding: "0 10px" }}
+                                                        onClick={() => {
+                                                            remove.mutate(m.doc_id);
+                                                            setConfirming(null);
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                    <Button variant="ghost" style={{ height: "28px", padding: "0 10px" }} onClick={() => setConfirming(null)}>
+                                                        Cancel
+                                                    </Button>
+                                                </span>
+                                            ) : (
+                                                <Button variant="ghost" style={{ height: "28px", padding: "0 10px", color: "var(--text-muted)" }} onClick={() => setConfirming(m.doc_id)}>
+                                                    Delete
+                                                </Button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
 const BodyComposition = () => {
     const [trendDays, setTrendDays] = useState(30);
 
@@ -352,6 +598,7 @@ const BodyComposition = () => {
                                 </p>
                             )}
 
+                            <ScaleDrain />
                             <BodySpecSync />
 
                             {/* Period selector */}
@@ -681,11 +928,13 @@ const BodyComposition = () => {
                                     No body composition data available.
                                 </p>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
-                                    Connect your smart scale via MQTT to automatically track measurements.
+                                    Read your scale over Bluetooth above, or import a DEXA scan.
                                 </p>
                             </CardContent>
                         </Card>
                     )}
+
+                    <MeasurementLog />
                 </div>
             </div>
         </>

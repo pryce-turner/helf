@@ -17,7 +17,9 @@ import type {
     BodyCompositionStats,
     BodyCompositionTrend,
     BodySpecSyncResult,
+    ScaleSyncResult,
 } from "../types/bodyComposition";
+import type { ScaleReading } from "./bcs";
 import type {
     Food,
     FoodCreate,
@@ -230,6 +232,12 @@ export const bodyCompositionApi = {
         end_date?: string;
         skip?: number;
         limit?: number;
+        /**
+         * Which timestamp orders the result. `ingested` is how you find a row
+         * a wrong scale clock filed years out of place — it is invisible in
+         * `observed` order, buried mid-history.
+         */
+        sort?: "observed" | "ingested";
     }) => api.get<BodyComposition[]>("/api/body-composition/", { params }),
 
     getLatest: () => api.get<BodyComposition>("/api/body-composition/latest"),
@@ -261,6 +269,19 @@ export const bodyCompositionApi = {
             null,
             { headers: { Authorization: `Bearer ${token}` } },
         ),
+
+    /**
+     * Hand the whole drain to the server and let it decide what is new.
+     *
+     * Deliberately not `create` in a loop: this route fixes
+     * `source='openscale'`, which `POST /` cannot do - it writes
+     * `source='manual'` and has no field to override. The counts come back
+     * from one request rather than being assembled by tallying 409s.
+     */
+    syncScale: (readings: ScaleReading[]) =>
+        api.post<ScaleSyncResult>("/api/body-composition/sync/scale", {
+            readings,
+        }),
 };
 
 // Food

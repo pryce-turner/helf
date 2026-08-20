@@ -79,28 +79,52 @@ class BodyCompositionRepository:
             "created_at": parse_iso_timestamp(row.created_at),
         }
 
-    def _read_measurements(self, where: str = "", order: str = "DESC", **params):
+    # Whitelist, because the sort column is interpolated into the statement
+    # below. The API validates too, but this is the layer the agent's raw SQL
+    # never passes through, so it cannot be the only guard.
+    SORT_COLUMNS = {"observed": "observed_at", "ingested": "created_at"}
+
+    def _read_measurements(
+        self,
+        where: str = "",
+        order: str = "DESC",
+        sort: str = "observed",
+        **params,
+    ):
         """Query the per-measurement view.
 
         Deliberately `v_body_comp_measurements` and never `v_body_comp_daily`:
         the daily view collapses to one row per day, which for this history
         would silently drop 43 of 150 measurements.
+
+        `sort` picks which of the two timestamps orders the result. They are
+        different questions and both get asked: `observed` is when the weighing
+        happened and is what a chart wants, `ingested` is when the row was
+        written and is what an audit wants. A scale with a wrong clock puts
+        them wildly out of step - the BF720 stamped a reading 2025-01-01 while
+        it was being written in August 2026 - and finding that row means
+        sorting by when it arrived, not by when it claims to be from.
         """
         clause = f"WHERE {where}" if where else ""
+        column = self.SORT_COLUMNS.get(sort, "observed_at")
         with SessionLocal() as session:
             rows = session.execute(
                 text(
                     f"SELECT * FROM v_body_comp_measurements {clause} "  # noqa: S608
-                    f"ORDER BY observed_at {order}"
+                    f"ORDER BY {column} {order}"
                     + (" LIMIT :limit OFFSET :skip" if "limit" in params else "")
                 ),
                 params,
             ).all()
         return [self._from_view(row) for row in rows]
 
-    def get_all(self, skip: int = 0, limit: int = 100) -> list[dict]:
+    def get_all(
+        self, skip: int = 0, limit: int = 100, sort: str = "observed"
+    ) -> list[dict]:
         """Get all measurements with pagination."""
-        return self._read_measurements(order="DESC", limit=limit, skip=skip)
+        return self._read_measurements(
+            order="DESC", sort=sort, limit=limit, skip=skip
+        )
 
     def get_by_id(self, doc_id: int) -> dict | None:
         """Get a measurement by ID."""

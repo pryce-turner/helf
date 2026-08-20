@@ -92,3 +92,34 @@ class BodyCompositionTrend(BaseModel):
     muscle_masses: list[float | None]
     water_pcts: list[float | None]
     sources: list[str] = []
+
+
+class ScaleSyncRequest(BaseModel):
+    """A whole drain of the scale's onboard memory.
+
+    The BF720 stores its last 30 measurements and replays **all** of them on
+    every connect, so the client sends everything it read and does not try to
+    work out what is new. Deciding that in the browser would put correctness
+    somewhere it cannot be audited, and would break the moment the phone is
+    replaced or the scale's clock drifts.
+
+    Items are `BodyCompositionCreate` rather than a parallel shape, so the
+    drain and manual entry cannot diverge in what a measurement *is*.
+    """
+
+    readings: list[BodyCompositionCreate]
+
+
+class ScaleSyncResult(BaseModel):
+    """What one drain did.
+
+    `skipped` is the number already held, and on a healthy second drain it
+    should equal `readings_received` with `imported` at zero - the same
+    idempotency property `BodyCompositionSyncResult` exists to make visible
+    for BodySpec. Here it is the normal case rather than the edge case: most
+    of a 30-reading replay is always already stored.
+    """
+
+    readings_received: int
+    imported: int
+    skipped: int

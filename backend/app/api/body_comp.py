@@ -1,6 +1,7 @@
 """Body composition API endpoints."""
 
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException
 from fastapi import Query as QueryParam
@@ -12,6 +13,8 @@ from app.models.body_composition import (
     BodyCompositionStats,
     BodyCompositionSyncResult,
     BodyCompositionTrend,
+    ScaleSyncRequest,
+    ScaleSyncResult,
 )
 from app.repositories.body_comp_repo import BodyCompositionRepository
 from app.services import bodyspec_sync
@@ -33,14 +36,25 @@ def get_measurements(
     end_date: str | None = None,
     skip: int = 0,
     limit: int = 100,
+    sort: Literal["observed", "ingested"] = "observed",
 ):
-    """Get body composition measurements."""
+    """Get body composition measurements.
+
+    `sort` chooses which timestamp orders the result, and the two answer
+    different questions. `observed` is when the weighing happened - what a
+    chart wants. `ingested` is when the row was written - what you want when
+    hunting a bad row, because a scale with a wrong clock files a reading taken
+    today under a date years away and it is invisible in observed order.
+
+    Ignored when a date range is given: that query is about when measurements
+    happened by definition.
+    """
     repo = BodyCompositionRepository()
 
     if start_date and end_date:
         return repo.get_by_date_range(start_date, end_date)
 
-    return repo.get_all(skip=skip, limit=limit)
+    return repo.get_all(skip=skip, limit=limit, sort=sort)
 
 
 @router.get("/latest", response_model=BodyComposition | None)
@@ -116,6 +130,53 @@ def create_measurement(measurement: BodyCompositionCreate):
         )
 
     return created
+
+
+@router.post("/sync/scale", response_model=ScaleSyncResult)
+def sync_scale(payload: ScaleSyncRequest):
+    """Drain the scale's onboard memory into helf.
+
+    Separate from `POST /` for one reason that is easy to miss: that route
+    calls `repo.create(measurement)` with no `source`, so it writes
+    `source='manual'`, and `BodyCompositionCreate` has no `source` field to
+    override it with. Posting drained readings through it would file every one
+    as hand entry - silently, because a manual entry is a legitimate thing for
+    that route to produce - and split the openScale series at an arbitrary
+    date.
+
+    The source is therefore fixed **by the route**, not taken from the client.
+    It stays `openscale` because `observation.source` names the *instrument*,
+    and the instrument has not changed: the same BF720, the same bioimpedance
+    estimate, the same known disagreement with DEXA that
+    `BodyCompositionStats.primary_source` exists to keep honest. The name reads
+    like the Android app that is being removed; a split would be worse than a
+    slightly wrong name.
+
+    Duplicate rejection stays in the database. `create()` returns None when
+    `(observed_at, source)` collides, which has been the real guard since plan
+    0010, so a replayed reading costs one SELECT and writes nothing.
+    """
+    repo = BodyCompositionRepository()
+
+    imported = 0
+    skipped = 0
+    for reading in payload.readings:
+        if repo.create(reading, source="openscale"):
+            imported += 1
+        else:
+            skipped += 1
+
+    logger.info(
+        "Scale drain: %d received, %d imported, %d already held",
+        len(payload.readings),
+        imported,
+        skipped,
+    )
+    return ScaleSyncResult(
+        readings_received=len(payload.readings),
+        imported=imported,
+        skipped=skipped,
+    )
 
 
 @router.post("/sync/bodyspec", response_model=BodyCompositionSyncResult)

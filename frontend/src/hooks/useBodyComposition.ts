@@ -5,13 +5,15 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { bodyCompositionApi } from '@/lib/api';
+import { drainScale, type ScaleCredentials } from '@/lib/scale';
 import type { BodyComposition } from '@/types/bodyComposition';
 
 export function useBodyCompositions(params?: {
   start_date?: string;
   end_date?: string;
   skip?: number;
-  limit?: number
+  limit?: number;
+  sort?: 'observed' | 'ingested';
 }) {
   return useQuery({
     queryKey: ['body-composition', params],
@@ -118,9 +120,15 @@ export function useDeleteBodyComposition() {
 
       const previousData = queryClient.getQueriesData<BodyComposition[]>({ queryKey: ['body-composition'] });
 
+      // `setQueriesData` runs this updater against *every* query under the
+      // ['body-composition'] prefix, and they do not all hold lists — 'stats'
+      // and 'trends' hold objects. Calling .filter on those throws, which
+      // kills onMutate, which means the mutation never reaches the network:
+      // the row just sits there and no request is made. The Array check is
+      // what makes the prefix match safe.
       queryClient.setQueriesData<BodyComposition[]>(
         { queryKey: ['body-composition'] },
-        (old) => old?.filter((m) => m.doc_id !== id)
+        (old) => (Array.isArray(old) ? old.filter((m) => m.doc_id !== id) : old)
       );
 
       return { previousData };
@@ -154,6 +162,35 @@ export function useSyncBodySpec() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['body-composition'] });
+    },
+  });
+}
+
+/**
+ * Read the scale over Web Bluetooth and hand the whole drain to the server.
+ *
+ * A mutation rather than a query because it is strictly user-initiated: Web
+ * Bluetooth requires a gesture per connection and cannot run in a service
+ * worker, so there is nothing here that React Query could refetch on its own.
+ */
+export function useScaleDrain() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (credentials: ScaleCredentials) => {
+      const readings = await drainScale(credentials);
+      if (readings.length === 0) {
+        return { readings_received: 0, imported: 0, skipped: 0 };
+      }
+      const response = await bodyCompositionApi.syncScale(readings);
+      return response.data;
+    },
+    onSuccess: (result) => {
+      // Only worth invalidating if something actually landed - a drain that
+      // is entirely replay is the common case and changes nothing on screen.
+      if (result.imported > 0) {
+        queryClient.invalidateQueries({ queryKey: ['body-composition'] });
+      }
     },
   });
 }

@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from app import database
 from app.models.upcoming import UpcomingWorkoutCreate
-from app.repositories.mobility_repo import PLAN_KIND, SESSION_KIND, MobilityRepository
+from app.repositories.mobility_repo import SESSION_KIND, MobilityRepository
 from app.repositories.upcoming_repo import (
     MOBILITY,
     MOBILITY_SESSION,
@@ -73,7 +73,7 @@ def test_pending_is_empty_before_anything_is_written(client):
 
 
 def test_pending_returns_the_session_and_its_rationale(client):
-    session_id = write_pending()
+    write_pending()
 
     body = client.get("/api/mobility/pending").json()
 
@@ -235,7 +235,7 @@ def test_generating_a_lifting_program_leaves_mobility_alone(client):
     mobility tab would fall back to "no session ready" for a reason nothing on
     screen could explain.
     """
-    session_id = write_pending()
+    write_pending()
 
     response = client.post(
         "/api/upcoming/liftoscript/generate",
@@ -248,7 +248,7 @@ def test_generating_a_lifting_program_leaves_mobility_alone(client):
 
 
 def test_mobility_rows_do_not_appear_in_the_lifting_planner(client):
-    session_id = write_pending()
+    write_pending()
 
     assert client.get("/api/upcoming/").json() == []
 

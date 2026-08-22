@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    changeIncrementPayload,
+    dateOfBirthPayload,
     describeControlPointFailure,
+    genderPayload,
+    heightPayload,
     formatLocalTimestamp,
     pairPackets,
     parseBodyComposition,
     parseUserControlPointResponse,
     parseWeightMeasurement,
+    parseScaleUserList,
+    pinDisplayPayload,
     toScaleReading,
 } from "./bcs";
 
@@ -175,52 +181,87 @@ describe("formatLocalTimestamp", () => {
 });
 
 describe("pairPackets", () => {
-    const compAt = (h: number, weightRaw: number) =>
-        parseBodyComposition(
+    const compAt = (h: number, weightRaw: number) => ({
+        kind: "composition" as const,
+        value: parseBodyComposition(
             view([
                 ...u16(0x0001 | 0x0002 | 0x0400),
                 ...u16(185),
                 ...stamp(2026, 8, 20, h, 0, 0),
                 ...u16(weightRaw),
             ]),
-        )!;
+        )!,
+    });
 
-    const weightAt = (h: number, weightRaw: number) =>
-        parseWeightMeasurement(
+    const weightAt = (h: number, weightRaw: number) => ({
+        kind: "weight" as const,
+        value: parseWeightMeasurement(
             view([
                 WEIGHT_FLAG_IMPERIAL | WEIGHT_FLAG_TIMESTAMP,
                 ...u16(weightRaw),
                 ...stamp(2026, 8, 20, h, 0, 0),
             ]),
-        )!;
+        )!,
+    });
 
-    it("pairs on the instant, not on arrival order", () => {
-        // A replay sends thirty weighings back to back. Buffering one slot the
-        // way openScale does would shift every later pairing by one if a
-        // packet arrived out of order.
-        const readings = pairPackets(
-            [weightAt(9, 18900), weightAt(7, 18840)],
-            [compAt(7, 18840), compAt(9, 18900)],
-        );
+    /** A live weighing: flags 0x0398, no timestamp and no weight of its own. */
+    const liveComposition = {
+        kind: "composition" as const,
+        value: parseBodyComposition(
+            view([...u16(0x0398), ...u16(265), ...u16(7817), ...u16(382), ...u16(12624), ...u16(8904), ...u16(5100)]),
+        )!,
+    };
+
+    it("pairs stamped packets on the instant, not on arrival order", () => {
+        const readings = pairPackets([
+            weightAt(9, 18900),
+            weightAt(7, 18840),
+            compAt(7, 18840),
+            compAt(9, 18900),
+        ]);
         expect(readings.map((r) => r.timestamp)).toEqual([
             "2026-08-20T07:00:00",
             "2026-08-20T09:00:00",
         ]);
-        expect(readings[0].weight).toBeCloseTo(188.4, 2);
-        expect(readings[1].weight).toBeCloseTo(189.0, 2);
+    });
+
+    it("attaches an unstamped composition to the weighing it followed", () => {
+        // The bug this exists for: a live BF720 sends weight (stamped) then
+        // composition (flags 0x0398 — no timestamp, no weight). Keying purely
+        // on timestamps matched nothing and dropped every live bioimpedance
+        // reading, which looked identical to a scale not sending any.
+        const readings = pairPackets([weightAt(7, 18840), liveComposition]);
+        expect(readings).toHaveLength(1);
+        expect(readings[0].timestamp).toBe("2026-08-20T07:00:00");
+        expect(readings[0].weight).toBeCloseTo(188.4, 1);
+        expect(readings[0].body_fat_pct).toBeCloseTo(26.5, 1);
+        expect(readings[0].muscle_mass).toBeCloseTo(38.2, 1);
+        expect(readings[0].water_pct).toBeGreaterThan(0);
+    });
+
+    it("does not let a stamped replay steal an unstamped packet", () => {
+        // Searching backwards for the most recent weighing without composition
+        // is what keeps the live packet with the live weighing.
+        const readings = pairPackets([
+            weightAt(7, 18840),
+            compAt(7, 18840),
+            weightAt(9, 18900),
+            liveComposition,
+        ]);
+        expect(readings).toHaveLength(2);
+        expect(readings[1].timestamp).toBe("2026-08-20T09:00:00");
+        expect(readings[1].body_fat_pct).toBeCloseTo(26.5, 1);
+        expect(readings[0].body_fat_pct).toBeCloseTo(18.5, 1);
     });
 
     it("keeps a weight packet that has no composition beside it", () => {
-        const readings = pairPackets([weightAt(7, 18840)], []);
+        const readings = pairPackets([weightAt(7, 18840)]);
         expect(readings).toHaveLength(1);
-        expect(readings[0].weight).toBeCloseTo(188.4, 2);
         expect(readings[0].body_fat_pct).toBeNull();
     });
 
-    it("does not emit a reading twice when both packets are present", () => {
-        const readings = pairPackets([weightAt(7, 18840)], [compAt(7, 18840)]);
-        expect(readings).toHaveLength(1);
-        expect(readings[0].body_fat_pct).toBeCloseTo(18.5, 2);
+    it("drops an unstamped composition with no weighing to attach to", () => {
+        expect(pairPackets([liveComposition])).toEqual([]);
     });
 });
 
@@ -244,22 +285,21 @@ describe("parseUserControlPointResponse", () => {
             view([0x20, UDS_CONSENT, 0x05]),
         )!;
         expect(denied.value).toBe(0x05);
-        expect(describeControlPointFailure(denied, 1)).toMatch(
-            /rejected the consent code for slot 1/i,
-        );
-        // A reset is the likeliest cause and the message has to say so.
-        expect(describeControlPointFailure(denied, 1)).toMatch(/reset/i);
+        expect(describeControlPointFailure(denied)).toMatch(/P01 rejected/i);
+        // The recovery is the scale printing its own code, and the message is
+        // the only place the user is told to look at the display.
+        expect(describeControlPointFailure(denied)).toMatch(/display/i);
     });
 
-    it("names the slot in every failure message", () => {
+    it("names P01 in every failure message", () => {
         for (const value of [0x02, 0x03, 0x04, 0x05, 0x7f]) {
             const r = parseUserControlPointResponse(
                 view([0x20, UDS_CONSENT, value]),
             )!;
-            const message = describeControlPointFailure(r, 3);
-            // 0x02 means the scale has no consent mechanism at all, so a slot
-            // number would be misleading there and only there.
-            if (value !== 0x02) expect(message).toMatch(/slot 3/i);
+            const message = describeControlPointFailure(r);
+            // 0x02 means the scale has no consent mechanism at all, so naming
+            // a slot would be misleading there and only there.
+            if (value !== 0x02) expect(message).toMatch(/P01/);
             expect(message.length).toBeGreaterThan(20);
         }
     });
@@ -277,5 +317,121 @@ describe("parseUserControlPointResponse", () => {
         expect(parseUserControlPointResponse(view([0x01, 0x02, 0x03]))).toBeNull();
         expect(parseUserControlPointResponse(view([0x20, UDS_CONSENT]))).toBeNull();
         expect(parseUserControlPointResponse(view([]))).toBeNull();
+    });
+});
+
+describe("UDS profile payloads", () => {
+    // P01 as the scale reports it. Nothing here is retyped by the user, which
+    // is the point: the slot ends up agreeing with the profile the scale's own
+    // bioimpedance model uses.
+    const profile = {
+        index: 1,
+        initials: "PT",
+        heightCm: 183,
+        birthYear: 1989,
+        birthMonth: 7,
+        birthDay: 4,
+        sex: "male" as const,
+        activityLevel: 3,
+    };
+
+    it("encodes date of birth as year LE then month, day", () => {
+        // 1989 = 0x07C5
+        expect([...dateOfBirthPayload(profile)]).toEqual([0xc5, 0x07, 7, 4]);
+    });
+
+    it("writes height as uint16 even though the scale reports one byte", () => {
+        // The characteristic is uint16 by spec, and a short write is something
+        // firmware may reject outright.
+        expect([...heightPayload(profile)]).toEqual([183, 0]);
+        expect(heightPayload(profile).length).toBe(2);
+    });
+
+    it("carries the high byte past 255cm", () => {
+        expect([...heightPayload({ ...profile, heightCm: 259 })]).toEqual([3, 1]);
+    });
+
+    it("clamps an implausible height rather than wrapping it", () => {
+        expect([...heightPayload({ ...profile, heightCm: 5000 })]).toEqual([44, 1]);
+        expect([...heightPayload({ ...profile, heightCm: -10 })]).toEqual([0, 0]);
+    });
+
+    it("encodes sex as the SIG enum", () => {
+        expect([...genderPayload(profile)]).toEqual([0]);
+        expect([...genderPayload({ ...profile, sex: "female" })]).toEqual([1]);
+    });
+
+    it("bumps the change increment as uint32 LE", () => {
+        // Without this the scale can treat the profile it already held as
+        // current and ignore what was just written.
+        expect([...changeIncrementPayload()]).toEqual([1, 0, 0, 0]);
+    });
+});
+
+describe("pinDisplayPayload", () => {
+    it("offsets the slot into the top nibble", () => {
+        // openScale's `scalePinIndex = scaleIndex + 16`. P01 is 0x11.
+        expect([...pinDisplayPayload(1)]).toEqual([0x11]);
+        expect([...pinDisplayPayload(2)]).toEqual([0x12]);
+    });
+
+    it("is one byte, which is what distinguishes it from a list request", () => {
+        // A bare 0x00 on the same characteristic asks for the user list. The
+        // offset is the only thing separating "show the code" from "list
+        // users", so an unoffset index would silently re-request the list.
+        expect(pinDisplayPayload(1).length).toBe(1);
+        expect(pinDisplayPayload(1)[0]).not.toBe(0x00);
+    });
+});
+
+describe("parseScaleUserList", () => {
+    const entry = (index: number, initials: number[]) =>
+        view([
+            0x00, // status: a user record
+            index,
+            ...initials, // bytes 2-4, so the year starts at offset 5
+            0xc2,
+            0x07, // 1986
+            0x03, // March
+            0x11, // 17th
+            0xb2, // 178cm
+            0x00, // male
+            0x03, // activity level
+        ]);
+
+    it("decodes a user record", () => {
+        const event = parseScaleUserList(entry(1, [0x50, 0x54, 0x00]))!;
+        expect(event.kind).toBe("user");
+        if (event.kind !== "user") throw new Error("unreachable");
+        expect(event.user).toMatchObject({
+            index: 1,
+            initials: "PT",
+            birthYear: 1986,
+            birthMonth: 3,
+            birthDay: 17,
+            heightCm: 178,
+            sex: "male",
+            activityLevel: 3,
+        });
+    });
+
+    it("reads an all-0xFF name as unnamed rather than as three glyphs", () => {
+        // The scale's placeholder. Left alone it decodes to replacement
+        // characters and reads as a real, if unpronounceable, user.
+        const event = parseScaleUserList(entry(1, [0xff, 0xff, 0xff]))!;
+        if (event.kind !== "user") throw new Error("unreachable");
+        expect(event.user.initials).toBeNull();
+    });
+
+    it("distinguishes the end of the list from an empty scale", () => {
+        // These are the two outcomes that decide whether P01 exists, and
+        // conflating them is what would send Helf back to registering a slot.
+        expect(parseScaleUserList(view([0x01]))).toEqual({ kind: "end" });
+        expect(parseScaleUserList(view([0x02]))).toEqual({ kind: "empty" });
+    });
+
+    it("refuses a truncated user record instead of decoding garbage", () => {
+        expect(parseScaleUserList(view([0x00, 0x01, 0x50]))).toBeNull();
+        expect(parseScaleUserList(view([]))).toBeNull();
     });
 });

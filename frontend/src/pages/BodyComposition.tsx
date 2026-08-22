@@ -27,7 +27,7 @@ import {
     loadCredentials,
     saveCredentials,
 } from "@/lib/scale";
-import type { ScaleCredentials } from "@/lib/scale";
+import { ScaleAsleepError, type ScaleCredentials } from "@/lib/scale";
 import {
     ComposedChart,
     LineChart,
@@ -74,6 +74,10 @@ const DEXA_COLOR = "#16a34a";
  * `unknown` in the signature is deliberate. Narrowing is the entire job here,
  * and a narrower parameter type would just recreate the original lie.
  */
+// Exported for `BodyComposition.test.tsx`, which is why fast refresh objects.
+// Moving it to a module of its own would separate the narrowing from the six
+// tooltips that depend on it, and this rule guards a dev-server nicety.
+// eslint-disable-next-line react-refresh/only-export-components
 export const formatChartValue = (
     value: unknown,
     unit: string,
@@ -279,17 +283,15 @@ const ScaleDrain = ({
     busy: boolean;
 }) => {
     const supported = bluetoothSupported();
-    const [slot, setSlot] = useState("1");
     const [code, setCode] = useState("");
 
     if (!supported) return null;
 
     const pair = (event: React.FormEvent) => {
         event.preventDefault();
-        const userIndex = Number(slot);
         const consentCode = Number(code);
-        if (!Number.isInteger(userIndex) || !Number.isInteger(consentCode)) return;
-        onCredentials({ userIndex, consentCode });
+        if (!Number.isInteger(consentCode)) return;
+        onCredentials({ consentCode });
     };
 
     return (
@@ -303,36 +305,35 @@ const ScaleDrain = ({
                 {credentials ? (
                     <>
                         <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
-                            Paired to slot {credentials.userIndex}. The scale
-                            stores its last 30 weighings, so weigh whenever and
-                            read them all at once with the button above.
+                            Paired to P01. Weigh yourself whenever — the scale
+                            keeps its readings under P01 — then tap Read scale
+                            and pick the BF720 to pull them across. Picking it
+                            each time is what wakes the scale; there is no way
+                            round that in the browser.
                         </p>
                         <Button
                             variant="ghost"
                             onClick={() => onCredentials(null)}
                             disabled={busy}
                         >
-                            Change slot
+                            Re-enter code
                         </Button>
                     </>
                 ) : (
                     <>
                         <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
-                            The BF720 will not release measurements until it is
-                            given the consent code for a user slot. Both are set
-                            on the scale, under its user memory.
+                            Helf reads <strong>P01</strong> and only P01, and
+                            will never create a user on the scale. Height, age
+                            and sex come from P01 itself, so set that up on the
+                            scale and there is nothing to retype here.
+                        </p>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+                            The scale will not release readings without P01's
+                            consent code. If you do not know it, enter anything
+                            once — the scale will refuse, then show you the real
+                            code on its own display.
                         </p>
                         <form onSubmit={pair} style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                            <Input
-                                type="number"
-                                min={1}
-                                max={8}
-                                value={slot}
-                                onChange={(e) => setSlot(e.target.value)}
-                                placeholder="Slot"
-                                aria-label="Scale user slot"
-                                style={{ flex: '0 0 90px' }}
-                            />
                             <Input
                                 type="number"
                                 value={code}
@@ -375,6 +376,10 @@ const ScaleTile = ({
     if (!bluetoothSupported() || !credentials) return null;
 
     const failed = drain.error as Error | null;
+    // The one failure with a recovery the user can perform. It gets its own
+    // button rather than an automatic retry because the chooser needs a fresh
+    // tap: user activation is spent by the time the quiet attempt has failed.
+    const asleep = drain.error instanceof ScaleAsleepError;
 
     return (
         <div className="stat-card animate-in">
@@ -383,22 +388,50 @@ const ScaleTile = ({
                 <Bluetooth style={{ width: '18px', height: '18px', color: 'var(--text-muted)' }} />
             </div>
             <Button
-                onClick={() => drain.mutate(credentials)}
+                onClick={() =>
+                    drain.mutate({ credentials, pick: asleep })
+                }
                 disabled={drain.isPending}
                 style={{ width: '100%', marginTop: 'var(--space-2)' }}
             >
-                {drain.isPending ? "Reading..." : "Read scale"}
+                {drain.isPending
+                    ? "Reading..."
+                    : asleep
+                      ? "Wake scale"
+                      : "Read scale"}
             </Button>
             {drain.data && !drain.isPending && (
                 <div style={{ fontSize: '11px', color: 'var(--success)', marginTop: 'var(--space-2)' }}>
+                    {/* `skipped` is normally 0: the scale marks a reading
+                        delivered and does not send it twice, so the server's
+                        deduplication is a safety net rather than the usual
+                        path. Leading with a count that is almost always zero
+                        read as though something had been dropped. */}
                     {drain.data.readings_received === 0
-                        ? "The scale had nothing stored."
-                        : `${drain.data.readings_received} reading${drain.data.readings_received === 1 ? "" : "s"} - ${drain.data.imported} new, ${drain.data.skipped} already held.`}
+                        ? "Nothing new on the scale."
+                        : drain.data.skipped === 0
+                          ? `${drain.data.imported} new reading${drain.data.imported === 1 ? "" : "s"}.`
+                          : `${drain.data.imported} new, ${drain.data.skipped} already held.`}
+                </div>
+            )}
+            {drain.data?.weightOnly && !drain.isPending && (
+                <div style={{ fontSize: '11px', color: 'var(--warning)', marginTop: 'var(--space-2)' }}>
+                    Weight only — the scale sent no bioimpedance. Check that
+                    P01 on the scale has your real height, age and sex; without
+                    them it cannot measure body fat, muscle or water.
                 </div>
             )}
             {drain.isError && !drain.isPending && (
-                <div style={{ fontSize: '11px', color: 'var(--error)', marginTop: 'var(--space-2)' }}>
-                    {failed?.message ?? "Could not read the scale."}
+                <div
+                    style={{
+                        fontSize: '11px',
+                        color: asleep ? 'var(--text-secondary)' : 'var(--error)',
+                        marginTop: 'var(--space-2)',
+                    }}
+                >
+                    {asleep
+                        ? "The scale is asleep. Tap Wake scale and pick the BF720 — choosing it from the list is what rouses it."
+                        : (failed?.message ?? "Could not read the scale.")}
                 </div>
             )}
         </div>

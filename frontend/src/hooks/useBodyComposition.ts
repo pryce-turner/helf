@@ -177,13 +177,39 @@ export function useScaleDrain() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (credentials: ScaleCredentials) => {
-      const readings = await drainScale(credentials);
+    // `pick` decides which of the two connect paths runs: the quiet one that
+    // dials an awake scale, or the chooser that wakes a sleeping one. It is a
+    // mutation variable rather than a hook option because the page flips it
+    // between the first tap and the second.
+    mutationFn: async ({
+      credentials,
+      pick,
+    }: {
+      credentials: ScaleCredentials;
+      pick?: boolean;
+    }) => {
+      const { readings, bodyCompositionPackets } = await drainScale(
+        credentials,
+        { pick },
+      );
+
+      // Surfaced to the page because a weight-only drain is a real, silent
+      // degradation: the scale answers, the numbers look right, and body fat,
+      // muscle and water are simply missing. The BF720 needs a real user
+      // profile to compute them, so this is worth saying out loud rather than
+      // leaving as four empty columns.
+      const weightOnly = readings.length > 0 && bodyCompositionPackets === 0;
+
       if (readings.length === 0) {
-        return { readings_received: 0, imported: 0, skipped: 0 };
+        return {
+          readings_received: 0,
+          imported: 0,
+          skipped: 0,
+          weightOnly,
+        };
       }
       const response = await bodyCompositionApi.syncScale(readings);
-      return response.data;
+      return { ...response.data, weightOnly };
     },
     onSuccess: (result) => {
       // Only worth invalidating if something actually landed - a drain that

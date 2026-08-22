@@ -25,15 +25,55 @@ export const USER_DATA_SERVICE = 0x181c;
 export const USER_CONTROL_POINT_CHAR = 0x2a9f;
 /** 0x2A99 — Database Change Increment. */
 export const DB_CHANGE_INCREMENT_CHAR = 0x2a99;
+/** 0x2A85 — Date of Birth. */
+export const USER_DOB_CHAR = 0x2a85;
+/** 0x2A8C — Gender: 0 male, 1 female. */
+export const USER_GENDER_CHAR = 0x2a8c;
+/** 0x2A8E — Height, in centimetres. */
+export const USER_HEIGHT_CHAR = 0x2a8e;
 /** 0x1805 / 0x2A2B — Current Time, so replayed history is stamped correctly. */
 export const CURRENT_TIME_SERVICE = 0x1805;
 export const CURRENT_TIME_CHAR = 0x2a2b;
 export const BATTERY_SERVICE = 0x180f;
 
-/** UDS User Control Point opcodes. */
-export const UDS_REGISTER_NEW_USER = 0x01;
+/**
+ * Beurer's vendor service, and the reason this file is no longer SIG-only.
+ *
+ * The SIG profile can consent to a slot but cannot *enumerate* what slots the
+ * scale already has, and it has no way to ask for stored readings. Both live
+ * here, on `0000ffff-…`, and openScale's `StandardBeurerSanitasHandler` drives
+ * exactly these four characteristics for the BF105/720.
+ *
+ * Without them a client can only register a slot of its own and read what is
+ * measured while it is connected — which is the whole trap this codebase spent
+ * a day in, and which the comments in `scale.ts` used to state as a hardware
+ * limitation. It is not one.
+ */
+export const BEURER_SERVICE = 0xffff;
+/** 0x0001 — the on-device user list. Write to request, notify to receive. */
+export const BEURER_USER_LIST_CHAR = 0x0001;
+/**
+ * 0x0006 — write 0x00 to make the scale send the consented user's stored
+ * readings. openScale calls this `TAKE_MEASUREMENT` and fires it immediately
+ * after consent; the name is misleading, since nothing can make a scale weigh
+ * an absent person. What it does is release the history.
+ */
+export const BEURER_REQUEST_STORED_CHAR = 0x0006;
+
+/** Status bytes leading a user-list notification. */
+export const USER_LIST_END = 0x01;
+export const USER_LIST_EMPTY = 0x02;
+
+/**
+ * UDS User Control Point opcodes.
+ *
+ * `REGISTER_NEW_USER` (0x01) is deliberately absent. Helf attaches to the one
+ * slot the scale already has and never provisions another: registering is what
+ * consumed slots 2 and 3 during development, and a scale that quietly grows a
+ * user per failed pairing is a scale whose history is split across slots that
+ * nothing will ever read again.
+ */
 export const UDS_CONSENT = 0x02;
-export const UDS_LIST_ALL_USERS = 0x04;
 export const UDS_RESPONSE = 0x20;
 
 /** User Data Service control-point response values. */
@@ -314,8 +354,18 @@ export function toScaleReading(
     comp: RawBodyComposition | null,
     weightPacket: RawWeightMeasurement | null,
 ): ScaleReading | null {
-    const isKg = comp?.isKg ?? weightPacket?.isKg ?? true;
-    const nativeWeight = comp?.weight ?? weightPacket?.weight ?? null;
+    // The unit flag belongs to the packet carrying the value, and the two can
+    // disagree — a live composition packet declares a unit even when it sends
+    // no weight at all. Reading `isKg` off the wrong packet double-converts:
+    // 188.4 lb becomes 415.35.
+    const compHasWeight = comp?.weight != null;
+    const nativeWeight = compHasWeight
+        ? (comp as RawBodyComposition).weight
+        : (weightPacket?.weight ?? null);
+    const weightIsKg = compHasWeight
+        ? (comp as RawBodyComposition).isKg
+        : (weightPacket?.isKg ?? comp?.isKg ?? true);
+
     const measuredAt = comp?.measuredAt ?? weightPacket?.measuredAt ?? null;
 
     // Without a weight there is no measurement, and without an instant there
@@ -325,21 +375,23 @@ export function toScaleReading(
         return null;
     }
 
-    const toLb = (m: number) => (isKg ? m * KG_TO_LB : m);
-    const toKg = (m: number) => (isKg ? m : m / KG_TO_LB);
+    // Normalise to kilograms first, so a ratio between two masses can never be
+    // taken across two different units.
+    const weightKg = weightIsKg ? nativeWeight : nativeWeight / KG_TO_LB;
+    const compMassKg = (m: number) => (comp?.isKg ? m : m / KG_TO_LB);
 
     const bodyFatPct = comp?.bodyFatPct ?? null;
 
     let waterPct: number | null = null;
     if (comp?.bodyWaterMass != null) {
-        waterPct = (comp.bodyWaterMass / nativeWeight) * 100;
+        waterPct = (compMassKg(comp.bodyWaterMass) / weightKg) * 100;
     }
 
     let boneKg: number | null = null;
     if (comp?.softLeanMass != null && bodyFatPct != null) {
-        const leanBodyMass = nativeWeight - nativeWeight * (bodyFatPct / 100);
-        const bone = leanBodyMass - comp.softLeanMass;
-        if (bone > 0) boneKg = toKg(bone);
+        const leanKg = weightKg - weightKg * (bodyFatPct / 100);
+        const bone = leanKg - compMassKg(comp.softLeanMass);
+        if (bone > 0) boneKg = bone;
     }
 
     const round = (n: number | null, dp = 2) =>
@@ -348,7 +400,7 @@ export function toScaleReading(
     return {
         timestamp: formatLocalTimestamp(measuredAt),
         date: localDate(measuredAt),
-        weight: round(toLb(nativeWeight)) as number,
+        weight: round(weightKg * KG_TO_LB) as number,
         body_fat_pct: round(bodyFatPct),
         // The API calls this `muscle_mass` and stores `muscle_pct`. It is a
         // percentage; see AGENTS.md.
@@ -359,48 +411,70 @@ export function toScaleReading(
     };
 }
 
+/** One packet, in arrival order. Order is the only thing that pairs some of them. */
+export type ScalePacket =
+    | { kind: "weight"; value: RawWeightMeasurement }
+    | { kind: "composition"; value: RawBodyComposition };
+
 /**
  * Group packets arriving during one drain into readings.
  *
- * The scale sends a weight packet and a body-composition packet per weighing,
- * and openScale merges them with a one-slot buffer. Buffering is wrong for a
- * history replay: thirty weighings arrive back to back, and a dropped or
- * out-of-order packet would shift every later pairing by one. Pairing on the
- * timestamp cannot drift, because that is the value the two packets share and
- * the one the reading is keyed by.
+ * Pairing is by timestamp *where there is one*, and by arrival order where
+ * there is not — because the BF720 uses both. A history replay stamps every
+ * packet, so timestamps pair it safely even if packets arrive out of order. A
+ * live weighing does not: the composition packet carries flags 0x0398, with
+ * the timestamp and weight bits clear, and means "this belongs to the weight
+ * packet you just received".
+ *
+ * An earlier version keyed purely on timestamps and justified it as immune to
+ * drift. It was — and it silently discarded every live body-composition
+ * packet, because an unstamped packet matched nothing and a reading with no
+ * timestamp and no weight is dropped. That looked exactly like a scale not
+ * sending bioimpedance at all.
  */
-export function pairPackets(
-    weights: RawWeightMeasurement[],
-    comps: RawBodyComposition[],
-): ScaleReading[] {
+export function pairPackets(packets: ScalePacket[]): ScaleReading[] {
     const key = (d: Date | null) => (d ? formatLocalTimestamp(d) : "");
 
-    const byInstant = new Map<string, RawWeightMeasurement>();
-    for (const w of weights) {
-        if (w.measuredAt) byInstant.set(key(w.measuredAt), w);
+    interface Group {
+        at: string;
+        weight: RawWeightMeasurement | null;
+        comp: RawBodyComposition | null;
     }
+    const groups: Group[] = [];
+    const find = (at: string) =>
+        at ? groups.find((g) => g.at === at) : undefined;
 
-    const readings: ScaleReading[] = [];
-    const paired = new Set<string>();
+    for (const packet of packets) {
+        const at = key(packet.value.measuredAt);
 
-    for (const c of comps) {
-        const k = key(c.measuredAt);
-        const reading = toScaleReading(c, byInstant.get(k) ?? null);
-        if (reading) {
-            readings.push(reading);
-            paired.add(k);
+        if (packet.kind === "weight") {
+            const existing = find(at);
+            if (existing && !existing.weight) existing.weight = packet.value;
+            else groups.push({ at, weight: packet.value, comp: null });
+            continue;
         }
+
+        const existing = find(at);
+        if (existing && !existing.comp) {
+            existing.comp = packet.value;
+            continue;
+        }
+        if (at) {
+            groups.push({ at, weight: null, comp: packet.value });
+            continue;
+        }
+
+        // Unstamped: it describes the most recent weighing that does not
+        // already have composition. Searching backwards rather than taking the
+        // last group keeps a stamped history replay from stealing it.
+        const owner = [...groups].reverse().find((g) => g.weight && !g.comp);
+        if (owner) owner.comp = packet.value;
     }
 
-    // A weight packet with no composition beside it is still a weighing, and a
-    // weight is the one field helf cannot do without.
-    for (const [k, w] of byInstant) {
-        if (paired.has(k)) continue;
-        const reading = toScaleReading(null, w);
-        if (reading) readings.push(reading);
-    }
-
-    return readings.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return groups
+        .map((g) => toScaleReading(g.comp, g.weight))
+        .filter((r): r is ScaleReading => r !== null)
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
 export interface UserControlPointResponse {
@@ -436,21 +510,172 @@ export function parseUserControlPointResponse(
     };
 }
 
-/** What to tell the user when the scale refuses. */
+/**
+ * What to tell the user when the scale refuses.
+ *
+ * Every message names P01 because that is the only slot Helf will ever use,
+ * and every one of them ends in something to do. A refusal here is recoverable
+ * without a reset in all but one case, and the recovery — make the scale show
+ * its own code — is not discoverable from the scale's manual.
+ */
 export function describeControlPointFailure(
     response: UserControlPointResponse,
-    userIndex: number,
 ): string {
     switch (response.value) {
         case UDS_RESP_USER_NOT_AUTHORIZED:
-            return `The scale rejected the consent code for slot ${userIndex}. The code is right for a different slot, or that slot was cleared - a scale reset wipes every slot and its code.`;
+            return "P01 rejected that code. The scale is now showing the right one on its display - read it off and enter it below.";
         case UDS_RESP_INVALID_PARAMETER:
-            return `Slot ${userIndex} is not a slot this scale has. The BF720 has eight, numbered from 1.`;
+            return "This scale has no P01 in its Bluetooth user registry. Set up P01 on the scale itself, then try again.";
         case UDS_RESP_OP_NOT_SUPPORTED:
             return "This scale does not accept a consent code over Bluetooth, which means it is not the BF720 this was written for.";
         case UDS_RESP_OPERATION_FAILED:
-            return `The scale failed the consent for slot ${userIndex} without saying why. If it was just reset, set the user up on the scale first.`;
+            return "The scale failed the consent for P01 without saying why. If it was just reset, set P01 up on the scale first.";
         default:
-            return `The scale refused consent for slot ${userIndex} (code ${response.value}).`;
+            return `The scale refused consent for P01 (code ${response.value}).`;
     }
+}
+
+/**
+ * The profile the scale needs before it will compute anything but mass.
+ *
+ * A BF720's own on-device user profile is **not** the profile a connected
+ * client gets. Consent grants access to a User Data Service slot, and the
+ * scale derives bioimpedance for that slot from the values written into it —
+ * which for a slot nothing has ever written are absent or defaulted. The
+ * result is a drain that reports weight and BMI (against a default height) and
+ * silently omits body fat, muscle and water. Confirmed on hardware: with the
+ * slot's height written, BMI moved from 31.0 to 28.5 and 0x2A9C began firing.
+ *
+ * The values come from `ScaleUserEntry` — P01 as the scale itself holds it —
+ * not from anything retyped into Helf. Two profiles for one person is one too
+ * many, and the scale's is the one its own bioimpedance model was calibrated
+ * against.
+ */
+
+/** 0x2A85 — year as uint16 LE, then month and day. */
+export function dateOfBirthPayload(u: ScaleUserEntry): Uint8Array<ArrayBuffer> {
+    return Uint8Array.from([
+        u.birthYear & 0xff,
+        (u.birthYear >> 8) & 0xff,
+        u.birthMonth & 0xff,
+        u.birthDay & 0xff,
+    ]);
+}
+
+/** 0x2A8C — the profile carries only the two values the SIG enum defines. */
+export function genderPayload(u: ScaleUserEntry): Uint8Array<ArrayBuffer> {
+    return Uint8Array.from([u.sex === "female" ? 1 : 0]);
+}
+
+/**
+ * 0x2A8E — centimetres as uint16 LE.
+ *
+ * Two bytes matter even though the scale reports height in one: the
+ * characteristic is defined as uint16, and a short write is something firmware
+ * may reject outright.
+ */
+export function heightPayload(u: ScaleUserEntry): Uint8Array<ArrayBuffer> {
+    const cm = Math.round(Math.min(Math.max(u.heightCm, 0), 300));
+    return Uint8Array.from([cm & 0xff, (cm >> 8) & 0xff]);
+}
+
+/**
+ * 0x2A99 — bump the database revision so the scale treats the profile above as
+ * newly written rather than as the stale copy it already had.
+ */
+export function changeIncrementPayload(): Uint8Array<ArrayBuffer> {
+    return Uint8Array.from([1, 0, 0, 0]);
+}
+
+/**
+ * One entry in the scale's on-device user list, or a marker ending it.
+ *
+ * This is the list the scale shows as P01, P02 … when someone steps on it.
+ * It is a **different store** from the SIG User Data Service registry: the
+ * profile here is what the user configured on the scale's own control unit,
+ * and reading it is the only way to tell "P01 exists and is mine" apart from
+ * "P01 was wiped by a reset".
+ */
+export type ScaleUserListEvent =
+    | { kind: "user"; user: ScaleUserEntry }
+    | { kind: "end" }
+    | { kind: "empty" };
+
+export interface ScaleUserEntry {
+    /** The slot number, as printed on the scale: P01 is 1. */
+    index: number;
+    /** Three characters, or null where the slot has never been named. */
+    initials: string | null;
+    birthYear: number;
+    birthMonth: number;
+    birthDay: number;
+    /** Centimetres — the wire unit. Converted at the UI boundary, not here. */
+    heightCm: number;
+    sex: "male" | "female";
+    /** 1-5 as the scale numbers it. Feeds its bioimpedance model. */
+    activityLevel: number;
+}
+
+/**
+ * Decode a notification from the vendor user-list characteristic (0xFFFF/0x0001).
+ *
+ * The status byte leads: 0x02 means the scale holds no users at all, 0x01
+ * terminates the list, anything else is a user record. Entries arrive one
+ * notification each, so a caller accumulates until it sees an end marker.
+ */
+export function parseScaleUserList(v: DataView): ScaleUserListEvent | null {
+    if (v.byteLength < 1) return null;
+
+    const status = v.getUint8(0);
+    if (status === USER_LIST_EMPTY) return { kind: "empty" };
+    if (status === USER_LIST_END) return { kind: "end" };
+    if (v.byteLength < 12) return null;
+
+    // Bytes 2-4 are the initials. 0xFF throughout is the scale's "unnamed",
+    // which would otherwise decode to three replacement characters.
+    const raw = [v.getUint8(2), v.getUint8(3), v.getUint8(4)];
+    const initials = raw.every((b) => b === 0xff)
+        ? null
+        : String.fromCharCode(...raw.filter((b) => b > 0x20 && b < 0x7f)) || null;
+
+    return {
+        kind: "user",
+        user: {
+            index: v.getUint8(1),
+            initials,
+            birthYear: v.getUint16(5, true),
+            birthMonth: v.getUint8(7),
+            birthDay: v.getUint8(8),
+            heightCm: v.getUint8(9),
+            sex: v.getUint8(10) === 0 ? "male" : "female",
+            activityLevel: v.getUint8(11),
+        },
+    };
+}
+
+/** Ask the scale to send its user list. */
+export function userListRequestPayload(): Uint8Array<ArrayBuffer> {
+    return Uint8Array.from([0x00]);
+}
+
+/**
+ * Ask the scale to show a slot's consent code **on its own display**.
+ *
+ * The code is never readable over the air — that is the point of it — so this
+ * is the only way to recover one that was never written down. The scale wants
+ * the slot offset into the top nibble: P01 is 0x11, P02 is 0x12.
+ */
+export function pinDisplayPayload(userIndex: number): Uint8Array<ArrayBuffer> {
+    return Uint8Array.from([(0x10 + userIndex) & 0xff]);
+}
+
+/**
+ * Ask the scale to release the consented user's stored readings.
+ *
+ * This is the byte that turns a live-only connection into a drain. Everything
+ * else here was already right; without it the scale answers a consent and then
+ * simply says nothing until someone stands on it.
+ */
+export function requestStoredPayload(): Uint8Array<ArrayBuffer> {
+    return Uint8Array.from([0x00]);
 }

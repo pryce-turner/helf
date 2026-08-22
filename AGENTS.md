@@ -713,6 +713,34 @@ model section above.*
   phone, no openScale, no broker. One tap drains its 30-reading memory;
   duplicates are refused by `UNIQUE (observed_at, source)` rather than tracked
   client-side
+- **The measurements are SIG; the access is not.** Listing the scale's users
+  and asking it for stored readings both live on Beurer's vendor service
+  `0xFFFF`, and without the write to `0x0006` a connected client only ever sees
+  a weighing taken while it is connected — which reads exactly like a scale
+  with no history. See plan 0015 §12
+- **Helf uses P01 and only P01, and never provisions a user.** One person, one
+  slot. A refused consent makes the scale print its own code on its display and
+  then errors; it does **not** fall through to registering a new slot, which is
+  what silently consumed slots 2 and 3 and made an empty history look like a
+  hardware limitation
+- **A drain gets what has not been delivered yet, not the whole ring.** The
+  scale marks a reading handed-over and does not send it again, so a re-drain
+  with no weighing in between is empty and `skipped` is 0 on almost every
+  drain. The `UNIQUE (observed_at, source)` constraint stays as a safety net,
+  not as the usual path — plan 0015 §13
+- **A drain has two connect paths and the *user* picks between them.** An
+  awake BF720 is dialled silently from `getDevices()` in one 5s attempt; a
+  sleeping one advertises its real address and refuses connections on it, so
+  only the active scan behind `requestDevice()` wakes it. `connect(pick)` never
+  falls back on its own — user activation expires in ~5s, long before the quiet
+  attempt has failed — so the fallback is a second tap: `ScaleAsleepError`
+  turns the button into **Wake scale**. Plan 0015 §14 records the three wrong
+  theories this replaced
+- **P01's profile comes from the scale, not from a form.** Height, date of
+  birth and sex are read out of the vendor user list and written into the UDS
+  slot; the pairing form asks only for the consent code. A hand-kept second
+  copy is free to disagree with the P01 being stepped on, and the only symptom
+  would be body fat computed against the wrong height
 - MQTT ingest (openScale-sync format) is **retired but not deleted** — it is
   the fallback for a scale the browser cannot read, since the decoder handles
   the SIG profile only while openScale drives around a hundred scales. Set

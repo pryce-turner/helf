@@ -90,7 +90,7 @@ it("asks for the consent code before offering to read", async () => {
     ).not.toBeInTheDocument();
 });
 
-it("offers the drain once a slot and code are saved", async () => {
+it("offers the drain once the code is saved", async () => {
     withBluetooth(true);
     const user = userEvent.setup();
     renderPage(<BodyComposition />, "/body-composition");
@@ -101,34 +101,44 @@ it("offers the drain once a slot and code are saved", async () => {
 
     const button = await screen.findByRole("button", { name: /^Read scale$/i });
     expect(button).toBeEnabled();
-    expect(screen.getByText(/slot 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Paired to P01/i)).toBeInTheDocument();
 });
 
 it("remembers the credentials across a remount", async () => {
     withBluetooth(true);
     localStorage.setItem(
         "helf.scale.credentials",
-        JSON.stringify({ userIndex: 3, consentCode: 4321 }),
+        JSON.stringify({ consentCode: 4321 }),
     );
     renderPage(<BodyComposition />, "/body-composition");
 
     await screen.findByRole("button", { name: /^Read scale$/i });
-    expect(screen.getByText(/slot 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/Paired to P01/i)).toBeInTheDocument();
 });
 
 it("reports a drain that was entirely replay as already held", async () => {
-    // The normal outcome, not the edge case: the scale replays all thirty
-    // stored weighings every time, so most drains import nothing.
+    // The safety net, not the usual path: the scale marks a reading delivered
+    // and does not send it twice, so `skipped` is normally 0. When it is not,
+    // the count has to be said out loud.
     withBluetooth(true);
-    vi.spyOn(scale, "drainScale").mockResolvedValue([
-        { timestamp: "2026-08-20T07:31:12", date: "2026-08-20", weight: 188.4 },
-    ]);
+    vi.spyOn(scale, "drainScale").mockResolvedValue({
+        readings: [
+            {
+                timestamp: "2026-08-20T07:31:12",
+                date: "2026-08-20",
+                weight: 188.4,
+                body_fat_pct: 18.5,
+            },
+        ],
+        weightPackets: 1,
+        bodyCompositionPackets: 1,
+    });
     api.syncScale.mockResolvedValue({
         data: { readings_received: 1, imported: 0, skipped: 1 },
     } as never);
     localStorage.setItem(
         "helf.scale.credentials",
-        JSON.stringify({ userIndex: 1, consentCode: 1234 }),
+        JSON.stringify({ consentCode: 1234 }),
     );
 
     const user = userEvent.setup();
@@ -137,16 +147,32 @@ it("reports a drain that was entirely replay as already held", async () => {
     await user.click(await screen.findByRole("button", { name: /^Read scale$/i }));
 
     await waitFor(() =>
-        expect(screen.getByText(/1 reading - 0 new, 1 already held/)).toBeInTheDocument(),
+        expect(screen.getByText(/0 new, 1 already held/)).toBeInTheDocument(),
     );
 });
 
-it("says so plainly when the scale had nothing stored", async () => {
+it("does not mention already-held readings when there are none", async () => {
+    // `skipped` is 0 on almost every drain, and leading with it read as though
+    // something had been dropped.
     withBluetooth(true);
-    vi.spyOn(scale, "drainScale").mockResolvedValue([]);
+    vi.spyOn(scale, "drainScale").mockResolvedValue({
+        readings: [
+            {
+                timestamp: "2026-08-22T10:48:29",
+                date: "2026-08-22",
+                weight: 196.85,
+                body_fat_pct: 25.5,
+            },
+        ],
+        weightPackets: 1,
+        bodyCompositionPackets: 1,
+    });
+    api.syncScale.mockResolvedValue({
+        data: { readings_received: 1, imported: 1, skipped: 0 },
+    } as never);
     localStorage.setItem(
         "helf.scale.credentials",
-        JSON.stringify({ userIndex: 1, consentCode: 1234 }),
+        JSON.stringify({ consentCode: 3960 }),
     );
 
     const user = userEvent.setup();
@@ -155,10 +181,76 @@ it("says so plainly when the scale had nothing stored", async () => {
     await user.click(await screen.findByRole("button", { name: /^Read scale$/i }));
 
     await waitFor(() =>
-        expect(screen.getByText(/nothing stored/i)).toBeInTheDocument(),
+        expect(screen.getByText(/1 new reading\./)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/already held/i)).not.toBeInTheDocument();
+});
+
+it("says so plainly when the scale had nothing new", async () => {
+    withBluetooth(true);
+    vi.spyOn(scale, "drainScale").mockResolvedValue({ readings: [], weightPackets: 0, bodyCompositionPackets: 0 });
+    localStorage.setItem(
+        "helf.scale.credentials",
+        JSON.stringify({ consentCode: 1234 }),
+    );
+
+    const user = userEvent.setup();
+    renderPage(<BodyComposition />, "/body-composition");
+
+    await user.click(await screen.findByRole("button", { name: /^Read scale$/i }));
+
+    await waitFor(() =>
+        expect(screen.getByText(/nothing new/i)).toBeInTheDocument(),
     );
     // An empty ring is not a sync, so nothing should have been posted.
     expect(api.syncScale).not.toHaveBeenCalled();
+});
+
+it("offers the chooser as a second tap when the scale is asleep", async () => {
+    // The quiet path cannot fall back to the chooser on its own: user
+    // activation expires before it has finished failing. So the recovery is a
+    // visibly different button, and tapping it is what supplies the gesture.
+    withBluetooth(true);
+    const drain = vi
+        .spyOn(scale, "drainScale")
+        .mockRejectedValueOnce(new scale.ScaleAsleepError("The scale is asleep."))
+        .mockResolvedValueOnce({
+            readings: [
+                {
+                    timestamp: "2026-08-22T10:48:29",
+                    date: "2026-08-22",
+                    weight: 196.85,
+                    body_fat_pct: 25.5,
+                },
+            ],
+            weightPackets: 1,
+            bodyCompositionPackets: 1,
+        });
+    api.syncScale.mockResolvedValue({
+        data: { readings_received: 1, imported: 1, skipped: 0 },
+    } as never);
+    localStorage.setItem(
+        "helf.scale.credentials",
+        JSON.stringify({ consentCode: 3960 }),
+    );
+
+    const user = userEvent.setup();
+    renderPage(<BodyComposition />, "/body-composition");
+
+    await user.click(await screen.findByRole("button", { name: /^Read scale$/i }));
+
+    // First tap goes the quiet way, and the failure is not shouted about — an
+    // asleep scale is the normal case, not an error.
+    const wake = await screen.findByRole("button", { name: /^Wake scale$/i });
+    expect(drain.mock.calls[0][1]).toMatchObject({ pick: false });
+
+    await user.click(wake);
+
+    await waitFor(() =>
+        expect(screen.getByText(/1 new reading\./)).toBeInTheDocument(),
+    );
+    // Second tap must raise the chooser, or nothing wakes.
+    expect(drain.mock.calls[1][1]).toMatchObject({ pick: true });
 });
 
 it("surfaces a rejected consent code rather than failing silently", async () => {
@@ -168,7 +260,7 @@ it("surfaces a rejected consent code rather than failing silently", async () => 
     );
     localStorage.setItem(
         "helf.scale.credentials",
-        JSON.stringify({ userIndex: 1, consentCode: 9999 }),
+        JSON.stringify({ consentCode: 9999 }),
     );
 
     const user = userEvent.setup();
@@ -334,4 +426,63 @@ describe("formatChartValue", () => {
         expect(formatChartValue(null, "%", "DEXA")[1]).toBe("DEXA");
         expect(formatChartValue(17.3, "%", "DEXA")[1]).toBe("DEXA");
     });
+});
+
+it("warns when a drain came back weight-only", async () => {
+    // The BF720 answers, the weight is right, and body fat / muscle / water
+    // are silently absent — it will not compute bioimpedance without a real
+    // user profile. Four empty columns do not explain that; this does.
+    withBluetooth(true);
+    vi.spyOn(scale, "drainScale").mockResolvedValue({
+        readings: [
+            { timestamp: "2026-08-20T12:30:00", date: "2026-08-20", weight: 198.1 },
+        ],
+        weightPackets: 1,
+        bodyCompositionPackets: 0,
+    });
+    api.syncScale.mockResolvedValue({
+        data: { readings_received: 1, imported: 1, skipped: 0 },
+    } as never);
+    localStorage.setItem(
+        "helf.scale.credentials",
+        JSON.stringify({ consentCode: 4080 }),
+    );
+
+    const user = userEvent.setup();
+    renderPage(<BodyComposition />, "/body-composition");
+    await user.click(await screen.findByRole("button", { name: /^Read scale$/i }));
+
+    await waitFor(() =>
+        expect(screen.getByText(/sent no bioimpedance/i)).toBeInTheDocument(),
+    );
+});
+
+it("stays quiet when body composition did arrive", async () => {
+    withBluetooth(true);
+    vi.spyOn(scale, "drainScale").mockResolvedValue({
+        readings: [
+            {
+                timestamp: "2026-08-20T12:30:00",
+                date: "2026-08-20",
+                weight: 198.1,
+                body_fat_pct: 23.7,
+            },
+        ],
+        weightPackets: 1,
+        bodyCompositionPackets: 1,
+    });
+    api.syncScale.mockResolvedValue({
+        data: { readings_received: 1, imported: 1, skipped: 0 },
+    } as never);
+    localStorage.setItem(
+        "helf.scale.credentials",
+        JSON.stringify({ consentCode: 4080 }),
+    );
+
+    const user = userEvent.setup();
+    renderPage(<BodyComposition />, "/body-composition");
+    await user.click(await screen.findByRole("button", { name: /^Read scale$/i }));
+
+    await waitFor(() => expect(api.syncScale).toHaveBeenCalled());
+    expect(screen.queryByText(/sent no bioimpedance/i)).not.toBeInTheDocument();
 });

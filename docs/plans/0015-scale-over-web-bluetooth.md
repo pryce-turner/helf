@@ -73,7 +73,12 @@ watch a count of readings appear. Seconds, and it replaces opening openScale.
 The client must be free to send everything it read, every time, and let the
 server decide what is new.
 
-> **Revised against hardware, 2026-08-20.** This section assumed the scale
+> **Revised 2026-08-20; withdrawn 2026-08-21; reinstated 2026-08-22.** The
+> conclusion below is correct — see §13 for the measurements that settle it.
+> The withdrawal in §12 was written before the release write had ever been
+> tried twice in a row, and was itself the error.
+>
+> This section assumed the scale
 > replays its *whole* buffer on every connect. It does not: the BF720 sends
 > only measurements it has not yet delivered. Three drains showed it — a fresh
 > weighing yielded one reading, the next drain after a second weighing reported
@@ -259,13 +264,10 @@ registration path beside it.
 
 ## 10. What is not decided
 
-- ~~Whether history replays over the standard characteristic.~~ **Answered:**
+- ~~Whether history replays over the standard characteristic.~~ ~~**Answered:**
   measurements arrive on the standard characteristics, but only the undelivered
-  ones — see §4. What is *still* open is whether several weighings taken
-  between drains all arrive together, or only the most recent survives. The
-  first would mean the feature works as designed; the second would mean a drain
-  is required after every single weighing, which is a materially worse feature.
-  Two weighings and one drain settles it.
+  ones.~~ **Settled properly in §12:** they arrive on the standard
+  characteristics, all of them, once asked for over the vendor service.
 - **Whether the characteristics require encryption at all.** If they do not,
   bonding is irrelevant and §7's last paragraph is merely reassuring.
 - **What happens to openScale afterwards.** Keeping it installed costs nothing
@@ -284,3 +286,218 @@ real Bluetooth stack.
 
 Not, under any circumstances, reverse-engineering a proprietary protocol in
 TypeScript to save one tap.
+
+## 12. The history has to be asked for, and §2's premise was half right
+
+**2026-08-21.** §2 says the BF720 speaks standard services and therefore needs
+no protocol work. That is true of *decoding* and false of *access*, and the gap
+between those two cost the best part of a day.
+
+The SIG profile can consent to a slot and can carry a measurement. It cannot
+enumerate the slots a scale already has, and it has no verb for "send me what
+you stored". Both of those live on Beurer's vendor service `0000ffff-…`, which
+openScale's `StandardBeurerSanitasHandler` drives for the BF105/720:
+
+| Characteristic | What it does |
+|---|---|
+| `0x0001` | Write `0x00` → the scale streams its on-device users. Write `0x10 + n` → the scale **shows slot n's consent code on its own display** |
+| `0x0002` | Three-character initials |
+| `0x0004` | Activity level 1-5, which feeds its bioimpedance model |
+| `0x0006` | Write `0x00` → **release the consented user's stored readings** |
+
+`0x0006` is the byte the whole feature turned on. openScale calls it
+`TAKE_MEASUREMENT`, which is why reading its source did not immediately suggest
+it: nothing can make a scale weigh an absent person. What it does is release
+the history.
+
+### What this corrects
+
+- **§3 stands, for a different reason.** The buffer does make on-demand
+  draining sufficient — but the buffer belongs to the scale's *on-device user*,
+  not to the client's slot, and it is not handed over unasked.
+- **§4's amendment of 2026-08-20 stands after all.** It was withdrawn here on
+  first writing and that was wrong — see §13. The scale really does send only
+  what it has not yet delivered; the 08-20 drains reached that conclusion for
+  partly the wrong reason, but the conclusion held.
+- **§10's open question is still open.** It asked whether several weighings
+  between drains all arrive or only the most recent. Nothing observed so far
+  has had more than one reading pending, so it remains untested.
+- **§11 is not triggered.** Reading four characteristics out of a GPL driver
+  that names them is not "reverse-engineering a proprietary protocol", which is
+  what that section forbids. Nothing here was derived from a packet capture.
+
+### One user, one slot, and no provisioning
+
+Helf attaches to **P01 and only P01**, and `REGISTER_NEW_USER` is deleted
+rather than guarded. There is one person in this database; there is one user on
+the scale.
+
+Registering is what produced the confusion above. A refused consent used to
+fall through to allocating a fresh slot, which always succeeded, always came
+back empty, and always looked like a scale with no history — while quietly
+consuming slots 2 and 3 and splitting the record across users nobody steps on
+as. A scale that grows a user per failed pairing is worse than one that refuses
+to pair.
+
+The same list is where P01's **profile** comes from. It carries height, date
+of birth and sex, so those are written into the User Data Service slot from the
+scale's own record rather than typed into Helf beside it. The pairing form asks
+for one thing, the consent code.
+
+That is not only less to type. The slot's profile is what the scale's
+bioimpedance model runs on, and a second copy maintained by hand is a copy free
+to disagree with the P01 being stepped on — silently, since the only symptom is
+body fat computed against the wrong height.
+
+So the failure modes are now all terminal and all named:
+
+- No P01 in the registry → error naming the slots that *are* there.
+- No users at all → error saying to set P01 up on the scale.
+- Wrong consent code → **the scale is told to print the right one on its
+  display** before the error is raised, because the code is never readable over
+  the air and this is the only way to recover one.
+
+That last one is why the pairing form now tells you to enter anything if you do
+not know the code. Being refused once is the documented way to learn it.
+
+## 13. What a working drain actually does, measured
+
+**2026-08-22.** First day the whole path worked. Three drains against a
+freshly reset scale with P01 configured on the control unit:
+
+| Drain at | Reading it returned | Gap |
+|---|---|---|
+| 10:36:51 | observed 09:56:24 | 40 minutes |
+| 10:38:35 | observed 10:37:42 | 1 minute |
+| 10:48:51 | observed 10:48:29 | 22 seconds |
+| 10:51 | *nothing* | — |
+
+Two things fall out of that table, and they pull in opposite directions.
+
+**Stored readings are real.** The first drain returned a weighing taken forty
+minutes earlier, with nobody standing on the scale. That is the feature: weigh
+whenever, collect later. It is the thing §12 was written to establish and it
+holds.
+
+**Delivered readings are not re-sent.** The fourth drain, with no weighing in
+between, returned nothing at all. So the scale marks what it hands over and
+does not hand it over again — which is exactly what §4's 2026-08-20 amendment
+said, and which §12 withdrew on the reasoning that those drains had been
+reading an empty slot. Both things were true at once: the slot *was* empty, and
+the scale *does* track delivery. Withdrawing the amendment threw out a correct
+finding along with the wrong reason for it.
+
+The lesson is narrow and worth keeping: an explanation that accounts for an
+observation does not thereby displace every other explanation of it.
+
+### `skipped` is a safety net, not the usual path
+
+Server-side deduplication was justified in §4 as what makes a re-drain safe.
+Re-drains turn out to be empty, so `skipped` is 0 on essentially every drain.
+
+Keep the `UNIQUE (observed_at, source)` constraint — a scale that lost track of
+what it had delivered would otherwise duplicate history silently, and that is a
+worse failure than a redundant check. But the drain's result line no longer
+leads with the count, because "0 already held" on every single drain read as
+though something had been dropped.
+
+### Still untested
+
+Whether the scale holds **more than one** undelivered reading. Every drain
+above had exactly one pending, so nothing here distinguishes "releases all
+pending readings" from "releases the most recent". §10's question survives, and
+two weighings before one drain settles it.
+
+### Bioimpedance, and the proof the profile write matters
+
+Before (Aug 20, against a slot nothing had written) and after (Aug 22, with
+P01's own height in the slot):
+
+```
+162  2026-08-20  198.13 lb   fat —      muscle —     water —      bmi 31.0
+165  2026-08-22  196.85 lb   fat 25.5   muscle 38.5  water 49.89  bmi 28.5
+```
+
+The BMI shift on an almost unchanged weight is the whole story: the earlier
+rows were computed against a default height, and everything that needs a real
+one was simply absent. Copying P01's profile into the slot is what turned four
+empty columns into four populated ones.
+
+## 14. Waking a sleeping scale: the chooser is the mechanism
+
+**2026-08-22.** Reported symptom: with the scale asleep, the first tap errors,
+the second raises the device chooser, and picking it from the chooser wakes and
+drains.
+
+Three explanations were tried on this, in order, and the first two were wrong.
+They are written down because each one *fit the evidence available at the time*
+and each cost a round trip through real hardware to kill.
+
+**Wrong #1: the grant holds a stale address.** The scale sleeps and comes back
+on a different address, so `getDevices()` hands back something undialable and
+the chooser fixes it by rescanning. `connect()` acted on this by calling
+`forget()` after a failed wake. Killed by measurement: with the scale asleep,
+`watchAdvertisements()` received four advertisements in 25s (first at 15.5s,
+RSSI −53), so Chrome had the *current* address, and `gatt.connect()` timed out
+regardless. Forgetting a good grant only forced the chooser onto the next tap
+and made the ceremony worse.
+
+**Wrong #2: the failed attempts do the waking.** After that probe, a second
+`gatt.connect()` succeeded instantly with no chooser — so `gatt.connect()`
+rouses the radio and merely times out doing it. `connect()` acted on this by
+retrying, waiting for an advertisement, and retrying again. Killed by the user
+on real hardware: still "The scale did not wake up." The instant success in the
+probe came from the scale being recently connected, not from the failed attempt
+that preceded it. A confound, read as a mechanism.
+
+**What holds.** The chooser wakes it and nothing else tried does. The most
+plausible reason is that Chrome runs an **active** scan to populate the chooser
+— scan requests the peripheral must answer — where `watchAdvertisements()`
+listens passively and pokes nothing. That remains a *hypothesis*: the third
+option, `navigator.bluetooth.requestLEScan()`, would test it directly, and on
+this Mac it hangs without resolving and demands a permission prompt per call.
+
+So `connect()` is now nothing but `requestDevice()`. No `getDevices()`, no
+remembered-device path, no advertisement wait, no automatic `forget()`. One tap
+raises the chooser, the scale is picked, it wakes and drains.
+
+### The fallback is a second tap, and it is the UI's job
+
+Going chooser-only fixed waking and broke the common case: an awake scale asked
+to be picked from a list every single drain, for no reason.
+
+There is no way to try the quiet path and fall back automatically. Transient
+user activation expires about five seconds after the click, so by the time a
+remembered device has failed, `requestDevice()` throws "must be handling a user
+gesture" instead of opening anything. **The fallback has to be a fresh
+gesture** — which means it has to be a button, which means the UI has to know
+the difference.
+
+So `connect(pick)` has two paths and never chooses between them:
+
+- `pick: false` — dial the remembered device, one attempt, 5s. An awake BF720
+  connects near-instantly, so this is a verdict rather than a wait. Fails with
+  `ScaleAsleepError`.
+- `pick: true` — open the chooser, which wakes it.
+
+`ScaleAsleepError` earns its own class because the page acts on it rather than
+printing it: the button becomes **Wake scale** and the message explains that
+picking the BF720 from the list is what rouses it. Tapping that supplies the
+activation the chooser needs.
+
+An asleep scale is styled as ordinary text, not as an error. It is the expected
+state of a bathroom scale, and colouring it red taught the eye to ignore the
+place real failures appear.
+
+### Still open, and where to test it
+
+Whether `requestLEScan()` can wake the scale without the picker — and if so,
+whether the drain can be one tap and no list. **Test it on the Android phone,
+not on a laptop.** Chrome's scanning differs by platform, and the phone is the
+only machine whose behaviour matters here; every measurement above was taken on
+macOS, which is a proxy for it and not a good one.
+
+> The wider lesson from the three attempts: an explanation that accounts for an
+> observation does not thereby displace the other explanations of it. Both
+> wrong theories fit every datum available when they were adopted. What settled
+> the question was not more reasoning, it was the user tapping a button.

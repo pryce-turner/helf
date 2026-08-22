@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Calendar from "./pages/Calendar";
 import WorkoutSession from "./pages/WorkoutSession";
 import Progression from "./pages/Progression";
@@ -44,6 +45,7 @@ function App() {
                             </span>
                         </div>
                     )}
+                    <ErrorBoundary>
                     <Routes>
                         <Route path="/" element={<Calendar />} />
                         <Route path="/day/:date" element={<WorkoutSession />} />
@@ -62,6 +64,7 @@ function App() {
                         <Route path="/mobility" element={<Mobility />} />
                         <Route path="/exercises" element={<Exercises />} />
                     </Routes>
+                    </ErrorBoundary>
                     <InstallPrompt />
                 </div>
             </BrowserRouter>

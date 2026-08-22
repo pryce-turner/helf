@@ -539,15 +539,25 @@
     }
 
     /* Navigation styles */
+    /* No `backdrop-filter` on either fixed nav, deliberately, and it must not
+       come back. A fixed backdrop-filter layer over a long scrolling document
+       is mis-composited by Chrome and Safari: the viewport blanks to the page
+       background at random while scrolling, on mobile especially, with no JS
+       error and no recovery short of a reload. It was reproducible on Android.
+
+       The cost of removing it is close to zero, which is what makes this an
+       easy call rather than a trade: these surfaces were already 85% and 95%
+       opaque, so the blur was rendering ~5-15% of the content behind them and
+       paying full price for it. They are solid now — at 0.95 the difference is
+       imperceptible, and leaving them translucent *without* blur would be
+       worse, because sharp text would ghost through instead of soft colour. */
     .nav-desktop {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         height: 56px;
-        background: rgba(10, 10, 11, 0.85);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        background: #0a0a0b;
         border-bottom: 1px solid var(--border-subtle);
         z-index: 100;
     }
@@ -631,14 +641,15 @@
         }
     }
 
+    /* Solid, and no backdrop-filter — see the note above `.nav-desktop`. This
+       is the one that was worst: a fixed bar pinned to the bottom of a phone
+       viewport is exactly the layer Chrome on Android mis-composites. */
     .nav-mobile {
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
-        background: rgba(14, 14, 16, 0.95);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        background: #0e0e10;
         border-top: 1px solid var(--border-subtle);
         padding-top: var(--space-2);
         padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));

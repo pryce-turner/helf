@@ -55,6 +55,41 @@ const SCALE_COLOR = "var(--chart-2)";
 const DEXA_COLOR = "#16a34a";
 
 /**
+ * Format one tooltip value, defensively, because Recharts does not hand these
+ * formatters a number.
+ *
+ * The signature is `number | string | Array<number | string>` — and the two
+ * charts here that pair a `<Line>` with a `<Scatter>` do produce the array
+ * form, because a scatter point carries its whole coordinate pair. Every
+ * formatter on this page was annotated `(value: number | undefined)`, which
+ * satisfied the compiler by asserting something untrue, then called
+ * `value.toFixed(1)` on an array at runtime.
+ *
+ * The consequence was far worse than a broken tooltip: the throw happened
+ * during render, so React unmounted the whole tree and the page went black
+ * with no message, recoverable only by reloading. It looked random because it
+ * needed a tooltip to be showing, and it was worst on a phone in landscape,
+ * where scrolling drags a finger across the charts continuously.
+ *
+ * `unknown` in the signature is deliberate. Narrowing is the entire job here,
+ * and a narrower parameter type would just recreate the original lie.
+ */
+export const formatChartValue = (
+    value: unknown,
+    unit: string,
+    label: string,
+): [string, string] => {
+    // A scatter point arrives as its coordinate pair; the measurement is last.
+    const raw = Array.isArray(value) ? value[value.length - 1] : value;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (raw === null || raw === undefined || raw === "" || !Number.isFinite(n)) {
+        return ["N/A", label];
+    }
+    return [`${n.toFixed(1)}${unit}`, label];
+};
+
+
+/**
  * What to call an instrument in front of a person.
  *
  * `observation.source` is one of three machine names and two technologies. The
@@ -405,6 +440,12 @@ const MeasurementLog = () => {
         textTransform: "uppercase",
         color: "var(--text-muted)",
         textAlign: "left",
+        // The body scrolls under this now, so it has to stay put — and it
+        // needs its own background or the rows show through it.
+        position: "sticky",
+        top: 0,
+        background: "var(--bg-secondary)",
+        zIndex: 1,
     };
     const num = (v: number | null | undefined, dp = 1) =>
         v == null ? "—" : v.toFixed(dp);
@@ -437,8 +478,17 @@ const MeasurementLog = () => {
                     weighed — a scale with a wrong clock files a reading years
                     out of place, and this is where you find it.
                 </p>
-                {/* Wide content scrolls inside its own box; the page must not. */}
-                <div style={{ overflowX: "auto" }}>
+                {/* Scrolls inside its own box, in both directions, and the
+                    vertical cap is not cosmetic. Fifty rows made this table
+                    65% of a 3528px document, and the app has two fixed
+                    `backdrop-filter: blur(16px)` navs sitting over it — a
+                    combination Chrome and Safari both mis-composite, blanking
+                    the viewport to the page background at random while
+                    scrolling, with no JS error and no recovery short of a
+                    reload. Keeping the document short keeps the compositor out
+                    of that state, and 162 measurements read better in a pane
+                    than as an endless page anyway. */}
+                <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "60vh", overscrollBehavior: "contain" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                         <thead>
                             <tr>
@@ -728,11 +778,9 @@ const BodyComposition = () => {
                                                                 color: 'var(--text-primary)',
                                                             }}
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value: number | undefined, name?: string) => {
-                                                                const label = name ?? "Weight";
-                                                                if (value == null) return ["N/A", label];
-                                                                return [value.toFixed(1) + " lbs", label];
-                                                            }}
+                                                            formatter={(value, name) =>
+                                                                formatChartValue(value, " lbs", (name as string) ?? "Weight")
+                                                            }
                                                         />
                                                         {/* One y-axis, deliberately. Two scales would
                                                             make the offset between the instruments
@@ -792,11 +840,9 @@ const BodyComposition = () => {
                                                                 color: 'var(--text-primary)',
                                                             }}
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value: number | undefined, name?: string) => {
-                                                                const label = name ?? "Body Fat";
-                                                                if (value == null) return ["N/A", label];
-                                                                return [value.toFixed(1) + "%", label];
-                                                            }}
+                                                            formatter={(value, name) =>
+                                                                formatChartValue(value, "%", (name as string) ?? "Body Fat")
+                                                            }
                                                         />
                                                         {/* The two disagree by several points and
                                                             always will - bioimpedance reads high.
@@ -856,10 +902,9 @@ const BodyComposition = () => {
                                                                 color: 'var(--text-primary)',
                                                             }}
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value: number | undefined) => {
-                                                                if (value == null) return ["N/A", "Muscle %"];
-                                                                return [value.toFixed(1) + " %", "Muscle %"];
-                                                            }}
+                                                            formatter={(value) =>
+                                                                formatChartValue(value, " %", "Muscle %")
+                                                            }
                                                         />
                                                         <Line
                                                             type="monotone"
@@ -909,10 +954,9 @@ const BodyComposition = () => {
                                                                 color: 'var(--text-primary)',
                                                             }}
                                                             labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value: number | undefined) => {
-                                                                if (value == null) return ["N/A", "Water"];
-                                                                return [value.toFixed(1) + "%", "Water"];
-                                                            }}
+                                                            formatter={(value) =>
+                                                                formatChartValue(value, "%", "Water")
+                                                            }
                                                         />
                                                         <Line
                                                             type="monotone"

@@ -11,9 +11,9 @@
  */
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
-import BodyComposition from "./BodyComposition";
+import BodyComposition, { formatChartValue } from "./BodyComposition";
 import { bodyCompositionApi } from "@/lib/api";
 import * as scale from "@/lib/scale";
 
@@ -298,4 +298,40 @@ it("keeps the pairing form reachable with an empty database", async () => {
     await screen.findByText(/NO DATA YET/i);
     expect(screen.getByPlaceholderText(/Consent code/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/BodySpec access token/i)).toBeInTheDocument();
+});
+
+describe("formatChartValue", () => {
+    it("survives the array Recharts hands a scatter series", () => {
+        // The actual crash: `value.toFixed is not a function`, thrown during
+        // render from a tooltip formatter, which unmounted the whole tree and
+        // left a black page recoverable only by reloading.
+        expect(formatChartValue([1758240000000, 197.89], " lbs", "Scale")).toEqual([
+            "197.9 lbs",
+            "Scale",
+        ]);
+    });
+
+    it("formats a plain number", () => {
+        expect(formatChartValue(191.32, " lbs", "Scale")).toEqual(["191.3 lbs", "Scale"]);
+        expect(formatChartValue(23.7, "%", "Body Fat")).toEqual(["23.7%", "Body Fat"]);
+    });
+
+    it("coerces the string form Recharts also permits", () => {
+        expect(formatChartValue("18.5", "%", "DEXA")).toEqual(["18.5%", "DEXA"]);
+    });
+
+    it("says N/A rather than throwing on anything non-numeric", () => {
+        // A gap in a series is normal here — DEXA is quarterly against a
+        // near-daily scale — so this path runs constantly.
+        for (const bad of [null, undefined, "", "n/a", NaN, {}, []]) {
+            expect(formatChartValue(bad, "%", "Water")).toEqual(["N/A", "Water"]);
+        }
+    });
+
+    it("keeps the series label, which names the instrument", () => {
+        // Body composition must never be read without knowing which instrument
+        // produced it, so the label matters as much as the number.
+        expect(formatChartValue(null, "%", "DEXA")[1]).toBe("DEXA");
+        expect(formatChartValue(17.3, "%", "DEXA")[1]).toBe("DEXA");
+    });
 });

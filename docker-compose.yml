@@ -113,3 +113,47 @@ services:
             timeout: 10s
             start_period: 20s
             retries: 3
+
+    # The development box: a Claude Code session with this repo bind-mounted,
+    # reachable over Remote Control as "HelfDev". Ran by hand as
+    #   docker run --rm -it --name helf-dev \
+    #     -v /mnt/fast/custom/home:/home/ubuntu \
+    #     -v /mnt/fast/custom/helf:/mnt \
+    #     pryce-devbox claude --dangerously-skip-permissions --remote-control --name HelfDev
+    # until it lived here.
+    #
+    # It is NOT part of the app. It shares no network, no socket and no
+    # dependency with the two services above — it reaches the database the same
+    # way any shell would, through the mounted tree.
+    helf-dev:
+        # `pryce-devbox` is built elsewhere and lives only in the local image
+        # store. Without `pull_policy: never`, compose treats a missing image as
+        # something to fetch and fails on a registry lookup that was never going
+        # to resolve. Note this is the opposite of the two services above, which
+        # build from this repo's Dockerfile on every `up`.
+        image: pryce-devbox
+        pull_policy: never
+        container_name: helf-dev
+        command:
+            ["claude", "--dangerously-skip-permissions", "--remote-control", "--name", "HelfDev"]
+        volumes:
+            # The home directory carries the Claude credentials, settings and
+            # session history, so the box comes back as itself after a restart.
+            - ${HELF_DEV_HOME_PATH:-/mnt/fast/custom/home}:/home/ubuntu
+            # The repo, at /mnt — which is what CLAUDE.md's paths assume, and it
+            # is the working tree the app is built from, not a copy. Edits here
+            # are edits to what the next `docker compose up` builds, and
+            # data/helf.db underneath it is the live database.
+            - ${HELF_REPO_PATH:-/mnt/fast/custom/helf}:/mnt
+        # The `-it` half of the original command. Claude is a TUI: without both
+        # of these it reads EOF on an absent stdin and exits immediately, which
+        # looks exactly like a crash loop. Attach with `docker attach helf-dev`
+        # (detach with ctrl-p ctrl-q, which leaves the session running).
+        stdin_open: true
+        tty: true
+        # The `--rm` half has no service equivalent, and the honest replacement
+        # is not to resurrect it: `unless-stopped` would relaunch a fresh agent
+        # every time you quit one, so exiting the TUI would never mean exited.
+        # A NAS reboot brings it back because `up` does, which is the case that
+        # mattered.
+        restart: "no"

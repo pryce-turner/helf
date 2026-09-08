@@ -680,9 +680,9 @@ def test_read_pending_returns_the_routine_in_prescribed_order(mcp):
         label="Mobility",
         items=[
             {"exercise": "Decline Bicycle Crunch", "sets": 1, "reps": 20},
-            {"exercise": "QL Raise", "sets": 2, "reps": 8, "comment": "each side"},
+            {"exercise": "QL Raise", "sets": 2, "reps": 8},
         ],
-        rationale="core first, then the QL",
+        rationale="core first, then the QL. QL raise is each side.",
     )
 
     result = mcp.read_pending_mobility_session()
@@ -690,7 +690,7 @@ def test_read_pending_returns_the_routine_in_prescribed_order(mcp):
     assert result["pending"] is True
     session = result["sessions"][0]
     assert session["label"] == "Mobility"
-    assert session["rationale"] == "core first, then the QL"
+    assert session["rationale"] == "core first, then the QL. QL raise is each side."
     # One row per set, in insertion order. The table has no `order` column, so
     # nothing else carries the sequence the routine is to be performed in.
     assert [item["exercise"] for item in session["items"]] == [
@@ -698,7 +698,53 @@ def test_read_pending_returns_the_routine_in_prescribed_order(mcp):
         "QL Raise",
         "QL Raise",
     ]
-    assert session["items"][1]["comment"] == "each side"
+    # Prescribed sets carry no comment: the field belongs to the user, and the
+    # cue ("each side") lives in the rationale they read before running it.
+    assert all(item["comment"] is None for item in session["items"])
+
+
+def test_a_prescribed_comment_is_refused(mcp):
+    """The set's comment is the user's feedback channel and nothing else writes
+    to it. A cue left there travels onto the logged row, and anything the user
+    does not overwrite comes back on the next read as though they had said it —
+    on 2026-08-22 the lateral raise returned the previous prescription's own
+    words, still arguing for a weight the user had already overruled."""
+    result = mcp.write_next_mobility_session(
+        label="Low back",
+        items=[{"exercise": "QL Raise", "reps": 8, "comment": "each side"}],
+        rationale="unchanged",
+    )
+
+    assert result["ok"] is False
+    assert "comment" in result["error"]
+    assert "rationale" in result["hint"]
+
+
+def test_a_refused_comment_writes_nothing(mcp):
+    """Refused, not dropped. A partial write would leave the cue looking
+    delivered and the next session written on the assumption it was seen."""
+    mcp.write_next_mobility_session(
+        label="Low back",
+        items=[
+            {"exercise": "QL Raise", "reps": 8},
+            {"exercise": "Hip Thrust", "reps": 20, "comment": "squeeze at the top"},
+        ],
+        rationale="two movements",
+    )
+
+    assert mcp.read_pending_mobility_session() == {"ok": True, "pending": False}
+
+
+def test_a_null_comment_is_not_a_comment(mcp):
+    """Serialisers that emit every key would otherwise be unable to call this
+    tool at all."""
+    result = mcp.write_next_mobility_session(
+        label="Low back",
+        items=[{"exercise": "QL Raise", "reps": 8, "comment": None}],
+        rationale="explicit null is an absent cue, not a rejected one",
+    )
+
+    assert result["ok"] is True
 
 
 def test_read_pending_ignores_a_rationale_with_no_items(mcp):

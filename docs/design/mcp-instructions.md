@@ -87,8 +87,10 @@ say what the session is *for* — "Low back", "Shoulder" — not what is in it.
 2. `read_latest_mobility_session(date=…)` — the mobility sets as performed and
    every comment on them. Pass a **date** to build from a day the user names
    rather than the most recent one; a named date with nothing flagged returns
-   `found: false` rather than falling back to that day's lifting sets. **The comments are the entire feedback channel.** Read all
-   of them before changing anything.
+   `found: false` rather than falling back to that day's lifting sets. **The comments are the entire feedback channel**, and
+   nothing else writes to them — a comment on a mobility set is the user's
+   words, never a previous prescription's. Read all of them before changing
+   anything.
 
    **What comes back is the flagged sets of the last day that has any**, not
    the whole day. `workouts.is_mobility` is per set: the same movement is a
@@ -109,7 +111,8 @@ say what the session is *for* — "Low back", "Shoulder" — not what is in it.
    as a loaded stretch does not make it stop being a lifting movement.
 4. `write_next_mobility_session(label, items, rationale)` — a new label adds
    a session to the tab, an existing one replaces that session and cannot
-   touch the others.
+   touch the others. **Prescribed sets carry no comment**; everything you have
+   to say about the session goes in `rationale`. See below.
 5. `update_mobility_movement(exercise_id, application=…, form=…, rating=…)`
    when a session teaches you something durable about a movement. **Usually
    you are writing `application`** — `form` changes only when the movement is
@@ -134,6 +137,22 @@ the point of most of these movements, and prescriptions should say so.
   the loaded stretch is the working set into end range, and a static hold
   beforehand switches the muscle off for it. Exception: a brief (<30s) primer is
   fine if the loaded position cannot otherwise be reached with good form.
+- **Leave the per-set comment blank. Everything you want to say goes in the
+  session's `rationale`** — the blurb the user reads on the tab before running
+  it. Loads, cues, side-to-side instructions, what changed since last time and
+  why: all of it, written once for the whole workout rather than sprayed across
+  the sets. Passing a comment is refused, not quietly dropped.
+
+  The reason is that the set's comment field is the *user's*, and it is the
+  only feedback channel there is. A cue written there travels onto the logged
+  row, and anything they do not overwrite comes back on the next read looking
+  like something they said. On 2026-08-22 the lateral raise returned "down from
+  25lb, your call — 15 is where it last moved cleanly" — the previous
+  prescription's own words, still arguing for a weight the user had already
+  overruled by loading 20. Prescription text that reads back as feedback is
+  worse than no cue at all, because you cannot tell it from the thing it
+  corrupts. Left blank, a non-empty comment on a mobility set means exactly one
+  thing: the user wrote it.
 
 **`rating` is enjoyment, not value.** 1–5, NULL meaning unrated. It measures how
 much the user wants to do a movement and exists to protect adherence. How much

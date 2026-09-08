@@ -705,18 +705,31 @@ def write_next_mobility_session(
     than duplicate.
 
     `items` is the routine in the order it is to be performed. Each is
-    {exercise, sets?, reps?, weight_lb?, comment?, category?}:
+    {exercise, sets?, reps?, weight_lb?, category?}:
 
     - **`sets` expands into rows**, one per set, because that is how the user
       logs — "8 and then 10 reps" is two different numbers and needs two rows
       to land in. `sets: 2, reps: 8` becomes two rows of 8.
-    - **`comment` is the cue** ("each side", "soft knees — not stiff-leg", the
-      setup detail). It travels onto the logged set and is then *overwritten*
-      by the user's feedback, which is how the note comes back to you.
     - **`weight_lb` is pounds** (ADR-0003).
+    - **There is no per-set comment, and passing one is an error.** The set's
+      comment field is the user's, and only the user's — see `rationale`.
 
-    `rationale` is what you changed and why. The user reads it on the mobility
-    tab before running the session, so write it to them, not to yourself.
+    `rationale` is what you changed and why, for the whole session. The user
+    reads it on the mobility tab before running the session, so write it to
+    them, not to yourself, and put **everything** there: loads, cues, what
+    moved since last time and why.
+
+    It used to be split — reasoning here, cues on the individual sets — and
+    the cues travelled onto the logged rows, landing in the one field the user
+    writes feedback into. Anything they did not overwrite came back on the next
+    read as though they had said it. On 2026-08-22 the lateral raise returned
+    "down from 25lb, your call — 15 is where it last moved cleanly", which was
+    the previous prescription's text, still describing a weight the user had
+    already overruled. A prescription that reads back as feedback is worse than
+    no cue at all, because it is indistinguishable from the thing it corrupts.
+
+    So the field is left empty on the way out, and a non-empty comment on a
+    mobility set now means exactly one thing: the user wrote it.
 
     The user picks which pending session to run from the mobility tab, so a
     label that says what the session is *for* is worth more than one that says
@@ -745,6 +758,20 @@ def write_next_mobility_session(
             return {"ok": False, "error": f"items[{index}] has no exercise"}
         if item.get("sets") is not None and int(item["sets"]) < 1:
             return {"ok": False, "error": f"items[{index}] has sets < 1"}
+        # Refused rather than dropped. Silently discarding it would leave the
+        # cue looking delivered, and the next session would be written on the
+        # assumption the user had been told something they never saw.
+        if item.get("comment") is not None:
+            return {
+                "ok": False,
+                "error": f"items[{index}] has a comment",
+                "hint": "Prescribed sets carry no comment - that field is the "
+                        "user's feedback channel, and text left in it reads "
+                        "back as something they said. Put the cue, the load "
+                        "and what changed in `rationale`, which is written "
+                        "for the whole session and is what they actually "
+                        "read before running it.",
+            }
 
     created: list[str] = []
     written: list[int] = []
@@ -785,17 +812,17 @@ def write_next_mobility_session(
             for _ in range(int(item.get("sets") or 1)):
                 written.append(
                     conn.execute(
+                        # `comment` is written NULL, never from the caller.
                         """INSERT INTO upcoming_workouts
                              (session, kind, exercise_id, category_id, weight,
                               reps, comment, created_at)
-                           VALUES (?, 'mobility', ?, ?, ?, ?, ?, ?)""",
+                           VALUES (?, 'mobility', ?, ?, ?, ?, NULL, ?)""",
                         (
                             session_number,
                             exercise_id,
                             category_id,
                             item.get("weight_lb"),
                             item.get("reps"),
-                            item.get("comment"),
                             _now(),
                         ),
                     ).lastrowid

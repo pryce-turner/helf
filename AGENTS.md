@@ -362,6 +362,21 @@ The read tool returns every comment on the *mobility sets* it hands back — so 
 program-level remark left on a lifting set that day is not in the result, which
 is the price of returning the session rather than the day.
 
+**That field is the user's alone, and the agent no longer writes to it.**
+`write_next_mobility_session` refuses a per-set `comment`; the prescription's
+cues, loads and reasoning all go in the session `rationale`, which is what the
+user reads on the tab before running it. Prescribed cues used to travel onto
+the logged row, and anything the user did not overwrite came back on the next
+read looking like something they had said — on 2026-08-22 the lateral raise
+returned "down from 25lb, your call — 15 is where it last moved cleanly", the
+previous prescription's own words, still arguing for a weight the user had
+overruled by loading 20. A non-empty comment on a mobility set now means
+exactly one thing: the user wrote it.
+
+The column itself stays and transfer still copies it — Liftoscript writes cues
+there for lifting sessions (ADR-0005), and the change is to what the agent
+sends, not to the shape.
+
 ### The journal is not the audit log
 
 | | `note` / `document` | `audit_log` |

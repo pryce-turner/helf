@@ -61,7 +61,14 @@ rewrite as editing a food's macros (Plan 0005 §1), except about what happened
 rather than what it contained — and unlike macros, there is no version of that
 which is desirable.
 
-The cost looks like losing "did I take my morning stack today?". It isn't:
+The cost looks like losing "did I take my morning stack today?". It isn't —
+the answer is derivable, and a derived answer is *truer* than a marker would
+be, because it holds whether the button was tapped or the three items were
+entered by hand.
+
+Getting the derivation right took two goes.
+
+### The version that shipped, and what was wrong with it
 
 ```sql
 -- taken == every one of the stack's foods appears in that day's log
@@ -71,10 +78,54 @@ SELECT COALESCE(MIN(EXISTS (
 FROM stack_item si WHERE si.stack_id = ?
 ```
 
-That phrasing is *truer* than a marker would be, because it holds whether the
-button was tapped or the three items were entered by hand. `COALESCE` matters:
-`MIN()` over no rows is NULL, and without it an empty stack would report itself
-as taken every day.
+`COALESCE` was the edge case this was written to handle: `MIN()` over no rows
+is NULL, and without it an empty stack would report itself as taken every day.
+
+The edge case it *missed* is not an edge case at all. **"Every food appears" is
+vacuously true for any stack whose foods are a subset of another's.** The live
+stacks are Morning = {omega, cholestoff, D3, multi} and Evening = {omega,
+cholestoff}, so one tap on Morning marked Evening taken too, every single day —
+an adherence flag for a dose that was never swallowed. It reproduced on 5 of
+the 8 most recent logged days. An evening group being a shorter version of the
+morning one is the normal way people take supplements; nothing here was unusual
+except the query.
+
+Note that no amount of `servings` arithmetic rescues it. Morning takes one
+omega and Evening takes one omega; the day's single logged entry satisfies
+either requirement read on its own. The missing constraint is not *how much*
+but **who already claimed it**.
+
+### The rule now
+
+A stack is taken on a date when that day's log holds a **distinct entry** for
+every one of its foods, **and no two stacks claim the same entry**. Stacks are
+offered the day's log most-specific-first (item count desc, then display order,
+then id, so the answer never depends on row order) and consume what they match.
+A stack that cannot be covered consumes nothing — otherwise a half-matched
+Morning would eat the entries the Evening inside it is entitled to, and both
+would read false.
+
+It lives in `stack_repo._allocate`, in Python rather than SQL: the allocation
+is inherently cross-stack and sequential, and expressing it as a correlated
+subquery per stack is how the first version came to be wrong in the first
+place. `last_taken` runs the same allocation per day rather than the old looser
+one, because two rules would contradict each other on exactly the days they
+differ — printing "not taken" above "last taken: today".
+
+Two properties this rule deliberately accepts:
+
+- **The unit is entries, not servings.** A stack wanting 2 servings of omega is
+  satisfied by one hand-logged entry of 1. Hand-entered rows do not carry the
+  preset's serving counts and never did; requiring them to line up would make
+  "entered by hand" stop counting, which is the one thing the derivation exists
+  to support.
+- **Two identical doses are indistinguishable.** Logging Morning twice leaves a
+  spare omega and cholestoff, so Evening reads as taken. The log genuinely does
+  not record which dose was which. The obvious repair — match whole
+  `consumed_at` groups, since the one-tap writer gives every row in a stack the
+  same instant — fails the hand-entry case, where rows arrive minutes apart,
+  and would also merge two single-item stacks logged 1.5 seconds apart into one
+  group matching neither. Over-reporting a repeated dose is the narrower error.
 
 ## 3. Shape
 

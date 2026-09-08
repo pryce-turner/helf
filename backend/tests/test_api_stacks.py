@@ -109,6 +109,108 @@ def test_taken_today_is_false_until_every_item_is_logged(client):
     assert client.get(f"/api/stacks/{stack_id}").json()["taken_today"] is False
 
 
+def _evening(client, morning):
+    """Omega and CholestOff again in the evening — a strict subset of Morning.
+
+    The shape that broke the old rule, and an entirely ordinary one: an evening
+    dose is usually a shorter version of the morning one.
+    """
+    by_name = {i["name"]: i["food_id"] for i in morning["items"]}
+    return client.post(
+        "/api/stacks/",
+        json={
+            "name": "Evening",
+            "items": [
+                {"food_id": by_name["Omega-3"], "servings": 1},
+                {"food_id": by_name["CholestOff"], "servings": 1},
+            ],
+        },
+    ).json()
+
+
+def _by_name(client):
+    return {s["name"]: s for s in client.get("/api/stacks/").json()}
+
+
+def test_logging_a_stack_does_not_mark_a_subset_of_it_taken(client):
+    """The bug. "Every food appears in today\'s log" is vacuously true for any
+    stack contained in another, so one tap on Morning claimed adherence for an
+    Evening dose that had not been swallowed."""
+    morning = _morning(client).json()
+    _evening(client, morning)
+
+    client.post(f"/api/stacks/{morning['doc_id']}/log")
+
+    stacks = _by_name(client)
+    assert stacks["Morning"]["taken_today"] is True
+    assert stacks["Evening"]["taken_today"] is False
+
+
+def test_the_subset_becomes_taken_once_its_own_dose_is_logged(client):
+    """And the fix must not go the other way: a second dose is a second set of
+    entries, so both stacks can be true on the same day."""
+    morning = _morning(client).json()
+    evening = _evening(client, morning)
+
+    client.post(f"/api/stacks/{morning['doc_id']}/log")
+    client.post(f"/api/stacks/{evening['doc_id']}/log")
+
+    stacks = _by_name(client)
+    assert stacks["Morning"]["taken_today"] is True
+    assert stacks["Evening"]["taken_today"] is True
+
+
+def test_a_stack_that_is_not_taken_does_not_consume_entries(client):
+    """Logging Evening alone leaves Morning short a vitamin D. Morning must
+    claim nothing on the way to being false, or it would eat the omega entry
+    Evening is entitled to and both would read as not taken."""
+    morning = _morning(client).json()
+    _evening(client, morning)
+
+    client.post(f"/api/stacks/{_by_name(client)['Evening']['doc_id']}/log")
+
+    stacks = _by_name(client)
+    assert stacks["Morning"]["taken_today"] is False
+    assert stacks["Evening"]["taken_today"] is True
+
+
+def test_last_taken_does_not_credit_a_day_the_subset_was_not_taken(client):
+    """`last_taken` runs the same allocation, per day. Computed by the looser
+    rule it would contradict `taken_today` on exactly the days they differ —
+    "not taken" printed above "last taken: today"."""
+    morning = _morning(client).json()
+    _evening(client, morning)
+
+    client.post(
+        f"/api/stacks/{morning['doc_id']}/log",
+        json={"consumed_at": "2026-08-09T07:00:00"},
+    )
+
+    stacks = _by_name(client)
+    assert stacks["Morning"]["last_taken"] == "2026-08-09"
+    assert stacks["Evening"]["last_taken"] is None
+
+
+def test_an_unrelated_stack_is_unaffected_by_another_being_logged(client):
+    """Allocation is only contended between stacks that share a food."""
+    morning = _morning(client).json()
+    creatine = client.post(
+        "/api/stacks/",
+        json={
+            "name": "Creatine",
+            "items": [{"food": {"name": "Creatine", "kind": "supplement"}}],
+        },
+    ).json()
+
+    client.post(f"/api/stacks/{morning['doc_id']}/log")
+    assert _by_name(client)["Creatine"]["taken_today"] is False
+
+    client.post(f"/api/stacks/{creatine['doc_id']}/log")
+    stacks = _by_name(client)
+    assert stacks["Creatine"]["taken_today"] is True
+    assert stacks["Morning"]["taken_today"] is True
+
+
 def test_an_empty_stack_is_not_taken(client):
     """`MIN()` over no rows is NULL, and a vacuous true would report an empty
     stack as done every day."""

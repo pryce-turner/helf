@@ -28,10 +28,15 @@ export interface StackItemCreate {
 /**
  * A named group of consumables, logged in one action.
  *
- * `taken_today` is computed from `food_log` — every one of the stack's foods
- * appears in today's entries — not from a marker the log button writes. So it
- * is true whether the stack was tapped or the items entered by hand, and
- * editing a stack cannot rewrite what a past day claims.
+ * `taken_today` is computed from `food_log` — today's entries hold a distinct
+ * one for every food in the stack, with no entry claimed by two stacks — not
+ * from a marker the log button writes. So it is true whether the stack was
+ * tapped or the items entered by hand, and editing a stack cannot rewrite what
+ * a past day claims.
+ *
+ * The exclusivity is not a detail. Without it, a stack whose foods are a
+ * subset of another's is marked taken by the larger one's dose, which is the
+ * normal shape of an evening group rather than an edge case.
  */
 export interface Stack {
     doc_id: number;

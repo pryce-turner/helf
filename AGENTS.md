@@ -278,9 +278,29 @@ totals while its entry sits on the other tab, because `v_daily_summary` sums
 entirely. The supplements log prints the kcal on any dose that has them.
 
 **`food_log` carries no `stack_id`.** A log row records what was consumed; the
-stack is only how it was entered. `taken_today` is derived — every one of the
-stack's foods appears in today's log — so it holds whether the button was tapped
-or the items entered by hand, and editing a stack cannot rewrite the past.
+stack is only how it was entered. `taken_today` is derived — today's log holds a
+distinct entry for every one of the stack's foods — so it holds whether the
+button was tapped or the items entered by hand, and editing a stack cannot
+rewrite the past.
+
+**No two stacks may claim the same entry**, and that clause is load-bearing.
+"Every food appears" is vacuously true for any stack whose foods are a *subset*
+of another's, so logging Morning marked Evening taken as well — a dose that was
+never swallowed, reporting adherence. An evening group being a shorter version
+of the morning one is the ordinary case, not an edge case. Stacks are therefore
+offered the day's log **most-specific-first** and consume the entries they
+match; a stack that cannot be covered consumes nothing, so a half-matched
+Morning does not eat the entries its Evening subset is entitled to. Two
+consequences worth knowing:
+
+- **The unit is entries, not servings.** A 2-serving item is satisfied by one
+  hand-logged entry of 1 — hand-entered rows never carried the preset's counts,
+  and requiring the arithmetic to line up would make "entered by hand" stop
+  counting, which is the one thing the derivation exists to support.
+- **Two identical doses are indistinguishable.** Logging Morning twice leaves
+  spare entries and reads Evening as taken. The log does not say which dose was
+  which, and matching on `consumed_at` groups instead would break hand entry,
+  where rows arrive minutes apart.
 
 `foods_missing_macros` counts **meals only**. A vitamin has no macros to be
 missing and would otherwise flag every fully logged day forever.

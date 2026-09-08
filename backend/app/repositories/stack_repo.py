@@ -16,39 +16,67 @@ from app.utils.date_helpers import (
     get_current_datetime,
 )
 
-# A stack counts as taken on a date when every one of its foods appears in that
-# day's log. Derived rather than recorded: `food_log` carries no `stack_id`, on
+# A stack counts as taken on a date when that day's log holds a **distinct
+# entry** for every one of its foods, and no two stacks may claim the same
+# entry. Derived rather than recorded: `food_log` carries no `stack_id`, on
 # purpose (Plan 0011 §2), so this holds whether the button or manual entry put
 # the rows there — and editing a stack cannot rewrite what a past day claims.
 #
-# An empty stack is never "taken": `MIN(...)` over no rows is NULL, and the
-# outer COALESCE turns that into 0 rather than a vacuous true.
-TAKEN_ON_SQL = text(
+# The exclusivity is the part that took a bug to find. "Every food appears" is
+# vacuously true for any stack whose foods are a **subset** of another's, so
+# logging Morning (omega, cholestoff, D3, multi) marked Evening (omega,
+# cholestoff) taken as well — a stack that had not been taken, reporting
+# adherence that had not happened. Nothing about the subset is unusual; an
+# evening dose being a shorter version of the morning one is the normal case.
+#
+# So entries are consumed rather than merely matched, and the stacks are
+# offered the day's log most-specific-first: Morning takes one omega entry and
+# one cholestoff entry off the table, and Evening then finds nothing left to
+# claim unless a second dose was actually logged.
+#
+# Two properties worth keeping in mind:
+#
+# - **Entries, not servings.** A stack asking for 2 servings of omega is
+#   satisfied by one logged entry of 1. Hand-entered rows do not carry the
+#   preset's serving counts and never have; requiring the arithmetic to line up
+#   would make "entered by hand" stop counting, which is the one thing this
+#   derivation exists to support.
+# - **Two identical doses are indistinguishable.** Logging Morning twice leaves
+#   a spare omega and cholestoff entry, so Evening reads as taken. The log
+#   genuinely does not say which dose was which, and the alternative — matching
+#   on `consumed_at` groups — breaks hand entry, where the rows arrive minutes
+#   apart. Over-reporting a repeated dose is the narrower error.
+COUNTS_BY_DATE_SQL = text(
     """
-    SELECT COALESCE(MIN(
-        EXISTS (SELECT 1 FROM food_log fl
-                 WHERE fl.food_id = si.food_id AND fl.date = :date)
-    ), 0) AS taken
-    FROM stack_item si
-    WHERE si.stack_id = :stack_id
+    SELECT fl.date AS date, fl.food_id AS food_id, COUNT(*) AS n
+      FROM food_log fl
+     WHERE fl.food_id IN (SELECT food_id FROM stack_item)
+     GROUP BY fl.date, fl.food_id
+     ORDER BY fl.date DESC
     """
 )
 
-# The most recent date on which it was taken, by the same definition. Bounded
-# to dates the stack's foods actually appear on, so it stays cheap.
-LAST_TAKEN_SQL = text(
+
+def _allocate(membership: list[tuple[int, list[int]]], supply: dict[int, int]) -> set[int]:
+    """Which of `membership` one day's log can cover, each entry spent once.
+
+    `membership` is (stack_id, food_ids) ordered most-specific-first. A stack
+    that cannot be covered spends nothing — otherwise a half-matched Morning
+    would eat the entries an Evening it contains is entitled to.
+
+    An empty stack is never taken. `all()` over no foods is True, so the guard
+    is explicit rather than falling out of the loop.
     """
-    SELECT MAX(fl.date) AS last_taken
-    FROM (SELECT DISTINCT date FROM food_log) fl
-    WHERE NOT EXISTS (
-        SELECT 1 FROM stack_item si
-         WHERE si.stack_id = :stack_id
-           AND NOT EXISTS (SELECT 1 FROM food_log l
-                            WHERE l.food_id = si.food_id AND l.date = fl.date)
-    )
-    AND EXISTS (SELECT 1 FROM stack_item si WHERE si.stack_id = :stack_id)
-    """
-)
+    remaining = dict(supply)
+    taken: set[int] = set()
+    for stack_id, food_ids in membership:
+        if not food_ids:
+            continue
+        if all(remaining.get(food_id, 0) > 0 for food_id in food_ids):
+            for food_id in food_ids:
+                remaining[food_id] -= 1
+            taken.add(stack_id)
+    return taken
 
 
 class StackRepository:
@@ -68,7 +96,74 @@ class StackRepository:
             "kcal_per_serving": food.kcal_per_serving,
         }
 
-    def _serialize(self, session, stack: Stack, today: str) -> dict:
+    @staticmethod
+    def _membership(session) -> list[tuple[int, list[int]]]:
+        """Every stack's food ids, most specific first.
+
+        Specificity is item count: a stack contained in another is offered the
+        log second, so the larger one claims its entries first. Ties fall back
+        to display order then id, so the answer does not depend on the order
+        rows happen to come back in.
+
+        The outer join keeps empty stacks in the list with no foods, which
+        `_allocate` then skips — they exist and are simply never taken.
+        """
+        rows = session.execute(
+            select(Stack.id, Stack.order, StackItem.food_id)
+            .outerjoin(StackItem, StackItem.stack_id == Stack.id)
+            .order_by(Stack.order, Stack.id, StackItem.order)
+        ).all()
+
+        foods: dict[int, list[int]] = {}
+        order: dict[int, int] = {}
+        for stack_id, stack_order, food_id in rows:
+            foods.setdefault(stack_id, [])
+            order[stack_id] = stack_order
+            if food_id is not None:
+                foods[stack_id].append(food_id)
+
+        return sorted(
+            foods.items(),
+            key=lambda entry: (-len(entry[1]), order[entry[0]], entry[0]),
+        )
+
+    def _derive_taken(self, session, today: str) -> tuple[set[int], dict[int, str]]:
+        """Which stacks are taken today, and the last date each was taken.
+
+        Both answers come from the same allocation, run once per date. They
+        have to: a `last_taken` computed by the looser "every food appears"
+        rule would contradict `taken_today` on the very days the two disagree,
+        and the contradiction would show up as a stack reading "not taken"
+        above a "last taken: today".
+
+        Dates are walked newest-first and the walk stops once every stack has
+        an answer, so the usual case reads only the recent end of the log.
+        """
+        membership = self._membership(session)
+        by_date: dict[str, dict[int, int]] = {}
+        for date, food_id, count in session.execute(COUNTS_BY_DATE_SQL):
+            by_date.setdefault(date, {})[food_id] = count
+
+        taken_today = _allocate(membership, by_date.get(today, {}))
+
+        last_taken: dict[int, str] = {}
+        pending = {stack_id for stack_id, food_ids in membership if food_ids}
+        for date in sorted(by_date, reverse=True):
+            if not pending:
+                break
+            for stack_id in _allocate(membership, by_date[date]) & pending:
+                last_taken[stack_id] = date
+                pending.discard(stack_id)
+
+        return taken_today, last_taken
+
+    def _serialize(
+        self,
+        session,
+        stack: Stack,
+        taken_today: set[int],
+        last_taken: dict[int, str],
+    ) -> dict:
         items = session.execute(
             select(StackItem, Food)
             .join(Food, Food.id == StackItem.food_id)
@@ -76,10 +171,8 @@ class StackRepository:
             .order_by(StackItem.order)
         ).all()
 
-        taken = session.execute(
-            TAKEN_ON_SQL, {"stack_id": stack.id, "date": today}
-        ).scalar_one()
-        last = session.execute(LAST_TAKEN_SQL, {"stack_id": stack.id}).scalar_one()
+        taken = stack.id in taken_today
+        last = last_taken.get(stack.id)
 
         return {
             "doc_id": stack.id,
@@ -138,14 +231,21 @@ class StackRepository:
                 .scalars()
                 .all()
             )
-            return [self._serialize(session, stack, today) for stack in stacks]
+            taken_today, last_taken = self._derive_taken(session, today)
+            return [
+                self._serialize(session, stack, taken_today, last_taken)
+                for stack in stacks
+            ]
 
     def get_by_id(self, stack_id: int) -> dict | None:
         with database.SessionLocal() as session:
             stack = session.get(Stack, stack_id)
             if stack is None:
                 return None
-            return self._serialize(session, stack, get_current_date())
+            # Every stack, even to answer for one: whether this stack can claim
+            # today's entries depends on which other stacks claimed them first.
+            taken_today, last_taken = self._derive_taken(session, get_current_date())
+            return self._serialize(session, stack, taken_today, last_taken)
 
     def create(self, payload: StackCreate) -> dict:
         with database.SessionLocal() as session:
@@ -163,7 +263,8 @@ class StackRepository:
             session.flush()
             self._replace_items(session, stack, payload.items)
             session.commit()
-            return self._serialize(session, stack, get_current_date())
+            taken_today, last_taken = self._derive_taken(session, get_current_date())
+            return self._serialize(session, stack, taken_today, last_taken)
 
     def update(self, stack_id: int, changes: StackUpdate) -> dict | None:
         with database.SessionLocal() as session:
@@ -181,7 +282,8 @@ class StackRepository:
                 )
 
             session.commit()
-            return self._serialize(session, stack, get_current_date())
+            taken_today, last_taken = self._derive_taken(session, get_current_date())
+            return self._serialize(session, stack, taken_today, last_taken)
 
     def delete(self, stack_id: int) -> bool:
         """Delete a stack and its membership.

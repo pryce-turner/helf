@@ -65,11 +65,16 @@ class StackUpdate(BaseModel):
 class Stack(BaseModel):
     """A stack and its members.
 
-    `taken_today` is computed, not stored: every one of this stack's foods
-    appears in today's log. Deliberately derived from `food_log` rather than
-    from a marker written by the log button, so it is true whether the stack
-    was logged in one tap or the items entered by hand — and so that editing a
-    stack cannot retroactively change what a past day claims.
+    `taken_today` is computed, not stored: today's log holds a distinct entry
+    for every one of this stack's foods, and no entry may be claimed by two
+    stacks. Deliberately derived from `food_log` rather than from a marker
+    written by the log button, so it is true whether the stack was logged in
+    one tap or the items entered by hand — and so that editing a stack cannot
+    retroactively change what a past day claims.
+
+    The second half of that rule is what keeps a stack contained in another
+    from riding on its dose; see `stack_repo` for why entries rather than
+    servings are the unit.
     """
 
     id: int = Field(..., alias="doc_id")

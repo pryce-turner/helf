@@ -77,7 +77,10 @@ export default defineConfig({
                         },
                     },
                     {
-                        urlPattern: /\/api\/.*/i,
+                        // Not /api/health: it is asked "is Helf reachable
+                        // right now", and a cached 200 answers yes while
+                        // offline — which is when the scale drain asks it.
+                        urlPattern: /\/api\/(?!health\b).*/i,
                         handler: "NetworkFirst",
                         options: {
                             cacheName: "api-cache",

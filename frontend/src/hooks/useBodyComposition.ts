@@ -4,8 +4,12 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query';
-import { bodyCompositionApi } from '@/lib/api';
-import { drainScale, type ScaleCredentials } from '@/lib/scale';
+import { bodyCompositionApi, systemApi } from '@/lib/api';
+import {
+  drainScale,
+  ScaleError,
+  type ScaleCredentials,
+} from '@/lib/scale';
 import type { BodyComposition } from '@/types/bodyComposition';
 
 export function useBodyCompositions(params?: {
@@ -167,6 +171,24 @@ export function useSyncBodySpec() {
 }
 
 /**
+ * How long Helf gets to answer before the drain is called off. It runs
+ * alongside the Bluetooth connect, so on a reachable server it costs nothing;
+ * the cap only matters when a tailnet address is silently dropping packets.
+ */
+const HELF_REACHABLE_MS = 4_000;
+
+async function helfReachable(): Promise<void> {
+  try {
+    await systemApi.health(HELF_REACHABLE_MS);
+  } catch (cause) {
+    throw new ScaleError(
+      "Helf is unreachable — is Tailscale up? The scale was not read, so its readings are still on it.",
+      { cause },
+    );
+  }
+}
+
+/**
  * Read the scale over Web Bluetooth and hand the whole drain to the server.
  *
  * A mutation rather than a query because it is strictly user-initiated: Web
@@ -190,7 +212,7 @@ export function useScaleDrain() {
     }) => {
       const { readings, bodyCompositionPackets } = await drainScale(
         credentials,
-        { pick },
+        { pick, reachable: helfReachable },
       );
 
       // Surfaced to the page because a weight-only drain is a real, silent

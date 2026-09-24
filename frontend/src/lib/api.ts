@@ -357,7 +357,10 @@ export const stacksApi = {
 
 // System
 export const systemApi = {
-    health: () => api.get<{ status: string; version: string }>("/api/health"),
+    health: (timeout?: number) =>
+        api.get<{ status: string; version: string }>("/api/health", {
+            timeout,
+        }),
 
     mqttStatus: () =>
         api.get<{ connected: boolean; broker: string }>("/api/mqtt/status"),

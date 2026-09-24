@@ -14,7 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
 import BodyComposition, { formatChartValue } from "./BodyComposition";
-import { bodyCompositionApi } from "@/lib/api";
+import { bodyCompositionApi, systemApi } from "@/lib/api";
 import * as scale from "@/lib/scale";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -271,6 +271,32 @@ it("surfaces a rejected consent code rather than failing silently", async () => 
     await waitFor(() =>
         expect(screen.getByText(/refused the consent code/i)).toBeInTheDocument(),
     );
+});
+
+it("leaves the readings on the scale when Helf is unreachable", async () => {
+    // The scale forgets a reading once it has handed it over, so a drain whose
+    // POST cannot land loses it. With Tailscale down the page still loads from
+    // the service worker; the check has to come before the scale is asked.
+    withBluetooth(true);
+    vi.spyOn(systemApi, "health").mockRejectedValue(new Error("Network Error"));
+    vi.spyOn(scale, "drainScale").mockImplementation(async (_c, opts) => {
+        await opts?.reachable?.();
+        throw new Error("drained anyway");
+    });
+    localStorage.setItem(
+        "helf.scale.credentials",
+        JSON.stringify({ consentCode: 1234 }),
+    );
+
+    const user = userEvent.setup();
+    renderPage(<BodyComposition />, "/body-composition");
+
+    await user.click(await screen.findByRole("button", { name: /^Read scale$/i }));
+
+    await waitFor(() =>
+        expect(screen.getByText(/Helf is unreachable/i)).toBeInTheDocument(),
+    );
+    expect(api.syncScale).not.toHaveBeenCalled();
 });
 
 const measurement = (

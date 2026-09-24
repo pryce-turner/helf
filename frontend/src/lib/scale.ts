@@ -416,7 +416,27 @@ const USER_LIST_TIMEOUT_MS = 5_000;
 
 export async function drainScale(
     credentials: ScaleCredentials,
-    { pick = false }: { pick?: boolean } = {},
+    {
+        pick = false,
+        reachable,
+    }: {
+        pick?: boolean;
+        /**
+         * Rejects if the readings would have nowhere to go. Started alongside
+         * the connect and awaited before the first write to the scale.
+         *
+         * A drain is destructive: the scale marks what it hands over as
+         * delivered and never sends it again. Read with Helf unreachable —
+         * Tailscale down, and the page still up from the service worker — and
+         * the POST fails after the scale has already let go, so the readings
+         * exist nowhere. Asking first leaves them on the scale for next time.
+         *
+         * Not awaited *before* the connect: the chooser needs user activation,
+         * which expires in about five seconds, and a probe at an unreachable
+         * tailnet address spends its whole timeout.
+         */
+        reachable?: () => Promise<void>;
+    } = {},
 ): Promise<DrainResult> {
     if (!isSupported()) {
         throw new ScaleError(
@@ -428,9 +448,16 @@ export async function drainScale(
     // is identified only by following its weight packet.
     const packets: ScalePacket[] = [];
 
+    const destination = reachable?.();
+    // Handled here so a rejection is not reported as unhandled when the
+    // connect fails first; it is still thrown by the await below.
+    destination?.catch(() => {});
+
     const { device, server } = await connect(pick);
 
     try {
+        await destination;
+
         let settle: () => void = () => {};
         const finished = new Promise<void>((resolve) => {
             settle = resolve;

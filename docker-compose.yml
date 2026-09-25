@@ -20,6 +20,8 @@ services:
             # Data directory (container path)
             - DATA_DIR=/app/data
 
+            # Local time (San Diego) for logs and date logic
+            - TZ=America/Los_Angeles
             # MQTT ingest is RETIRED (plan 0015) and off unless switched on.
             # The BF720 is read straight from the browser over Web Bluetooth,
             # so the phone, openScale and the broker are all out of the path.

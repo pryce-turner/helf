@@ -617,7 +617,8 @@ docker-compose up -d
   `write_next_mobility_session` — upsert the plan by label, replace that
   session's rows, one row per set, exercises matched case-insensitively, one
   transaction. Unknown keys are a 422 (`weight` for `weight_lb` would otherwise
-  drop every load), and so is a per-set `comment`, which belongs in `rationale`
+  drop every load), and so is a per-set `comment`, which belongs in `rationale`.
+  Audited as `'agent'`, like the MCP tool: only the agent writes sessions
 
 This used to say there was deliberately no create endpoint, because the session
 is the agent's to write and MCP is how it writes. **MCP is still the primary

@@ -587,3 +587,42 @@ def test_a_written_session_shows_as_pending_and_transfers(client):
     assert all(w["is_mobility"] and w["comment"] is None for w in logged)
     last = client.get("/api/mobility/pending").json()["last_session"]
     assert last["rationale"].startswith("Dead bug leads.")
+
+
+def audit_actors(table: str) -> set[str]:
+    with database.SessionLocal() as session:
+        return set(
+            session.execute(
+                text("SELECT DISTINCT actor FROM audit_log WHERE table_name = :t"),
+                {"t": table},
+            ).scalars()
+        )
+
+
+def current_actor() -> str:
+    with database.SessionLocal() as session:
+        return session.execute(text("SELECT actor FROM audit_actor")).scalar()
+
+
+def test_a_written_session_is_audited_as_the_agent(client):
+    """Only the agent writes sessions, so the audit log must say so - the same
+    attribution the MCP tool gives the same rows.
+
+    Of what a write touches, only `exercises` is audited (the planned rows and
+    the plan are not), so a movement created by the write is what shows it.
+    """
+    client.post("/api/mobility/pending", json=session_body())
+
+    assert audit_actors("exercises") == {"agent"}
+    # Released inside the transaction, so the PWA's next write is its own.
+    assert current_actor() == "app"
+
+
+def test_a_failed_write_rolls_the_agent_claim_back(client):
+    """A write that dies after claiming the actor must not leave every later
+    change attributed to the agent."""
+    with pytest.raises(KeyError):
+        MobilityRepository().write_session("Low back", "why", [{"reps": 5}])
+
+    assert current_actor() == "app"
+    assert MobilityRepository().get_plans() == []

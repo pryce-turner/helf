@@ -26,10 +26,11 @@ routine. A session the user assembled by hand has no note at all, and that is
 not an error - nothing prescribed it.
 """
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 
 from app import database
 from app.db.models import (
+    AuditActor,
     Category,
     Exercise,
     MobilityPlan,
@@ -160,9 +161,23 @@ class MobilityRepository:
 
         `comment` is written NULL. The set's comment is the user's feedback
         field, and the API layer refuses one on the way in.
+
+        **Audited as `'agent'`, not `'app'`.** Only the agent writes pending
+        sessions - the PWA shows, transfers and discards them - so recording
+        this as the app would make "did I write that, or did the agent?"
+        answer wrongly for exactly the rows it exists for. The rules are the
+        MCP server's `_rw()`: the claim is the transaction's **first write**,
+        so it takes SQLite's write lock at the same statement and no other
+        writer's rows can land under it; and it is reset to `'app'` inside the
+        same transaction, so a failure rolls the claim back with everything
+        else rather than misattributing every later write.
         """
         now = get_current_datetime()
         with database.SessionLocal() as session, session.begin():
+            session.execute(
+                update(AuditActor).where(AuditActor.id == 1).values(actor="agent")
+            )
+
             plan = session.execute(
                 select(MobilityPlan).where(MobilityPlan.label == label)
             ).scalars().first()
@@ -215,6 +230,9 @@ class MobilityRepository:
                 # order, since the table has no `order` column - is the id order.
                 session.flush()
 
+            session.execute(
+                update(AuditActor).where(AuditActor.id == 1).values(actor="app")
+            )
             return {
                 "label": plan.label,
                 "session": plan.session,

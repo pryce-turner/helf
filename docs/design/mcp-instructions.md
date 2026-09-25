@@ -112,7 +112,10 @@ say what the session is *for* — "Low back", "Shoulder" — not what is in it.
 4. `write_next_mobility_session(label, items, rationale)` — a new label adds
    a session to the tab, an existing one replaces that session and cannot
    touch the others. **Prescribed sets carry no comment**; everything you have
-   to say about the session goes in `rationale`. See below.
+   to say about the session goes in `rationale`. See below. If this fails
+   because the database file is not writable from your process, the app's
+   `POST /api/mobility/pending` takes the same arguments and writes through the
+   app instead.
 5. `update_mobility_movement(exercise_id, application=…, form=…, rating=…)`
    when a session teaches you something durable about a movement. **Usually
    you are writing `application`** — `form` changes only when the movement is

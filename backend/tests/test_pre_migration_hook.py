@@ -52,7 +52,10 @@ READ_ONLY = [
 def _fire(command_text: str, tmp_path: Path) -> bool:
     """Run the hook against a copy of the schema; did it write a backup?"""
     db = tmp_path / "helf.db"
-    shutil.copy(REPO_ROOT / "data" / "helf.db", db)
+    # `copyfile`, not `copy`: the contents only. On the NAS the database's mode
+    # bits are 000 with access granted by an NFSv4 ACL, and `copy` carried the
+    # 000 onto a file in /tmp where no ACL stands behind it.
+    shutil.copyfile(REPO_ROOT / "data" / "helf.db", db)
 
     payload = json.dumps({"tool_input": {"command": command_text}})
     result = subprocess.run(

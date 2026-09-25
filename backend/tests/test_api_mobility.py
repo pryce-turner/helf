@@ -413,3 +413,177 @@ def test_a_hand_flagged_day_reads_back_without_a_rationale(client):
 
     assert response.status_code == 200
     assert response.json()["last_session"]["rationale"] is None
+
+
+# --------------------------------------------------------------------------
+# Writing a session over HTTP - POST /pending, the twin of the MCP tool
+# --------------------------------------------------------------------------
+def session_body(label: str = "Low back", **overrides) -> dict:
+    body = {
+        "label": label,
+        "rationale": "Dead bug leads. Hip to the box on the pigeon, not past it.",
+        "items": [
+            {"exercise": "Dead Bug", "sets": 2, "reps": 15, "weight_lb": 25},
+            {"exercise": "Weighted Pigeon Stretch", "reps": 8, "weight_lb": 35},
+        ],
+    }
+    body.update(overrides)
+    return body
+
+
+def pending_rows() -> int:
+    with database.SessionLocal() as session:
+        return session.execute(
+            text("SELECT COUNT(*) FROM upcoming_workouts WHERE kind = 'mobility'")
+        ).scalar()
+
+
+def test_writing_a_new_label_creates_a_session(client):
+    response = client.post("/api/mobility/pending", json=session_body())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["label"] == "Low back"
+    assert body["sets_written"] == 3
+    assert body["movements"] == 2
+    assert body["replaced_pending_rows"] == 0
+    assert body["exercises_created"] == ["Dead Bug", "Weighted Pigeon Stretch"]
+
+    plans = MobilityRepository().get_plans()
+    assert [(p["session"], p["label"]) for p in plans] == [(body["session"], "Low back")]
+
+
+def test_writing_a_label_again_replaces_only_that_session(client):
+    shoulder = write_pending("Lock 3 daily", label="Shoulder")
+    first = client.post("/api/mobility/pending", json=session_body()).json()
+
+    second = client.post(
+        "/api/mobility/pending",
+        json=session_body(
+            rationale="revised",
+            items=[{"exercise": "Hip Thrust", "reps": 20, "weight_lb": 80}],
+        ),
+    ).json()
+
+    assert second["session"] == first["session"]
+    assert second["replaced_pending_rows"] == 3
+    body = client.get("/api/mobility/pending").json()
+    by_label = {s["label"]: s for s in body["sessions"]}
+    assert [i["exercise"] for i in by_label["Low back"]["items"]] == ["Hip Thrust"]
+    assert by_label["Low back"]["rationale"] == "revised"
+    # The other label is untouched: same session number, same three rows.
+    assert by_label["Shoulder"]["session"] == shoulder
+    assert len(by_label["Shoulder"]["items"]) == 3
+
+
+def test_sets_expand_into_one_row_per_set(client):
+    client.post(
+        "/api/mobility/pending",
+        json=session_body(
+            items=[
+                {"exercise": "Dead Bug", "reps": 20, "weight_lb": 25},
+                {"exercise": "Dead Bug", "sets": 2, "reps": 15, "weight_lb": 25},
+            ]
+        ),
+    )
+
+    items = client.get("/api/mobility/pending").json()["sessions"][0]["items"]
+    assert [(i["exercise"], i["reps"], i["weight"]) for i in items] == [
+        ("Dead Bug", 20, 25.0),
+        ("Dead Bug", 15, 25.0),
+        ("Dead Bug", 15, 25.0),
+    ]
+    assert all(i["comment"] is None for i in items)
+
+
+def test_a_per_set_comment_is_rejected_and_nothing_is_written(client):
+    body = session_body()
+    body["items"][0]["comment"] = "slow on the way down"
+
+    response = client.post("/api/mobility/pending", json=body)
+
+    assert response.status_code == 422
+    assert "feedback channel" in response.text
+    assert pending_rows() == 0
+    assert MobilityRepository().get_plans() == []
+
+
+def test_weight_instead_of_weight_lb_is_rejected(client):
+    body = session_body(items=[{"exercise": "Dead Bug", "reps": 20, "weight": 25}])
+
+    response = client.post("/api/mobility/pending", json=body)
+
+    assert response.status_code == 422
+    assert pending_rows() == 0
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"label": "  "}, {"rationale": ""}, {"items": []}],
+    ids=["blank-label", "blank-rationale", "no-items"],
+)
+def test_an_incomplete_session_is_rejected(client, overrides):
+    response = client.post("/api/mobility/pending", json=session_body(**overrides))
+
+    assert response.status_code == 422
+    assert pending_rows() == 0
+
+
+def test_exercise_names_match_case_insensitively(client):
+    log_a_set(client, "2026-08-11", "Dead Bug")
+
+    body = client.post(
+        "/api/mobility/pending",
+        json=session_body(
+            items=[{"exercise": "dead bug", "reps": 20, "category": "Mobility"}]
+        ),
+    ).json()
+
+    assert body["exercises_created"] == []
+    items = client.get("/api/mobility/pending").json()["sessions"][0]["items"]
+    # The existing movement, under its own name and its own category.
+    assert (items[0]["exercise"], items[0]["category"]) == ("Dead Bug", "Legs")
+
+
+def test_a_new_exercise_lands_in_its_category_or_uncategorized(client):
+    client.post(
+        "/api/mobility/pending",
+        json=session_body(
+            items=[
+                {"exercise": "Copenhagen Plank", "reps": 10, "category": "Core"},
+                {"exercise": "Couch Stretch", "reps": 1},
+            ]
+        ),
+    )
+
+    items = client.get("/api/mobility/pending").json()["sessions"][0]["items"]
+    assert [(i["exercise"], i["category"]) for i in items] == [
+        ("Copenhagen Plank", "Core"),
+        ("Couch Stretch", "Uncategorized"),
+    ]
+
+
+def test_a_written_session_shows_as_pending_and_transfers(client):
+    session_id = client.post("/api/mobility/pending", json=session_body()).json()[
+        "session"
+    ]
+
+    pending = client.get("/api/mobility/pending").json()
+    assert pending["ready"] is True
+    assert pending["sessions"][0]["session"] == session_id
+
+    response = client.post(
+        "/api/mobility/transfer", json={"date": "2026-09-25", "session": session_id}
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 3
+
+    logged = client.get("/api/workouts/", params={"date": "2026-09-25"}).json()
+    assert [w["exercise"] for w in logged] == [
+        "Dead Bug",
+        "Dead Bug",
+        "Weighted Pigeon Stretch",
+    ]
+    assert all(w["is_mobility"] and w["comment"] is None for w in logged)
+    last = client.get("/api/mobility/pending").json()["last_session"]
+    assert last["rationale"].startswith("Dead bug leads.")

@@ -611,12 +611,28 @@ docker-compose up -d
   mobility work. Transferring one leaves the others pending
 - `DELETE /pending/{session}` - Discard one pending session without running it,
   taking both its rows and the plan row that names them
-There are deliberately **no endpoints here for creating a session or for
-marking one**. The session is written by the agent over MCP, which is the point
-of the feature; and which sets were mobility work is a field on the set,
-written through the normal workout routes (`PUT /api/workouts/{id}` with
-`is_mobility`). A day carrying any flagged set *is* a mobility day — there is
-nothing separate to assert (plan 0013).
+- `POST /pending` - Write one pending session under `label`, creating it or
+  replacing *that* session: `{label, rationale, items: [{exercise, sets=1,
+  reps?, weight_lb?, category?}]}`. The same contract as the MCP tool
+  `write_next_mobility_session` — upsert the plan by label, replace that
+  session's rows, one row per set, exercises matched case-insensitively, one
+  transaction. Unknown keys are a 422 (`weight` for `weight_lb` would otherwise
+  drop every load), and so is a per-set `comment`, which belongs in `rationale`
+
+This used to say there was deliberately no create endpoint, because the session
+is the agent's to write and MCP is how it writes. **MCP is still the primary
+path**, and `POST /pending` is not a form for typing a routine in. It was added
+(2026-09-25) because the MCP server opens `data/helf.db` from whatever process
+the agent runs as: when the agent's uid could not write the database file
+(uid 3000 against a tree owned by 568), the write was blocked outright, and the
+loop stopped at the one step that matters. The endpoint writes through the app
+process, which always owns the database, so a filesystem permission mismatch
+cannot block it.
+
+There is still **no endpoint for marking a session**. Which sets were mobility
+work is a field on the set, written through the normal workout routes
+(`PUT /api/workouts/{id}` with `is_mobility`). A day carrying any flagged set
+*is* a mobility day — there is nothing separate to assert (plan 0013).
 
 ### Notes (`/api/notes`)
 - `GET /?kind=&start=&end=` - Notes, most recent first

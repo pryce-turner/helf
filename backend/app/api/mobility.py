@@ -1,9 +1,17 @@
 """Mobility session API endpoints.
 
-Deliberately small. There is no create endpoint here: the pending session is
-written by the agent over MCP (`write_next_mobility_session`), and the whole
-point of the feature is that the prescription is reasoned about rather than
-typed in. What the app does is show it and move it onto a date.
+Deliberately small: show the pending sessions, move one onto a date, discard
+one, and write one.
+
+`POST /pending` is the one write, and it is not a form for typing a routine in
+- the prescription is still reasoned about by the agent, and MCP
+(`write_next_mobility_session`) is still the primary path. It exists because
+the MCP server opens `data/helf.db` from whatever process the agent runs in, so
+a filesystem permission mismatch on the database (uid 3000 against a tree owned
+by 568) can block the agent's write entirely. This endpoint writes through the
+app process, which owns the database, and does exactly what the tool does:
+upsert the plan by label, replace that session's rows, one row per set, no
+per-set comment.
 
 There is no endpoint here for marking a day either. Which sets were mobility
 work is a field on the set, written through the normal workout routes, and the
@@ -14,6 +22,8 @@ from fastapi import APIRouter, HTTPException
 
 from app.models.mobility import (
     MobilityPending,
+    MobilityPendingWrite,
+    MobilityPendingWriteResponse,
     MobilityTransferRequest,
     MobilityTransferResponse,
 )
@@ -25,6 +35,16 @@ router = APIRouter()
 def get_pending_session():
     """The pending mobility session, or what to do about there not being one."""
     return MobilityService().get_pending()
+
+
+@router.post("/pending", response_model=MobilityPendingWriteResponse)
+def write_pending_session(request: MobilityPendingWrite):
+    """Write a pending session under `label`, creating it or replacing that one."""
+    return MobilityService().write_pending(
+        request.label,
+        request.rationale,
+        [item.model_dump() for item in request.items],
+    )
 
 
 @router.post("/transfer", response_model=MobilityTransferResponse)

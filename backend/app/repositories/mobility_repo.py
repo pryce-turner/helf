@@ -26,10 +26,18 @@ routine. A session the user assembled by hand has no note at all, and that is
 not an error - nothing prescribed it.
 """
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app import database
-from app.db.models import Exercise, MobilityPlan, Note, Workout
+from app.db.models import (
+    Category,
+    Exercise,
+    MobilityPlan,
+    Note,
+    UpcomingWorkout,
+    Workout,
+)
+from app.repositories.upcoming_repo import MOBILITY
 from app.utils.date_helpers import format_timestamp, get_current_datetime
 
 #: Retired by b6f31a90c4de. Pending plans are rows in `mobility_plan` now,
@@ -39,6 +47,10 @@ PLAN_KIND = "mobility_plan"
 #: Run. Dated to the day it was logged on. Not a marker - the sets say
 #: whether the day was mobility work; this only says why.
 SESSION_KIND = "mobility_session"
+
+#: Where a movement the agent names for the first time lands when it names no
+#: category. The same fallback `write_next_mobility_session` uses over MCP.
+UNCATEGORIZED = "Uncategorized"
 
 #: Notes are dated by `substr(noted_at, 1, 10)`, so the time half only has to
 #: be a valid-looking local timestamp that cannot drift across midnight.
@@ -129,6 +141,115 @@ class MobilityRepository:
             session.commit()
             session.refresh(plan)
             return self._serialize_plan(plan)
+
+    def write_session(self, label: str, rationale: str, items: list[dict]) -> dict:
+        """Write a pending session under `label`, replacing that one if it exists.
+
+        The HTTP twin of `write_next_mobility_session`, and deliberately the
+        same steps in the same order: upsert the plan by label, delete *that*
+        session's mobility rows, insert one row per set. It is one session and
+        one transaction because a half-applied write is worse than none - a plan
+        whose old rows are gone and whose new ones never landed reads as "no
+        session" on the tab, for a reason nothing on screen explains.
+
+        `items` are {exercise, sets, reps, weight_lb, category}. Exercises
+        match by name case-insensitively, the same way `_resolve_exercise`
+        does, so "dead bug" does not become a second Dead Bug with its own
+        history. `category` only places a movement created here; an existing
+        one keeps the category chosen on /exercises.
+
+        `comment` is written NULL. The set's comment is the user's feedback
+        field, and the API layer refuses one on the way in.
+        """
+        now = get_current_datetime()
+        with database.SessionLocal() as session, session.begin():
+            plan = session.execute(
+                select(MobilityPlan).where(MobilityPlan.label == label)
+            ).scalars().first()
+            if plan is None:
+                highest = session.execute(
+                    select(func.max(MobilityPlan.session))
+                ).scalar()
+                plan = MobilityPlan(
+                    session=(highest or 0) + 1,
+                    label=label,
+                    rationale=rationale,
+                    created_at=format_timestamp(now),
+                )
+                session.add(plan)
+            else:
+                plan.rationale = rationale
+                plan.created_at = format_timestamp(now)
+            session.flush()
+
+            replaced = session.execute(
+                delete(UpcomingWorkout).where(
+                    UpcomingWorkout.kind == MOBILITY,
+                    UpcomingWorkout.session == plan.session,
+                )
+            ).rowcount
+
+            created: list[str] = []
+            written = 0
+            for item in items:
+                exercise, was_created = self._resolve_exercise(
+                    session, item["exercise"], item.get("category"), now
+                )
+                if was_created:
+                    created.append(item["exercise"])
+                for _ in range(item.get("sets") or 1):
+                    session.add(
+                        UpcomingWorkout(
+                            session=plan.session,
+                            kind=MOBILITY,
+                            exercise_id=exercise.id,
+                            category_id=exercise.category_id,
+                            weight=item.get("weight_lb"),
+                            reps=item.get("reps"),
+                            comment=None,
+                            created_at=now,
+                        )
+                    )
+                    written += 1
+                # Flushed per movement so insertion order - the prescribed
+                # order, since the table has no `order` column - is the id order.
+                session.flush()
+
+            return {
+                "label": plan.label,
+                "session": plan.session,
+                "sets_written": written,
+                "movements": len(items),
+                "replaced_pending_rows": replaced,
+                "exercises_created": created,
+            }
+
+    @staticmethod
+    def _resolve_exercise(
+        session, name: str, category: str | None, now
+    ) -> tuple[Exercise, bool]:
+        """Find an exercise by name ignoring case, or create it in `category`."""
+        exercise = session.execute(
+            select(Exercise).where(Exercise.name.collate("NOCASE") == name)
+        ).scalars().first()
+        if exercise is not None:
+            return exercise, False
+
+        category_name = category or UNCATEGORIZED
+        found = session.execute(
+            select(Category).where(Category.name.collate("NOCASE") == category_name)
+        ).scalars().first()
+        if found is None:
+            found = Category(name=category_name, created_at=now)
+            session.add(found)
+            session.flush()
+
+        exercise = Exercise(
+            name=name, category_id=found.id, use_count=0, created_at=now
+        )
+        session.add(exercise)
+        session.flush()
+        return exercise, True
 
     def delete_plan(self, session_id: int) -> int:
         """Drop one pending session's metadata. The items are the caller's job."""

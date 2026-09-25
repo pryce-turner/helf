@@ -49,6 +49,10 @@ class MobilityService:
             "last_session": self.mobility_repo.get_latest_logged(),
         }
 
+    def write_pending(self, label: str, rationale: str, items: list[dict]) -> dict:
+        """Write one pending session under `label`. See `MobilityRepository.write_session`."""
+        return self.mobility_repo.write_session(label, rationale, items)
+
     def transfer(self, date: str, session_id: int) -> dict:
         """Copy one pending session onto `date` as mobility sets.
 

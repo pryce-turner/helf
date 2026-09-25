@@ -6,7 +6,7 @@ a script; a mobility plan is *one* session the agent wrote, and the page around
 it needs the reasoning as much as the movements.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.upcoming import UpcomingWorkout
 
@@ -97,3 +97,67 @@ class MobilityTransferResponse(BaseModel):
     #: Which session moved. None only when nothing matched the request.
     label: str | None = None
     message: str
+
+
+class MobilityPendingItemWrite(BaseModel):
+    """One movement in a session being written: `sets` identical rows of it.
+
+    `extra="forbid"` because a misspelt key is the likely mistake here, and
+    ignoring it is the dangerous response: `weight` for `weight_lb` would
+    otherwise write a session with every load silently missing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    exercise: str = Field(..., min_length=1)
+    sets: int = Field(1, ge=1)
+    reps: int | None = None
+    #: Pounds (ADR-0003).
+    weight_lb: float | None = None
+    #: Only places a movement created by this write; ignored for one that exists.
+    category: str | None = None
+    #: Accepted only as null, so the refusal can say where the text belongs.
+    comment: None = None
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def refuse_comment(cls, value):
+        if value is not None:
+            raise ValueError(
+                "prescribed sets carry no comment - that field is the user's "
+                "feedback channel, and text left in it reads back as something "
+                "they said. Put the cue, the load and what changed in "
+                "`rationale` instead."
+            )
+        return value
+
+
+class MobilityPendingWrite(BaseModel):
+    """Request to write a pending session under `label`, creating or replacing it.
+
+    The same contract as the MCP tool `write_next_mobility_session`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    rationale: str
+    items: list[MobilityPendingItemWrite] = Field(..., min_length=1)
+
+    @field_validator("label", "rationale")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+
+class MobilityPendingWriteResponse(BaseModel):
+    """What a write did. Mirrors the MCP tool's result, minus `ok`."""
+
+    label: str
+    session: int
+    sets_written: int
+    movements: int
+    replaced_pending_rows: int
+    exercises_created: list[str]

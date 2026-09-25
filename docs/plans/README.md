@@ -102,11 +102,15 @@ Recently paid down:
   read in a 900px column and an entry is one line from 1024px. It also found
   **the food log's timezone bug** (below) and an install prompt that ignored
   "Not now" on every navigation.
-- ~~No CI~~ — `.github/workflows/ci.yml` runs ruff, pytest, `alembic check`,
-  a full `downgrade base` / `upgrade head` round trip, eslint, the jsdom tests
-  and the build. **The round-trip step found a real bug on its first run**: the
-  0011 downgrade rebuilt `food` while `v_daily_summary` still referenced it, so
-  the rollback had never worked (0011 §7).
+- ~~No CI~~ — **there is deliberately no remote CI; do not add one.** The
+  test suites run locally in a pre-commit hook (`.git/hooks/pre-commit`,
+  untracked): `tsc` and vitest when `frontend/` is staged, pytest when
+  `backend/` is. A GitHub workflow existed briefly and was removed at the
+  user's request. While it ran, its migration round-trip step found a real
+  bug: the 0011 downgrade rebuilt `food` while `v_daily_summary` still
+  referenced it, so the rollback had never worked (0011 §7). That check is
+  now manual — `alembic downgrade base && alembic upgrade head` on a scratch
+  `DATA_DIR` before shipping a migration.
 - ~~The MCP server is registered with no client~~ — `.mcp.json` at the repo
   root, project-scoped and read-only. Verified over real stdio JSON-RPC: four
   read tools visible, instructions delivered, and `UPDATE` through `query`

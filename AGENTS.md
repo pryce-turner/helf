@@ -128,7 +128,8 @@ helf/
 │   │   ├── components/
 │   │   │   ├── Navigation.tsx         # Desktop sidebar + mobile bottom bar
 │   │   │   ├── SectionTabs.tsx        # Sibling routes sharing one nav entry
-│   │   │   ├── BodySectionTabs.tsx    # Composition + Food (ADR-0006)
+│   │   │   ├── NutritionSectionTabs.tsx   # Supplements + Food
+│   │   │   ├── ExerciseSectionTabs.tsx # Exercises + Progress
 │   │   │   ├── TrainingSectionTabs.tsx # Lifting + Mobility
 │   │   │   ├── LiftoscriptEditor.tsx  # Script editor for workout programs
 │   │   │   ├── PresetSelector.tsx     # Dropdown for built-in presets
@@ -657,14 +658,14 @@ work is a field on the set, written through the normal workout routes
 |---|---|---|
 | `/` | Calendar | Month view with workout count indicators + streak |
 | `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag sets as mobility work individually or a whole day at once |
-| `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts |
+| `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts — tab 2 of the Exercises section |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
-| `/body-composition` | BodyComposition | Trends, stats, DEXA import — tab 1 of the Body section |
-| `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Body section (ADR-0006) |
-| `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 3 of the Body section |
+| `/body-composition` | BodyComposition | Trends, stats, DEXA import — the Body nav item |
+| `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Nutrition section |
+| `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 1 of the Nutrition section (the default) |
 | `/upcoming` | Upcoming | Session planner, Liftoscript editor, presets — tab 1 of the Upcoming section |
 | `/mobility` | Mobility | The next mobility session, ready to copy or awaiting generation — tab 2 of the Upcoming section |
-| `/exercises` | Exercises | Browse/manage exercise catalog by category |
+| `/exercises` | Exercises | Browse/manage exercise catalog by category — tab 1 of the Exercises section |
 
 ## Key Features
 
@@ -701,7 +702,7 @@ work is a field on the set, written through the normal workout routes
 - Days with nothing logged are absent from the summary, not zero — an unlogged
   day and a fasted day are different facts
 - Supplements are **not** listed here — separate page, separate read (plan 0016)
-- Lives at `/food`, tab 2 of the Body section (ADR-0006)
+- Lives at `/food`, tab 2 of the Nutrition section
 
 ### Supplements and stacks
 - Named groups logged in one tap: "morning" is omega ×2, vitamin D ×1,
@@ -714,7 +715,7 @@ work is a field on the set, written through the normal workout routes
   log, and not date-scoped for the same reason
 - **Nothing appears on the Food tab.** The two pages are separate reads over
   one table (plan 0016); log anything with calories as a food
-- Lives at `/supplements`, tab 3 of the Body section
+- Lives at `/supplements`, tab 1 of the Nutrition section
 
 *Why supplements are `food` rows and why the log has no `stack_id`: see the data
 model section above.*

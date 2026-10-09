@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { Weight, Hash, MessageSquare, TrendingUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
+import ExerciseSectionTabs from "@/components/ExerciseSectionTabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Select,
@@ -225,6 +226,8 @@ const Progression = () => {
                         <h1 className="page__title">PROGRESSION TRACKING</h1>
                         <p className="page__subtitle">Track your strength gains over time</p>
                     </div>
+
+                    <ExerciseSectionTabs />
 
                     {/* Controls */}
                     <div className="card animate-in section">

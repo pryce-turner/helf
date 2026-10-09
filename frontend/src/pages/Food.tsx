@@ -9,7 +9,7 @@ import {
     Utensils,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
-import BodySectionTabs from "@/components/BodySectionTabs";
+import NutritionSectionTabs from "@/components/NutritionSectionTabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -497,7 +497,7 @@ const FoodPage = () => {
                         </p>
                     </div>
 
-                    <BodySectionTabs />
+                    <NutritionSectionTabs />
 
                     {/* Day picker. Arrows rather than a calendar because food
                         is logged for today or yesterday and almost never for a

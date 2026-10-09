@@ -3,7 +3,7 @@ import { format, parseISO } from "date-fns";
 import { Check, Pencil, Pill, Plus, Trash2, X } from "lucide-react";
 import SupplementEditor from "@/components/SupplementEditor";
 import Navigation from "@/components/Navigation";
-import BodySectionTabs from "@/components/BodySectionTabs";
+import NutritionSectionTabs from "@/components/NutritionSectionTabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -617,7 +617,7 @@ const Supplements = () => {
                         </p>
                     </div>
 
-                    <BodySectionTabs />
+                    <NutritionSectionTabs />
 
                     {isLoading ? (
                         <div

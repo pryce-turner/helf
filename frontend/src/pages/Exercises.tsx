@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Sparkles, ChevronDown } from 'lucide-react';
 import Navigation from '@/components/Navigation';
+import ExerciseSectionTabs from '@/components/ExerciseSectionTabs';
 import CategoryField from '@/components/CategoryField';
 import StarRating from '@/components/StarRating';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -237,6 +238,8 @@ const Exercises = () => {
               </div>
             )}
           </div>
+
+          <ExerciseSectionTabs />
 
           {/* Add Exercise Form */}
           {showAddForm && (

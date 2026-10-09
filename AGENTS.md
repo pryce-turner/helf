@@ -517,7 +517,9 @@ docker-compose up -d
 - `GET /` - List workouts (optional `?date=YYYY-MM-DD`, `?skip=`, `?limit=`)
 - `GET /calendar?year=X&month=Y` - Calendar workout counts per day
 - `GET /{id}` - Get single workout
-- `POST /` - Create workout
+- `POST /` - Create workout. Without `order`, the set goes directly below the
+  day's bottom-most completed set (by position), shifting the sets under it
+  down; with nothing completed it appends
 - `PUT /{id}` - Update workout
 - `DELETE /{id}` - Delete workout
 - `PATCH /reorder` - Bulk reorder (drag-and-drop)

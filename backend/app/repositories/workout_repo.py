@@ -109,6 +109,14 @@ class WorkoutRepository:
             category = self._get_or_create_category(session, workout_dict["category"])
             exercise = self._get_or_create_exercise(session, workout_dict["exercise"], category)
 
+            # With no position given, the next set goes below the bottom-most
+            # completed one, not after everything: while a session is under way
+            # the sets under that line are the ones not yet run, and a set
+            # appended behind them is out of sequence. Nothing completed →
+            # append, as before.
+            if workout_dict.get("order") is None:
+                workout_dict["order"] = self._open_slot_after_last_completed(session, workout.date)
+
             if workout_dict.get("order") is None:
                 count = session.execute(
                     select(func.count()).select_from(Workout).where(Workout.date == workout.date)
@@ -141,6 +149,35 @@ class WorkoutRepository:
             session.refresh(exercise)
             session.refresh(category)
             return self._serialize(new_workout)
+
+    @staticmethod
+    def _open_slot_after_last_completed(session, date: str) -> int | None:
+        """Free the position below the day's bottom-most completed set.
+
+        Returns the `order` for the new set, or None when nothing on the day is
+        completed. Only the sets below the anchor that would otherwise collide
+        are moved, and each by the least it takes: every UPDATE here fires an
+        audit trigger, and `audit_log` cannot be tidied afterwards. Sorting on
+        (order, id) keeps this well-defined on days whose orders have gaps or
+        duplicates.
+        """
+        day = session.execute(
+            select(Workout).where(Workout.date == date).order_by(Workout.order.asc(), Workout.id.asc())
+        ).scalars().all()
+        anchor = max(
+            (i for i, w in enumerate(day) if w.completed_at is not None),
+            default=None,
+        )
+        if anchor is None:
+            return None
+
+        slot = (day[anchor].order or 0) + 1
+        next_free = slot + 1
+        for w in day[anchor + 1:]:
+            if (w.order or 0) < next_free:
+                w.order = next_free
+            next_free = w.order + 1
+        return slot
 
     def update(self, doc_id: int, workout: WorkoutUpdate) -> dict | None:
         """Update an existing workout."""

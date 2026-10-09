@@ -39,6 +39,10 @@ export interface WorkoutCreate {
   completed_at?: string | null;
   /** Omit to leave a set's flag alone; the backend only writes it when sent. */
   is_mobility?: boolean;
+  /**
+   * Omit to have the server place the set directly below the day's
+   * bottom-most completed set (appended if nothing is completed).
+   */
   order?: number;
 }
 

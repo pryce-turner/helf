@@ -29,6 +29,9 @@ class WorkoutBase(BaseModel):
 class WorkoutCreate(WorkoutBase):
     """Model for creating a workout."""
 
+    # Omitted, the set goes directly below the day's bottom-most completed set
+    # (see WorkoutRepository.create). Callers that place rows themselves - the
+    # transfer paths - pass it explicitly.
     order: int | None = None
 
 

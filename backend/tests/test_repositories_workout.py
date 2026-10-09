@@ -121,3 +121,66 @@ def test_workout_get_by_exercise_orders_by_date():
 
     results = repo.get_by_exercise("Bench")
     assert [w["date"] for w in results] == ["2024-02-01", "2024-02-03"]
+
+
+def _day_orders(repo, date):
+    return [(w["weight"], w["order"]) for w in repo.get_by_date(date)]
+
+
+def _create_after_completed(repo, date, weight):
+    return _create_workout(repo, date, "Bench", "Push", weight=weight)
+
+
+def test_create_after_last_completed_inserts_below_bottom_completed_set():
+    repo = WorkoutRepository()
+    date = "2024-02-01"
+    sets = [_create_workout(repo, date, "Bench", "Push", weight=w) for w in (1, 2, 3, 4)]
+    # Completed out of position order: the anchor is the lowest ticked set by
+    # position (3), not the one ticked most recently (1).
+    repo.toggle_complete(sets[2]["doc_id"], True)
+    repo.toggle_complete(sets[0]["doc_id"], True)
+
+    created = _create_after_completed(repo, date, 99)
+
+    assert created["order"] == 4
+    assert _day_orders(repo, date) == [(1, 1), (2, 2), (3, 3), (99, 4), (4, 5)]
+
+
+def test_create_after_last_completed_appends_when_nothing_completed():
+    repo = WorkoutRepository()
+    date = "2024-02-02"
+    for w in (1, 2):
+        _create_workout(repo, date, "Bench", "Push", weight=w)
+
+    _create_after_completed(repo, date, 99)
+
+    assert _day_orders(repo, date) == [(1, 1), (2, 2), (99, 3)]
+
+
+def test_create_after_last_completed_moves_only_colliding_sets():
+    """A gap below the slot absorbs the shift, so nothing past it is rewritten."""
+    repo = WorkoutRepository()
+    date = "2024-02-03"
+    done = _create_workout(repo, date, "Bench", "Push", weight=1, order=1)
+    _create_workout(repo, date, "Bench", "Push", weight=2, order=2)
+    _create_workout(repo, date, "Bench", "Push", weight=3, order=10)
+    repo.toggle_complete(done["doc_id"], True)
+
+    _create_after_completed(repo, date, 99)
+
+    assert _day_orders(repo, date) == [(1, 1), (99, 2), (2, 3), (3, 10)]
+
+
+def test_explicit_order_is_not_repositioned():
+    repo = WorkoutRepository()
+    date = "2024-02-04"
+    first = _create_workout(repo, date, "Bench", "Push", weight=1)
+    repo.toggle_complete(first["doc_id"], True)
+
+    created = repo.create(
+        WorkoutCreate(
+            date=date, exercise="Bench", category="Push", weight=99, order=7,
+        )
+    )
+
+    assert created["order"] == 7

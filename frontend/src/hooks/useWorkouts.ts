@@ -73,7 +73,24 @@ export function useCreateWorkout() {
 
             queryClient.setQueriesData<Workout[]>(
                 { queryKey: ["workouts"] },
-                (old) => old ? [...old, optimisticWorkout] : [optimisticWorkout]
+                (old) => {
+                    if (!old) return [optimisticWorkout];
+                    if (newWorkout.order == null) {
+                        // Mirror the server: directly below the bottom-most
+                        // completed set of that day, else after everything. A
+                        // half-step sorts it between that set and the next
+                        // until the refetch.
+                        const day = old.filter((w) => w.date === newWorkout.date);
+                        const anchor = day
+                            .filter((w) => w.completed_at)
+                            .reduce<Workout | null>((a, w) => (!a || w.order >= a.order ? w : a), null);
+                        const order = anchor
+                            ? anchor.order + 0.5
+                            : Math.max(0, ...day.map((w) => w.order)) + 1;
+                        return [...old, { ...optimisticWorkout, order }];
+                    }
+                    return [...old, optimisticWorkout];
+                }
             );
 
             queryClient.setQueriesData<CalendarResponse>(

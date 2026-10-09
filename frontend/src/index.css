@@ -1944,31 +1944,32 @@
     }
 }
 
-/* Mobile touch feedback */
+/* Mobile touch feedback.
+   Colour only, never geometry. A tap is hit-tested where the finger lifts,
+   after :active has applied — so a pressed control that shrinks has moved out
+   from under the finger, and the click lands on its parent or the gap beside
+   it and does nothing. Worst on set rows: a card scaled to 0.98 about its
+   centre drags its right-hand icons ~4px inward, which is the whole gap
+   between them. Buttons needed two taps to register until this was colour. */
 @media (pointer: coarse) {
     .calendar-day:active {
-        transform: scale(0.96);
-        transition: transform 80ms ease;
-    }
-
-    .card-hover:active {
-        transform: scale(0.98);
-        transition: transform 80ms ease;
+        background: var(--bg-active);
+        transition: background 80ms ease;
     }
 
     .icon-btn:active,
     .action-btn:active,
     .stepper__btn:active {
-        transform: scale(0.92);
-        transition: transform 80ms ease;
+        background: var(--bg-active);
+        transition: background 80ms ease;
     }
 
     .btn-primary:active,
     .btn-secondary:active,
     .btn-ghost:active,
     .btn-danger:active {
-        transform: scale(0.96);
-        transition: transform 80ms ease;
+        filter: brightness(0.85);
+        transition: filter 80ms ease;
     }
 
     /* Disable hover effects on touch - they stick on iOS */
@@ -1989,6 +1990,14 @@
 
     .calendar-day:hover .calendar-day__add-icon {
         opacity: 0;
+    }
+
+    /* A tap applies :hover before it clicks, so a lift on hover moves the
+       target mid-tap for the same reason the :active shrink did. */
+    .btn-primary:hover,
+    .icon-btn:hover,
+    .workout-checkbox:hover {
+        transform: none;
     }
 }
 

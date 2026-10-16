@@ -38,6 +38,7 @@ import {
   History,
   Copy,
   StretchHorizontal,
+  Timer,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -1047,6 +1048,18 @@ const WorkoutSession = () => {
                   {allMobility ? "Unmark all" : "Mark all mobility"}
                 </Button>
               )}
+              {/* The timer is a standalone tool, not a property of this day,
+                  so it stays visible whether or not anything is logged. Add
+                  keeps the rightmost slot as the primary action. */}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => navigate("/timer")}
+                title="Open the interval timer"
+              >
+                <Timer style={{ width: "16px", height: "16px" }} />
+                Timer
+              </Button>
               <Button
                 size="sm"
                 onClick={() => {

@@ -215,6 +215,10 @@ if static_dir.exists() and static_dir.is_dir():
     @app.get("/exercises")
     async def spa_exercises():
         return FileResponse(static_dir / "index.html", media_type="text/html")
+
+    @app.get("/timer")
+    async def spa_timer():
+        return FileResponse(static_dir / "index.html", media_type="text/html")
 else:
     @app.get("/")
     def root():

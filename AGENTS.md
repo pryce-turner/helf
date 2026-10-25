@@ -660,6 +660,7 @@ work is a field on the set, written through the normal workout routes
 | `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag sets as mobility work individually or a whole day at once |
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts — tab 2 of the Exercises section |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
+| `/timer` | IntervalTimer | Work/rest circuit timer (exercises × rounds, round reset), settings in localStorage — opened from the Timer button in the day view |
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — the Body nav item |
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Nutrition section |
 | `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 1 of the Nutrition section (the default) |

@@ -23,6 +23,22 @@ import IntervalTimer from "./IntervalTimer";
 /** Every frequency the page asked an oscillator to play, in order. */
 const beeps: number[] = [];
 
+/**
+ * One frequency that belongs to each cue and to no other, so a test can ask
+ * "did the rest cue sound" rather than match a whole chord.
+ */
+const CUE = {
+    go: 1319,
+    restFall: 587,
+    pipBeforeWork: 988,
+    pipBeforeRest: 698,
+    bell: 2093,
+    roundTap: 440,
+    done: 1760,
+};
+
+const count = (frequency: number) => beeps.filter((f) => f === frequency).length;
+
 class FakeAudioContext {
     state = "running";
     currentTime = 0;
@@ -52,7 +68,22 @@ class FakeAudioContext {
     });
 }
 
-const renderTimer = () => renderPage(<IntervalTimer />, "/timer");
+const STORAGE_KEY = "helf-interval-timer-settings";
+
+/** Mount the page, optionally with settings already saved on the device. */
+const renderTimer = (saved?: Record<string, number>) => {
+    if (saved) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    return renderPage(<IntervalTimer />, "/timer");
+};
+
+/** Two 5s exercises, 3s apart, twice, with a 7s reset between the rounds. */
+const SHORT_CIRCUIT = {
+    workSeconds: 5,
+    restSeconds: 3,
+    exercises: 2,
+    rounds: 2,
+    roundRestSeconds: 7,
+};
 
 /** Advance the clock; the rAF ticks inside it set state, so act() wraps it. */
 const tick = (ms: number) => {
@@ -89,22 +120,57 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-it("renders the settings rows and an idle countdown on first paint", () => {
+it("shows the whole session's length and the five rows on first paint", () => {
     renderTimer();
 
     expect(screen.getByText("READY")).toBeInTheDocument();
-    expect(clock()).toHaveTextContent("00:20");
-    expect(screen.getByText("Round 1 / 8")).toBeInTheDocument();
+    // The defaults are the screenshot's: 5 × 20s work with 4 × 10s rest
+    // between, twice, plus one 10s reset = 290s.
+    expect(clock()).toHaveTextContent("04:50");
+    expect(screen.getByText("5 exercises × 2 rounds")).toBeInTheDocument();
 
-    // The four rows, at their defaults off a clean localStorage.
-    expect(screen.getByLabelText("Work")).toHaveValue(20);
-    expect(screen.getByLabelText("Rest")).toHaveValue(10);
-    expect(screen.getByLabelText("Rounds")).toHaveValue(8);
-    expect(screen.getByLabelText("Round rest")).toHaveValue(0);
+    for (const name of [
+        /^Work 00:20$/,
+        /^Rest 00:10$/,
+        /^Exercises 5$/,
+        /^Rounds 2X$/,
+        /^Round Reset 00:10$/,
+    ]) {
+        expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
 
     expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
     // Nothing to reset before anything has run.
-    expect(screen.getByRole("button", { name: /reset/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+});
+
+it("opens a row's stepper on tap and applies it to the session length", () => {
+    renderTimer();
+
+    expect(screen.queryByLabelText("Exercises")).toBeNull();
+    click(/^Exercises/);
+    expect(screen.getByLabelText("Exercises")).toHaveValue(5);
+
+    click("Decrease Exercises");
+
+    expect(screen.getByRole("button", { name: /^Exercises 4$/ })).toBeInTheDocument();
+    // 4 × 20 + 3 × 10, twice, + 10 = 230s.
+    expect(clock()).toHaveTextContent("03:50");
+
+    // Turning the reset off puts the ordinary rest between rounds instead.
+    click(/^Round Reset/);
+    click("Decrease Round Reset");
+    click("Decrease Round Reset");
+    expect(screen.getByRole("button", { name: /^Round Reset Off$/ })).toBeInTheDocument();
+    expect(clock()).toHaveTextContent("03:50");
+});
+
+it("loads settings saved before the exercises row existed as one per round", () => {
+    renderTimer({ workSeconds: 20, restSeconds: 10, rounds: 8, roundRestSeconds: 0 });
+
+    // The old schedule unchanged: 8 × 20s with 7 × 10s rest = 230s.
+    expect(screen.getByRole("button", { name: /^Exercises 1$/ })).toBeInTheDocument();
+    expect(clock()).toHaveTextContent("03:50");
 });
 
 it("starts a work phase on Start and counts it down", () => {
@@ -114,8 +180,11 @@ it("starts a work phase on Start and counts it down", () => {
 
     expect(screen.getByText("WORK")).toBeInTheDocument();
     expect(clock()).toHaveTextContent("00:20");
-    // The phase-start chime fires inside the Start tap.
-    expect(beeps).toContain(1046);
+    expect(screen.getByText(/Exercise 1 \/ 5 · Round 1 \/ 2/)).toBeInTheDocument();
+    // GO sounds inside the Start tap.
+    expect(count(CUE.go)).toBe(1);
+    // Settings are locked while the session runs.
+    expect(screen.getByRole("button", { name: /^Work/ })).toBeDisabled();
 
     tick(1100);
     expect(clock()).toHaveTextContent("00:19");
@@ -123,23 +192,75 @@ it("starts a work phase on Start and counts it down", () => {
     expect(clock()).toHaveTextContent("00:18");
 });
 
-it("moves from work to rest at the deadline and chimes the change", () => {
-    renderTimer();
-
-    // 20s default down to the 5s minimum, so the boundary is one step away.
-    for (let i = 0; i < 3; i++) click("Decrease Work");
+it("runs rest between exercises and the reset between rounds, each with its own cue", () => {
+    renderTimer(SHORT_CIRCUIT);
     click("Start");
-    expect(clock()).toHaveTextContent("00:05");
 
     tick(5100);
-
     expect(screen.getByText("REST")).toBeInTheDocument();
-    // The rest keeps its work's round number and runs the full 10s.
+    // The rest keeps its work's exercise and round.
     expect(
-        screen.getByRole("timer", { name: /REST, round 1 of 8/ }),
-    ).toHaveTextContent("00:10");
-    // 659Hz is the rest chime; 880Hz alone would be only countdown ticks.
-    expect(beeps).toContain(659);
+        screen.getByRole("timer", { name: /REST, exercise 1 of 2, round 1 of 2/ }),
+    ).toHaveTextContent("00:03");
+    // Three low pips as the work ran out, then the falling rest cue.
+    expect(count(CUE.pipBeforeRest)).toBe(3);
+    expect(count(CUE.restFall)).toBe(1);
+
+    tick(3000);
+    expect(
+        screen.getByRole("timer", { name: /WORK, exercise 2 of 2, round 1 of 2/ }),
+    ).toHaveTextContent("00:05");
+    // A 3s rest has room for two high pips (at 2s and 1s), then GO.
+    expect(count(CUE.pipBeforeWork)).toBe(2);
+    expect(count(CUE.go)).toBe(2);
+
+    // The last exercise of a round ends on the bell, and one tap for round 1
+    // — not the rest cue.
+    tick(5000);
+    expect(
+        screen.getByRole("timer", { name: /ROUND RESET, exercise 2 of 2, round 1 of 2/ }),
+    ).toHaveTextContent("00:07");
+    expect(count(CUE.bell)).toBe(2);
+    expect(count(CUE.roundTap)).toBe(1);
+    expect(count(CUE.restFall)).toBe(1);
+
+    tick(7000);
+    expect(
+        screen.getByRole("timer", { name: /WORK, exercise 1 of 2, round 2 of 2/ }),
+    ).toBeInTheDocument();
+    expect(count(CUE.go)).toBe(3);
+});
+
+it("rings the round bell, not the rest cue, when the reset is off", () => {
+    renderTimer({ ...SHORT_CIRCUIT, exercises: 1, rounds: 3, roundRestSeconds: 0 });
+    click("Start");
+
+    // Round 1's only exercise ends into the ordinary rest.
+    tick(5100);
+    expect(screen.getByText("REST")).toBeInTheDocument();
+    expect(count(CUE.bell)).toBe(2);
+    expect(count(CUE.restFall)).toBe(0);
+    expect(count(CUE.roundTap)).toBe(1);
+
+    // Round 2 ends: two taps this time, three in all. One tick per phase —
+    // the loop re-arms on each phase change, which needs a render between.
+    tick(3000);
+    tick(5000);
+    expect(count(CUE.roundTap)).toBe(3);
+});
+
+it("follows the round bell with GO when nothing separates the rounds", () => {
+    renderTimer({ ...SHORT_CIRCUIT, exercises: 1, restSeconds: 0, roundRestSeconds: 0 });
+    click("Start");
+
+    tick(5100);
+    expect(
+        screen.getByRole("timer", { name: /WORK, exercise 1 of 1, round 2 of 2/ }),
+    ).toBeInTheDocument();
+    // Both cues are scheduled at the one boundary: bell for the round, GO for
+    // the work that starts straight after it.
+    expect(count(CUE.bell)).toBe(2);
+    expect(count(CUE.go)).toBe(2);
 });
 
 it("freezes the countdown on Pause and picks it back up on Resume", () => {
@@ -149,34 +270,35 @@ it("freezes the countdown on Pause and picks it back up on Resume", () => {
     tick(1100);
     expect(clock()).toHaveTextContent("00:19");
 
-    click(/pause/i);
+    click("Pause");
     expect(screen.getByText(/Paused/)).toBeInTheDocument();
 
     // Five seconds pass and the banked remainder does not move.
     tick(5000);
     expect(clock()).toHaveTextContent("00:19");
 
-    click(/resume/i);
+    click("Resume");
     tick(1100);
     expect(clock()).toHaveTextContent("00:18");
 });
 
-it("shows DONE with the closing chime once every round has run", () => {
-    renderTimer();
-
-    // One 5s round: the shortest session the settings allow.
-    for (let i = 0; i < 3; i++) click("Decrease Work");
-    for (let i = 0; i < 7; i++) click("Decrease Rounds");
+it("shows DONE with the closing run once every round has run", () => {
+    // One 5s exercise, one round: the shortest session the settings allow.
+    renderTimer({ ...SHORT_CIRCUIT, exercises: 1, rounds: 1 });
     click("Start");
-    expect(screen.getByText("Round 1 / 1")).toBeInTheDocument();
+    expect(screen.getByText(/Exercise 1 \/ 1 · Round 1 \/ 1/)).toBeInTheDocument();
 
     tick(5100);
 
     expect(screen.getByText("DONE")).toBeInTheDocument();
     expect(screen.getByText("1 round complete")).toBeInTheDocument();
     expect(clock()).toHaveTextContent("00:00");
-    // 1108Hz and 1318Hz exist only in the session-done arpeggio.
-    expect(beeps).toContain(1108);
-    expect(beeps).toContain(1318);
-    expect(screen.getByRole("button", { name: /go again/i })).toBeEnabled();
+    // The final round's end is the session's: the run, not the bell.
+    expect(count(CUE.done)).toBe(1);
+    expect(count(CUE.bell)).toBe(0);
+    expect(screen.getByRole("button", { name: "Go again" })).toBeEnabled();
+
+    click("Reset");
+    expect(screen.getByText("READY")).toBeInTheDocument();
+    expect(clock()).toHaveTextContent("00:05");
 });

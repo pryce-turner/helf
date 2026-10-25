@@ -1369,6 +1369,185 @@
         }
     }
 
+    /* Interval timer (day view → Timer). Laid out after a minimalist HIIT
+       timer: a phase-coloured hero with the clock, a round play button sitting
+       in a notch on its lower edge, and one tinted row per setting. */
+    .interval-timer {
+        max-width: 480px;
+    }
+
+    .timer-hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-10) var(--space-5) var(--space-16);
+        border-radius: var(--radius-xl);
+        color: #fff;
+        text-align: center;
+        /* The colour is set inline per phase; this overlay is what makes it a
+           gradient, and keeps the change animatable as background-color. */
+        background-image: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.18),
+            rgba(0, 0, 0, 0.22)
+        );
+        box-shadow: var(--shadow-lg);
+        transition: background-color 400ms ease;
+    }
+
+    .timer-hero__label {
+        font-family: var(--font-display);
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.24em;
+        opacity: 0.85;
+    }
+
+    .timer-hero__clock {
+        font-family: var(--font-mono);
+        font-size: clamp(72px, 22vw, 112px);
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .timer-hero__detail {
+        font-size: 14px;
+        font-weight: 500;
+        opacity: 0.85;
+    }
+
+    .timer-controls {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        /* Half the play button overlaps the hero. */
+        margin-top: -46px;
+        margin-bottom: var(--space-5);
+    }
+
+    .timer-play {
+        width: 92px;
+        height: 92px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-full);
+        background: var(--text-primary);
+        /* A page-coloured ring reads as a notch cut into the hero. */
+        border: 6px solid var(--bg-base);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        cursor: pointer;
+        transition: color 400ms ease, background var(--duration-fast) ease;
+    }
+
+    .timer-play__icon {
+        width: 34px;
+        height: 34px;
+    }
+
+    .timer-reset {
+        position: absolute;
+        right: var(--space-4);
+        bottom: -2px;
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-full);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: color var(--duration-fast) ease,
+            background var(--duration-fast) ease;
+    }
+
+    .timer-settings {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .timer-setting {
+        border-radius: var(--radius-lg);
+        background: color-mix(in srgb, var(--setting-color) 14%, var(--bg-secondary));
+        overflow: hidden;
+    }
+
+    .timer-setting__row {
+        width: 100%;
+        min-height: 60px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 var(--space-5);
+        background: transparent;
+        border: none;
+        color: var(--text-primary);
+        text-align: left;
+        cursor: pointer;
+        transition: background var(--duration-fast) ease;
+    }
+
+    .timer-setting__row:disabled {
+        cursor: default;
+        opacity: 0.55;
+    }
+
+    .timer-setting__icon {
+        width: 24px;
+        height: 24px;
+        flex-shrink: 0;
+        color: var(--setting-color);
+    }
+
+    .timer-setting__label {
+        flex: 1;
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .timer-setting__value {
+        font-family: var(--font-mono);
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--setting-color);
+    }
+
+    .timer-setting__editor {
+        padding: 0 var(--space-5) var(--space-4);
+    }
+
+    @media (hover: hover) {
+        .timer-setting__row:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--setting-color) 8%, transparent);
+        }
+
+        .timer-reset:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+    }
+
+    /* Colour only on press, never geometry — see "Mobile touch feedback". */
+    @media (pointer: coarse) {
+        .timer-play:active {
+            background: #d4d4d8;
+        }
+
+        .timer-reset:active {
+            background: var(--bg-active);
+        }
+
+        .timer-setting__row:active:not(:disabled) {
+            background: color-mix(in srgb, var(--setting-color) 12%, transparent);
+        }
+    }
+
     /* Intake against target: one bar, two numbers, no chart junk. The bar
        overfills past 100% rather than clamping, because "how far over" is the
        question a calorie target is asked. */

@@ -2,19 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
+  CirclePause,
+  CirclePlay,
+  Clock,
   Minus,
   Pause,
   Play,
   Plus,
   RotateCcw,
+  RotateCw,
+  Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 
 /**
- * Client-side interval timer — work/rest rounds in the spirit of a
- * minimalist HIIT timer: one big countdown, phase-colored, nothing else.
+ * Client-side interval timer — a circuit of exercises, each a work interval
+ * with rest between, repeated for a number of rounds. Modelled on a
+ * minimalist HIIT timer: one big countdown, phase-colored, five setting rows.
+ * Opened from the day view.
  *
  * Two things worth knowing about how it works:
  *
@@ -29,14 +36,21 @@ import { Card, CardContent } from "@/components/ui/card";
  * page is in the foreground. Scheduling them ahead on the AudioContext clock
  * would make them sound from a backgrounded tab, at the cost of a second
  * timing system to keep in step with the first — not worth it for a workout
- * timer the user is looking at.
+ * timer the user is looking at. A screen wake lock is held while running so
+ * the phone does not sleep — and so stop the loop — mid-session.
  */
 
 interface TimerSettings {
   workSeconds: number;
   restSeconds: number;
+  /** Work intervals per round. */
+  exercises: number;
   rounds: number;
-  /** 0 = no extra rest between rounds. */
+  /**
+   * The gap between rounds, in place of the ordinary rest. 0 = off, and the
+   * ordinary rest is used there too. The storage name predates the "Round
+   * Reset" label and is kept so saved settings still load.
+   */
   roundRestSeconds: number;
 }
 
@@ -44,8 +58,11 @@ type PhaseKind = "work" | "rest" | "roundRest";
 
 interface Phase {
   kind: PhaseKind;
-  /** 1-based round this phase belongs to (rest/roundRest share their work's). */
+  /** 1-based round and exercise; a rest shares the work it follows. */
   round: number;
+  exercise: number;
+  /** Set on the round's final work (and the gap after it): its end is the round's. */
+  lastOfRound: boolean;
   durationMs: number;
 }
 
@@ -56,8 +73,9 @@ const STORAGE_KEY = "helf-interval-timer-settings";
 const DEFAULT_SETTINGS: TimerSettings = {
   workSeconds: 20,
   restSeconds: 10,
-  rounds: 8,
-  roundRestSeconds: 0,
+  exercises: 5,
+  rounds: 2,
+  roundRestSeconds: 10,
 };
 
 const clampInt = (
@@ -79,6 +97,9 @@ const loadSettings = (): TimerSettings => {
     return {
       workSeconds: clampInt(parsed.workSeconds, 5, 3600, DEFAULT_SETTINGS.workSeconds),
       restSeconds: clampInt(parsed.restSeconds, 0, 3600, DEFAULT_SETTINGS.restSeconds),
+      // Absent from settings saved before the field existed, when every round
+      // was a single work interval. Falling back to 1 replays those unchanged.
+      exercises: clampInt(parsed.exercises, 1, 50, 1),
       rounds: clampInt(parsed.rounds, 1, 99, DEFAULT_SETTINGS.rounds),
       roundRestSeconds: clampInt(
         parsed.roundRestSeconds,
@@ -93,31 +114,43 @@ const loadSettings = (): TimerSettings => {
 };
 
 /**
- * The schedule as an explicit list: one work phase per round, rests between
- * rounds, and a round rest (when set) after each non-final round's rest.
- * Building it as a list — rather than computing the phase from elapsed time —
- * is what keeps the state machine trivial: the timer only ever asks "what is
- * the next entry".
+ * The schedule as an explicit list: within a round, one work phase per
+ * exercise with rests between; between rounds, the round reset (or the rest,
+ * when the reset is off). Nothing follows the final work — the session is
+ * over, not resting. Building it as a list — rather than computing the phase
+ * from elapsed time — is what keeps the state machine trivial: the timer only
+ * ever asks "what is the next entry".
  */
 const buildPhases = (settings: TimerSettings): Phase[] => {
   const phases: Phase[] = [];
   for (let round = 1; round <= settings.rounds; round++) {
-    phases.push({
-      kind: "work",
-      round,
-      durationMs: settings.workSeconds * 1000,
-    });
-    // Nothing after the final work — the session is over, not resting.
-    if (round === settings.rounds) break;
-    if (settings.restSeconds > 0) {
-      phases.push({ kind: "rest", round, durationMs: settings.restSeconds * 1000 });
-    }
-    if (settings.roundRestSeconds > 0) {
+    for (let exercise = 1; exercise <= settings.exercises; exercise++) {
+      const lastOfRound = exercise === settings.exercises;
       phases.push({
-        kind: "roundRest",
+        kind: "work",
         round,
-        durationMs: settings.roundRestSeconds * 1000,
+        exercise,
+        lastOfRound,
+        durationMs: settings.workSeconds * 1000,
       });
+      if (lastOfRound && round === settings.rounds) break;
+      if (lastOfRound && settings.roundRestSeconds > 0) {
+        phases.push({
+          kind: "roundRest",
+          round,
+          exercise,
+          lastOfRound,
+          durationMs: settings.roundRestSeconds * 1000,
+        });
+      } else if (settings.restSeconds > 0) {
+        phases.push({
+          kind: "rest",
+          round,
+          exercise,
+          lastOfRound,
+          durationMs: settings.restSeconds * 1000,
+        });
+      }
     }
   }
   return phases;
@@ -135,22 +168,100 @@ interface BeepSpec {
   frequency: number;
   durationMs: number;
   delayMs?: number;
+  type?: OscillatorType;
+  /** Peak level, 0–1. */
+  gain?: number;
 }
 
-/** Short tick in each of the last three seconds of a phase. */
-const COUNTDOWN_TICK: BeepSpec[] = [{ frequency: 880, durationMs: 80 }];
+/*
+ * The sounds are meant to be read without looking at the phone, so each cue
+ * differs in shape as well as pitch — a long tone, a falling pair, a bell, a
+ * rising run — and none is a variant of another:
+ *
+ *   pip pip pip   last three seconds of any phase; high before work starts
+ *                 ("get ready"), low before work stops ("nearly there")
+ *   GO            work starts: one long bright tone, the loudest cue
+ *   fall          rest starts: two soft notes stepping down
+ *   ding-ding     a round ends, then one tap per round done (2 taps = round 2
+ *                 finished), so the count is audible too
+ *   rising run    the session is over
+ *
+ * The end of a round replaces the rest cue that would otherwise sound there,
+ * so the bell always means "round over" whichever gap follows it.
+ */
 
-const PHASE_START: Record<PhaseKind, BeepSpec[]> = {
-  work: [{ frequency: 1046, durationMs: 150 }],
-  rest: [{ frequency: 659, durationMs: 150 }],
-  roundRest: [{ frequency: 784, durationMs: 150 }],
+/** Before work starts — the pips climb towards GO. */
+const PIP_BEFORE_WORK: BeepSpec[] = [{ frequency: 988, durationMs: 70, gain: 0.25 }];
+/** Before work stops. */
+const PIP_BEFORE_REST: BeepSpec[] = [{ frequency: 698, durationMs: 70, gain: 0.25 }];
+
+const COUNTDOWN_PIP: Record<PhaseKind, BeepSpec[]> = {
+  work: PIP_BEFORE_REST,
+  rest: PIP_BEFORE_WORK,
+  roundRest: PIP_BEFORE_WORK,
+};
+
+const WORK_START: BeepSpec[] = [
+  { frequency: 1319, durationMs: 450, type: "triangle", gain: 0.5 },
+  { frequency: 659, durationMs: 450, gain: 0.3 },
+];
+
+const REST_START: BeepSpec[] = [
+  { frequency: 784, durationMs: 160, gain: 0.35 },
+  { frequency: 587, durationMs: 280, delayMs: 180, gain: 0.35 },
+];
+
+const BELL_STRIKE = (delayMs: number): BeepSpec[] => [
+  { frequency: 1047, durationMs: 500, delayMs, gain: 0.4 },
+  // An octave overtone, quieter, is what makes a sine read as a bell.
+  { frequency: 2093, durationMs: 250, delayMs, gain: 0.12 },
+];
+
+/** Past this many rounds the taps stop being countable by ear. */
+const MAX_COUNTED_ROUNDS = 10;
+
+const roundEndSound = (round: number, totalRounds: number): BeepSpec[] => {
+  const sound = [...BELL_STRIKE(0), ...BELL_STRIKE(260)];
+  if (totalRounds <= MAX_COUNTED_ROUNDS) {
+    for (let i = 0; i < round; i++) {
+      sound.push({
+        frequency: 440,
+        durationMs: 45,
+        delayMs: 900 + i * 150,
+        type: "square",
+        gain: 0.15,
+      });
+    }
+  }
+  return sound;
 };
 
 const SESSION_DONE: BeepSpec[] = [
-  { frequency: 880, durationMs: 120 },
-  { frequency: 1108, durationMs: 120, delayMs: 150 },
-  { frequency: 1318, durationMs: 220, delayMs: 300 },
+  { frequency: 880, durationMs: 120, gain: 0.4 },
+  { frequency: 1108, durationMs: 120, delayMs: 150, gain: 0.4 },
+  { frequency: 1318, durationMs: 120, delayMs: 300, gain: 0.4 },
+  { frequency: 1760, durationMs: 600, delayMs: 450, gain: 0.45 },
 ];
+
+/** When the last note of a sound finishes, in ms from its start. */
+const soundLength = (specs: BeepSpec[]) =>
+  Math.max(...specs.map(({ durationMs, delayMs = 0 }) => delayMs + durationMs));
+
+const delayed = (specs: BeepSpec[], byMs: number): BeepSpec[] =>
+  specs.map((spec) => ({ ...spec, delayMs: (spec.delayMs ?? 0) + byMs }));
+
+/** The cue for moving from `prev` into `next`. */
+const boundarySound = (prev: Phase, next: Phase, totalRounds: number): BeepSpec[] => {
+  if (prev.kind === "work" && prev.lastOfRound) {
+    const roundEnd = roundEndSound(prev.round, totalRounds);
+    // With no rest and no reset between rounds, the next work starts at
+    // once; GO waits for the bell and the count rather than talking over them.
+    return next.kind === "work"
+      ? [...roundEnd, ...delayed(WORK_START, soundLength(roundEnd) + 100)]
+      : roundEnd;
+  }
+  return next.kind === "work" ? WORK_START : REST_START;
+};
 
 const playBeeps = (ctx: AudioContext, specs: BeepSpec[]) => {
   if (ctx.state === "suspended") {
@@ -159,15 +270,21 @@ const playBeeps = (ctx: AudioContext, specs: BeepSpec[]) => {
     // inside the Start tap, so by the first transition it is running.
     void ctx.resume();
   }
-  for (const { frequency, durationMs, delayMs = 0 } of specs) {
+  for (const {
+    frequency,
+    durationMs,
+    delayMs = 0,
+    type = "sine",
+    gain: peak = 0.3,
+  } of specs) {
     const start = ctx.currentTime + delayMs / 1000;
     const end = start + durationMs / 1000;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = "sine";
+    osc.type = type;
     osc.frequency.value = frequency;
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.3, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(peak, start + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
     osc.connect(gain).connect(ctx.destination);
     osc.start(start);
@@ -175,45 +292,124 @@ const playBeeps = (ctx: AudioContext, specs: BeepSpec[]) => {
   }
 };
 
-const PHASE_META: Record<PhaseKind, { label: string; color: string }> = {
-  work: { label: "WORK", color: "var(--success)" },
-  rest: { label: "REST", color: "var(--error)" },
-  roundRest: { label: "ROUND REST", color: "var(--warning)" },
+/**
+ * Hero colours. The hero is a solid colour under a fixed light-to-dark
+ * overlay, so a phase change is a `background-color` transition — gradients
+ * themselves do not animate. Idle is the coral of the timer this is modelled
+ * on, deliberately not the rest red, so READY never reads as a rest.
+ */
+const HERO_COLOR = {
+  idle: "#e2504f",
+  work: "#16a34a",
+  rest: "#dc2626",
+  roundRest: "#ca8a04",
+  done: "#ea580c",
+} as const;
+
+const PHASE_LABEL: Record<PhaseKind, string> = {
+  work: "WORK",
+  rest: "REST",
+  roundRest: "ROUND RESET",
 };
 
-interface SettingRowProps {
+type SettingKey = keyof TimerSettings;
+
+interface SettingSpec {
+  key: SettingKey;
   label: string;
+  icon: LucideIcon;
   color: string;
-  value: number;
-  /** How the value reads on the left of the row ("00:20", "8×", "off"). */
-  formatted: string;
   step: number;
   min: number;
   max: number;
   unit?: string;
+  format: (value: number) => string;
+}
+
+const formatSeconds = (seconds: number) => formatClock(seconds * 1000);
+
+const SETTING_SPECS: SettingSpec[] = [
+  {
+    key: "workSeconds",
+    label: "Work",
+    icon: CirclePlay,
+    color: "var(--success)",
+    step: 5,
+    min: 5,
+    max: 3600,
+    unit: "sec",
+    format: formatSeconds,
+  },
+  {
+    key: "restSeconds",
+    label: "Rest",
+    icon: CirclePause,
+    color: "var(--error)",
+    step: 5,
+    min: 0,
+    max: 3600,
+    unit: "sec",
+    format: formatSeconds,
+  },
+  {
+    key: "exercises",
+    label: "Exercises",
+    icon: Zap,
+    color: "var(--text-secondary)",
+    step: 1,
+    min: 1,
+    max: 50,
+    format: String,
+  },
+  {
+    key: "rounds",
+    label: "Rounds",
+    icon: RotateCw,
+    color: "#818cf8",
+    step: 1,
+    min: 1,
+    max: 99,
+    format: (rounds) => `${rounds}X`,
+  },
+  {
+    key: "roundRestSeconds",
+    label: "Round Reset",
+    icon: Clock,
+    color: "var(--warning)",
+    step: 5,
+    min: 0,
+    max: 3600,
+    unit: "sec",
+    format: (seconds) => (seconds === 0 ? "Off" : formatSeconds(seconds)),
+  },
+];
+
+interface SettingRowProps {
+  spec: SettingSpec;
+  value: number;
+  open: boolean;
   disabled: boolean;
+  onToggle: () => void;
   onChange: (value: number) => void;
 }
 
 /**
- * One colored setting row: what it is and how big it is on the left, the
- * app's usual stepper on the right. The input is draft-based — while typing,
- * the raw text stays put and only valid numbers apply (clamped), so clearing
- * the field does not fight the user; blur reverts to the applied value.
+ * One tinted setting row: icon, name, value. Tapping it opens the app's
+ * usual stepper underneath. The input is draft-based — while typing, the raw
+ * text stays put and only valid numbers apply (clamped), so clearing the field
+ * does not fight the user; blur reverts to the applied value.
  */
 const SettingRow = ({
-  label,
-  color,
+  spec,
   value,
-  formatted,
-  step,
-  min,
-  max,
-  unit,
+  open,
   disabled,
+  onToggle,
   onChange,
 }: SettingRowProps) => {
+  const { key, label, icon: Icon, color, step, min, max, unit } = spec;
   const [draft, setDraft] = useState<string | null>(null);
+  const editorId = `timer-setting-${key}`;
 
   const commit = (raw: string) => {
     const parsed = parseInt(raw, 10);
@@ -224,78 +420,59 @@ const SettingRow = ({
 
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: "var(--space-3)",
-        padding: "var(--space-3) var(--space-4)",
-        background: "var(--bg-secondary)",
-        borderRadius: "var(--radius-md)",
-        borderLeft: `3px solid ${color}`,
-        opacity: disabled ? 0.6 : 1,
-      }}
+      className="timer-setting"
+      style={{ "--setting-color": color } as React.CSSProperties}
     >
-      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: "12px",
-            fontWeight: 600,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--text-secondary)",
-          }}
-        >
-          {label}
+      <button
+        type="button"
+        className="timer-setting__row"
+        aria-label={`${label} ${spec.format(value)}`}
+        aria-expanded={open}
+        aria-controls={editorId}
+        disabled={disabled}
+        onClick={onToggle}
+      >
+        <Icon className="timer-setting__icon" />
+        <span className="timer-setting__label">{label}</span>
+        <span className="timer-setting__value">{spec.format(value)}</span>
+      </button>
+      {open && (
+        <div id={editorId} className="timer-setting__editor">
+          <div className="stepper">
+            <button
+              type="button"
+              className="stepper__btn stepper__btn--start"
+              aria-label={`Decrease ${label}`}
+              onClick={() => onChange(Math.max(min, value - step))}
+            >
+              <Minus style={{ width: "18px", height: "18px" }} />
+            </button>
+            <input
+              type="number"
+              inputMode="numeric"
+              className="input--stepper input--mono"
+              aria-label={label}
+              min={min}
+              max={max}
+              value={draft ?? String(value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setDraft(e.target.value);
+                commit(e.target.value);
+              }}
+              onBlur={() => setDraft(null)}
+            />
+            <button
+              type="button"
+              className="stepper__btn stepper__btn--end"
+              aria-label={`Increase ${label}`}
+              onClick={() => onChange(Math.min(max, value + step))}
+            >
+              <Plus style={{ width: "18px", height: "18px" }} />
+            </button>
+            {unit && <span className="stepper__unit">{unit}</span>}
+          </div>
         </div>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "20px",
-            fontWeight: 600,
-            color,
-            marginTop: "2px",
-          }}
-        >
-          {formatted}
-        </div>
-      </div>
-      <div className="stepper" style={{ flexShrink: 0 }}>
-        <button
-          type="button"
-          className="stepper__btn stepper__btn--start"
-          disabled={disabled}
-          aria-label={`Decrease ${label}`}
-          onClick={() => onChange(Math.max(min, value - step))}
-        >
-          <Minus style={{ width: "18px", height: "18px" }} />
-        </button>
-        <input
-          type="number"
-          inputMode="numeric"
-          className="input--stepper input--mono"
-          aria-label={label}
-          min={min}
-          max={max}
-          disabled={disabled}
-          value={draft ?? String(value)}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setDraft(e.target.value);
-            commit(e.target.value);
-          }}
-          onBlur={() => setDraft(null)}
-        />
-        <button
-          type="button"
-          className="stepper__btn stepper__btn--end"
-          disabled={disabled}
-          aria-label={`Increase ${label}`}
-          onClick={() => onChange(Math.min(max, value + step))}
-        >
-          <Plus style={{ width: "18px", height: "18px" }} />
-        </button>
-        {unit && <span className="stepper__unit">{unit}</span>}
-      </div>
+      )}
     </div>
   );
 };
@@ -310,6 +487,7 @@ const IntervalTimer = () => {
   const [remainingMs, setRemainingMs] = useState(
     () => buildPhases(settings)[0].durationMs,
   );
+  const [openSetting, setOpenSetting] = useState<SettingKey | null>(null);
 
   const endAtRef = useRef(0);
   const rafRef = useRef(0);
@@ -345,7 +523,7 @@ const IntervalTimer = () => {
           secondsLeft !== lastTickSecondRef.current
         ) {
           lastTickSecondRef.current = secondsLeft;
-          if (audioRef.current) playBeeps(audioRef.current, COUNTDOWN_TICK);
+          if (audioRef.current) playBeeps(audioRef.current, COUNTDOWN_PIP[phase.kind]);
         }
 
         rafRef.current = requestAnimationFrame(tick);
@@ -362,17 +540,50 @@ const IntervalTimer = () => {
         if (audioRef.current) playBeeps(audioRef.current, SESSION_DONE);
         return;
       }
+      const prev = phases[phaseIndex];
       const next = phases[nextIndex];
       endAtRef.current = performance.now() + next.durationMs - overshoot;
       lastTickSecondRef.current = -1;
       setPhaseIndex(nextIndex);
       setRemainingMs(next.durationMs - overshoot);
-      if (audioRef.current) playBeeps(audioRef.current, PHASE_START[next.kind]);
+      if (audioRef.current) {
+        const totalRounds = phases[phases.length - 1].round;
+        playBeeps(audioRef.current, boundarySound(prev, next, totalRounds));
+      }
     };
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [status, phaseIndex, phases]);
+
+  // Keep the screen on while running. A sleeping phone stops the rAF loop and
+  // with it the beeps. The OS drops the lock whenever the page is hidden, so
+  // it is re-requested on return. Best effort: unsupported or refused just
+  // means the screen may sleep.
+  useEffect(() => {
+    if (status !== "running" || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    const acquire = () => {
+      if (document.visibilityState !== "visible") return;
+      navigator.wakeLock
+        .request("screen")
+        .then((sentinel) => {
+          if (cancelled) void sentinel.release();
+          else lock = sentinel;
+        })
+        .catch(() => undefined);
+    };
+
+    acquire();
+    document.addEventListener("visibilitychange", acquire);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", acquire);
+      void lock?.release().catch(() => undefined);
+    };
+  }, [status]);
 
   // The AudioContext outlives the run it was created for (pause/resume reuse
   // it), so it is closed on unmount rather than on done.
@@ -398,12 +609,13 @@ const IntervalTimer = () => {
   const handleStart = () => {
     const ctx = ensureAudio();
     const schedule = buildPhases(settings);
+    setOpenSetting(null);
     setPhases(schedule);
     setPhaseIndex(0);
     lastTickSecondRef.current = -1;
     endAtRef.current = performance.now() + schedule[0].durationMs;
     setRemainingMs(schedule[0].durationMs);
-    if (ctx) playBeeps(ctx, PHASE_START[schedule[0].kind]);
+    if (ctx) playBeeps(ctx, WORK_START);
     setStatus("running");
   };
 
@@ -438,25 +650,58 @@ const IntervalTimer = () => {
 
   const isLive = status === "running" || status === "paused";
   const phase = phases[phaseIndex];
+  const totalMs = phases.reduce((sum, p) => sum + p.durationMs, 0);
+  const sessionLeftMs =
+    remainingMs +
+    phases.slice(phaseIndex + 1).reduce((sum, p) => sum + p.durationMs, 0);
 
+  // Idle shows the whole session's length, the way the screenshot's 04:50 is
+  // 5 × 20s work + 4 × 10s rest, twice, plus one 10s reset. Running shows the
+  // phase, with the session's remainder underneath.
   const display =
     status === "done"
-      ? { label: "DONE", color: "var(--accent)", clock: "00:00" }
+      ? {
+          label: "DONE",
+          color: HERO_COLOR.done,
+          clock: "00:00",
+          detail: `${settings.rounds} round${settings.rounds !== 1 ? "s" : ""} complete`,
+        }
       : status === "idle"
-        ? { label: "READY", color: "var(--text-primary)", clock: formatClock(remainingMs) }
+        ? {
+            label: "READY",
+            color: HERO_COLOR.idle,
+            clock: formatClock(totalMs),
+            detail: `${settings.exercises} exercise${settings.exercises !== 1 ? "s" : ""} × ${settings.rounds} round${settings.rounds !== 1 ? "s" : ""}`,
+          }
         : {
-            label: PHASE_META[phase.kind].label,
-            color: PHASE_META[phase.kind].color,
+            label: PHASE_LABEL[phase.kind],
+            color: HERO_COLOR[phase.kind],
             clock: formatClock(remainingMs),
+            detail: `Exercise ${phase.exercise} / ${settings.exercises} · Round ${phase.round} / ${settings.rounds}${status === "paused" ? " · Paused" : ` · ${formatClock(sessionLeftMs)} left`}`,
           };
 
-  const formatSeconds = (seconds: number) => formatClock(seconds * 1000);
+  // One button that plays, pauses and resumes, as on the timer this is
+  // modelled on.
+  const handlePrimary = () => {
+    if (status === "running") handlePause();
+    else if (status === "paused") handleResume();
+    else handleStart();
+  };
+  const primaryLabel =
+    status === "running"
+      ? "Pause"
+      : status === "paused"
+        ? "Resume"
+        : status === "done"
+          ? "Go again"
+          : "Start";
+  const PrimaryIcon = status === "running" ? Pause : Play;
 
   return (
     <>
       <Navigation />
       <div className="page">
-        <div className="page__content page__content--narrow">
+        <div className="page__content">
           {/* Header */}
           <div
             className="flex items-center animate-in"
@@ -476,157 +721,80 @@ const IntervalTimer = () => {
                 INTERVAL TIMER
               </h1>
               <p className="page__subtitle">
-                Work / rest rounds — settings stay on this device
+                Work / rest circuits — settings stay on this device
               </p>
             </div>
           </div>
 
-          {/* Countdown */}
-          <Card
-            className="animate-in"
-            style={{
-              border: `2px solid ${display.color}`,
-              boxShadow: `0 0 32px color-mix(in srgb, ${display.color} 20%, transparent)`,
-              transition: "border-color 0.3s ease, box-shadow 0.3s ease",
-              marginBottom: "var(--space-6)",
-            }}
-          >
-            <CardContent
-              className="flex flex-col items-center"
-              style={{
-                padding: "var(--space-8) var(--space-5)",
-                gap: "var(--space-2)",
-              }}
+          <div className="interval-timer animate-in">
+            {/* Countdown */}
+            <div
+              className="timer-hero"
+              style={{ backgroundColor: display.color }}
             >
-              <div
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  letterSpacing: "0.2em",
-                  color: display.color,
-                  transition: "color 0.3s ease",
-                }}
-              >
-                {display.label}
-              </div>
+              <div className="timer-hero__label">{display.label}</div>
               <div
                 role="timer"
-                aria-label={`${display.label}, round ${phase.round} of ${settings.rounds}`}
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "clamp(72px, 22vw, 128px)",
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  fontVariantNumeric: "tabular-nums",
-                  color: display.color,
-                  transition: "color 0.3s ease",
-                }}
+                aria-label={
+                  isLive
+                    ? `${display.label}, exercise ${phase.exercise} of ${settings.exercises}, round ${phase.round} of ${settings.rounds}`
+                    : display.label
+                }
+                className="timer-hero__clock"
               >
                 {display.clock}
               </div>
-              <div style={{ fontSize: "14px", color: "var(--text-muted)" }}>
-                {status === "done"
-                  ? `${settings.rounds} round${settings.rounds !== 1 ? "s" : ""} complete`
-                  : `Round ${phase.round} / ${settings.rounds}${status === "paused" ? " · Paused" : ""}`}
-              </div>
-            </CardContent>
-          </Card>
+              <div className="timer-hero__detail">{display.detail}</div>
+            </div>
 
-          {/* Controls */}
-          <div
-            className="flex animate-in"
-            style={{ gap: "var(--space-3)", marginBottom: "var(--space-6)" }}
-          >
-            {status === "running" ? (
-              <Button size="lg" className="flex-1" onClick={handlePause}>
-                <Pause style={{ width: "20px", height: "20px" }} />
-                Pause
-              </Button>
-            ) : status === "paused" ? (
-              <Button size="lg" className="flex-1" onClick={handleResume}>
-                <Play style={{ width: "20px", height: "20px" }} />
-                Resume
-              </Button>
-            ) : (
-              <Button size="lg" className="flex-1" onClick={handleStart}>
-                <Play style={{ width: "20px", height: "20px" }} />
-                {status === "done" ? "Go again" : "Start"}
-              </Button>
-            )}
-            <Button
-              size="lg"
-              variant="secondary"
-              onClick={handleReset}
-              disabled={status === "idle"}
-            >
-              <RotateCcw style={{ width: "20px", height: "20px" }} />
-              Reset
-            </Button>
-          </div>
+            {/* Controls: the play button sits in a notch on the hero's edge. */}
+            <div className="timer-controls">
+              <button
+                type="button"
+                className="timer-play"
+                style={{ color: display.color }}
+                onClick={handlePrimary}
+                aria-label={primaryLabel}
+              >
+                <PrimaryIcon
+                  className="timer-play__icon"
+                  fill="currentColor"
+                  // A triangle's visual centre sits right of its box's.
+                  style={PrimaryIcon === Play ? { marginLeft: "4px" } : undefined}
+                />
+              </button>
+              {status !== "idle" && (
+                <button
+                  type="button"
+                  className="timer-reset"
+                  onClick={handleReset}
+                  aria-label="Reset"
+                >
+                  <RotateCcw style={{ width: "20px", height: "20px" }} />
+                </button>
+              )}
+            </div>
 
-          {/* Settings */}
-          <div
-            className="stagger-children"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-3)",
-            }}
-          >
-            <SettingRow
-              label="Work"
-              color="var(--success)"
-              value={settings.workSeconds}
-              formatted={formatSeconds(settings.workSeconds)}
-              step={5}
-              min={5}
-              max={3600}
-              unit="sec"
-              disabled={isLive}
-              onChange={(workSeconds) => handleSettingsChange({ workSeconds })}
-            />
-            <SettingRow
-              label="Rest"
-              color="var(--error)"
-              value={settings.restSeconds}
-              formatted={formatSeconds(settings.restSeconds)}
-              step={5}
-              min={0}
-              max={3600}
-              unit="sec"
-              disabled={isLive}
-              onChange={(restSeconds) => handleSettingsChange({ restSeconds })}
-            />
-            <SettingRow
-              label="Rounds"
-              color="var(--chart-3)"
-              value={settings.rounds}
-              formatted={`${settings.rounds}×`}
-              step={1}
-              min={1}
-              max={99}
-              disabled={isLive}
-              onChange={(rounds) => handleSettingsChange({ rounds })}
-            />
-            <SettingRow
-              label="Round rest"
-              color="var(--warning)"
-              value={settings.roundRestSeconds}
-              formatted={
-                settings.roundRestSeconds === 0
-                  ? "off"
-                  : formatSeconds(settings.roundRestSeconds)
-              }
-              step={5}
-              min={0}
-              max={3600}
-              unit="sec"
-              disabled={isLive}
-              onChange={(roundRestSeconds) =>
-                handleSettingsChange({ roundRestSeconds })
-              }
-            />
+            {/* Settings */}
+            <div className="timer-settings">
+              {SETTING_SPECS.map((spec) => (
+                <SettingRow
+                  key={spec.key}
+                  spec={spec}
+                  value={settings[spec.key]}
+                  open={openSetting === spec.key && !isLive}
+                  disabled={isLive}
+                  onToggle={() =>
+                    setOpenSetting((current) =>
+                      current === spec.key ? null : spec.key,
+                    )
+                  }
+                  onChange={(value) =>
+                    handleSettingsChange({ [spec.key]: value })
+                  }
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>

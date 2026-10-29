@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  memo,
+} from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import {
@@ -76,48 +84,409 @@ const getWeightIncrement = (weight: number): number => {
   return 10;
 };
 
-// Sortable workout card component
+// The inline edit form owns its own state. Typing a digit re-renders this
+// form and nothing else; while the state lived in WorkoutSession, every
+// keystroke re-rendered the page and every card on it.
+interface InlineEditFormProps {
+  workout: Workout;
+  onClose: () => void;
+}
+
+const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
+  const { data: exercises } = useExercises();
+  const updateWorkout = useUpdateWorkout();
+  const createWorkout = useCreateWorkout();
+  const [showRecentWeights, setShowRecentWeights] = useState(false);
+
+  // Seeded once from the set being edited. A refetch of the day while the
+  // form is open must not overwrite what is being typed.
+  const [formData, setFormData] = useState<WorkoutCreate>(() => ({
+    date: workout.date,
+    exercise: workout.exercise,
+    // The exercise's actual category, in case the set's copy is stale
+    category:
+      exercises?.find((e) => e.name === workout.exercise)?.category ||
+      workout.category,
+    weight: workout.weight,
+    weight_unit: workout.weight_unit || "lbs",
+    reps: workout.reps,
+    distance: workout.distance,
+    distance_unit: workout.distance_unit,
+    time: workout.time,
+    comment: workout.comment,
+  }));
+
+  // Fetch progression data only when the toggle is on
+  const { data: progressionData } = useProgression(
+    showRecentWeights ? workout.exercise : "",
+    false,
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.exercise || !formData.category) return;
+
+    await updateWorkout.mutateAsync({ id: workout.doc_id, workout: formData });
+    onClose();
+  };
+
+  const handleDuplicate = async () => {
+    if (!formData.exercise || !formData.category) return;
+
+    await createWorkout.mutateAsync(formData);
+    onClose();
+  };
+
+  return (
+
+        <div
+          className="animate-in"
+          style={{
+            marginTop: "var(--space-5)",
+            padding: "var(--space-5)",
+            borderTop: "1px solid var(--border-subtle)",
+            background:
+              "linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)",
+            borderRadius: "var(--radius-md)",
+          }}
+        >
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-4)",
+            }}
+          >
+            <div
+              className="grid grid-cols-1 md:grid-cols-2"
+              style={{ gap: "var(--space-4)" }}
+            >
+              <div className="form-field">
+                <Label htmlFor="weight-edit" className="form-label">
+                  <Weight style={{ width: "14px", height: "14px" }} />
+                  Weight
+                </Label>
+                <div className="stepper">
+                  <button
+                    type="button"
+                    className="stepper__btn stepper__btn--start"
+                    onClick={() => {
+                      const current = formData.weight || 0;
+                      const increment = getWeightIncrement(current);
+                      setFormData({
+                        ...formData,
+                        weight: Math.max(0, current - increment),
+                      });
+                    }}
+                  >
+                    <Minus style={{ width: "18px", height: "18px" }} />
+                  </button>
+                  <input
+                    id="weight-edit"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    placeholder="0"
+                    className="input--stepper"
+                    value={formData.weight || ""}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setFormData({
+                        ...formData,
+                        weight: e.target.value
+                          ? parseFloat(e.target.value)
+                          : null,
+                      })
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="stepper__btn stepper__btn--end"
+                    onClick={() => {
+                      const current = formData.weight || 0;
+                      const increment = getWeightIncrement(current);
+                      setFormData({
+                        ...formData,
+                        weight: current + increment,
+                      });
+                    }}
+                  >
+                    <Plus style={{ width: "18px", height: "18px" }} />
+                  </button>
+                  <span className="stepper__unit">
+                    {formData.weight_unit || "lbs"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="form-field">
+                <Label htmlFor="reps-edit" className="form-label">
+                  <Hash style={{ width: "14px", height: "14px" }} />
+                  Reps
+                </Label>
+                <div className="stepper">
+                  <button
+                    type="button"
+                    className="stepper__btn stepper__btn--start"
+                    onClick={() => {
+                      const currentReps = formData.reps || 0;
+                      const newValue = Math.max(0, currentReps - 1);
+                      setFormData({
+                        ...formData,
+                        reps: newValue > 0 ? newValue : null,
+                      });
+                    }}
+                  >
+                    <Minus style={{ width: "18px", height: "18px" }} />
+                  </button>
+                  <input
+                    id="reps-edit"
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="e.g., 5"
+                    className="input--stepper input--mono"
+                    value={formData.reps || ""}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const value = e.target.value ? parseInt(e.target.value) : null;
+                      setFormData({
+                        ...formData,
+                        reps: value,
+                      });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="stepper__btn stepper__btn--end"
+                    onClick={() => {
+                      const currentReps = formData.reps || 0;
+                      const newValue = currentReps + 1;
+                      setFormData({
+                        ...formData,
+                        reps: newValue,
+                      });
+                    }}
+                  >
+                    <Plus style={{ width: "18px", height: "18px" }} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="form-field">
+              <Label htmlFor="comment-edit" className="form-label">
+                <MessageSquare style={{ width: "14px", height: "14px" }} />
+                Comment
+              </Label>
+              <Input
+                id="comment-edit"
+                type="text"
+                placeholder="Optional comment"
+                value={formData.comment || ""}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({
+                    ...formData,
+                    comment: e.target.value || null,
+                  })
+                }
+              />
+            </div>
+
+            {/* Action buttons - 2x2 grid */}
+            <div
+              className="grid grid-cols-2"
+              style={{ gap: "var(--space-3)" }}
+            >
+              <Button
+                type="button"
+                variant={showRecentWeights ? "default" : "secondary"}
+                onClick={() => setShowRecentWeights(!showRecentWeights)}
+                className="w-full justify-center"
+              >
+                <History style={{ width: "18px", height: "18px" }} />
+                Recent
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleDuplicate}
+                className="w-full justify-center"
+              >
+                <Copy style={{ width: "18px", height: "18px" }} />
+                Duplicate
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onClose}
+                className="w-full justify-center"
+              >
+                <X style={{ width: "18px", height: "18px" }} />
+                Cancel
+              </Button>
+              <Button type="submit" className="w-full justify-center">
+                <Check style={{ width: "18px", height: "18px" }} />
+                Save
+              </Button>
+            </div>
+
+            {/* Recent weights dropdown */}
+            {showRecentWeights &&
+              progressionData?.historical &&
+              progressionData.historical.length > 0 && (
+                <div
+                  style={{
+                    padding: "var(--space-3)",
+                    background: "var(--bg-secondary)",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "var(--space-2)",
+                      maxHeight: "150px",
+                      overflowY: "auto",
+                    }}
+                  >
+                    {progressionData.historical
+                      .slice(-5)
+                      .reverse()
+                      .map((entry, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              weight: entry.weight,
+                              reps: entry.reps,
+                            });
+                          }}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "var(--space-2)",
+                            background: "var(--bg-tertiary)",
+                            border: "1px solid var(--border-subtle)",
+                            borderRadius: "var(--radius-sm)",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                            textAlign: "left",
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background =
+                              "var(--bg-hover)";
+                            e.currentTarget.style.borderColor =
+                              "var(--accent-muted)";
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background =
+                              "var(--bg-tertiary)";
+                            e.currentTarget.style.borderColor =
+                              "var(--border-subtle)";
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontFamily: "var(--font-mono)",
+                              fontSize: "13px",
+                              color: "var(--text-primary)",
+                            }}
+                          >
+                            {entry.weight} {entry.weight_unit} × {entry.reps}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--text-muted)",
+                            }}
+                          >
+                            {entry.date}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+            {showRecentWeights &&
+              (!progressionData?.historical ||
+                progressionData.historical.length === 0) && (
+                <p
+                  style={{
+                    fontSize: "13px",
+                    color: "var(--text-muted)",
+                    fontStyle: "italic",
+                  }}
+                >
+                  No previous entries for this exercise
+                </p>
+              )}
+          </form>
+        </div>
+  );
+};
+
+const getCategoryColor = (category: string) => {
+  // Predefined colors for common categories
+  const predefined: Record<string, string> = {
+    Push: "var(--chart-2)", // Blue
+    Pull: "var(--accent)", // Green
+    Legs: "var(--chart-3)", // Purple
+    Core: "var(--chart-4)", // Orange
+    Cardio: "var(--error)", // Red
+  };
+
+  // Color palette for hash-based assignment
+  const palette = [
+    "var(--chart-1)", // Green
+    "var(--chart-2)", // Blue
+    "var(--chart-3)", // Purple
+    "var(--chart-4)", // Orange
+    "var(--chart-5)", // Yellow
+    "var(--info)", // Light blue
+    "var(--error)", // Red
+  ];
+
+  let color = predefined[category];
+  if (!color) {
+    // Simple hash function for consistent color assignment
+    let hash = 0;
+    for (let i = 0; i < category.length; i++) {
+      hash = category.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    color = palette[Math.abs(hash) % palette.length];
+  }
+
+  return { bg: color, text: color, border: color };
+};
+
+// Sortable workout card component.
+//
+// Memoized, so every prop must be stable across unrelated parent renders:
+// booleans rather than the parent's edit/delete state, and callbacks from
+// useCallback. A card then re-renders only when its own set changes.
 interface SortableWorkoutCardProps {
   workout: Workout;
   index: number;
-  editingWorkout: Workout | null;
-  confirmingDelete: number | null;
-  formData: WorkoutCreate;
-  getCategoryColor: (category: string) => {
-    bg: string;
-    text: string;
-    border: string;
-  };
+  isEditing: boolean;
+  isConfirmingDelete: boolean;
   handleEditWorkout: (workout: Workout) => void;
-  toggleComplete: ReturnType<typeof useToggleComplete>;
+  handleToggleComplete: (workout: Workout) => void;
   handleToggleMobility: (workout: Workout) => void;
   handleDeleteClick: (id: number) => void;
   handleDeleteConfirm: (id: number) => void;
   handleDeleteCancel: () => void;
-  setFormData: React.Dispatch<React.SetStateAction<WorkoutCreate>>;
-  handleSubmit: (e: React.FormEvent) => void;
-  handleDuplicate: () => void;
-  resetForm: () => void;
+  onCloseEdit: () => void;
 }
 
-const SortableWorkoutCard = ({
-  workout,
+const SortableWorkoutCard = memo(function SortableWorkoutCard({
   index,
-  editingWorkout,
-  confirmingDelete,
-  formData,
-  getCategoryColor,
-  handleEditWorkout,
-  toggleComplete,
-  handleToggleMobility,
-  handleDeleteClick,
-  handleDeleteConfirm,
-  handleDeleteCancel,
-  setFormData,
-  handleSubmit,
-  handleDuplicate,
-  resetForm,
-}: SortableWorkoutCardProps) => {
+  ...contentProps
+}: SortableWorkoutCardProps) {
   const {
     attributes,
     listeners,
@@ -125,15 +494,24 @@ const SortableWorkoutCard = ({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: workout.doc_id });
+  } = useSortable({ id: contentProps.workout.doc_id });
 
-  const [showRecentWeights, setShowRecentWeights] = useState(false);
-  const isEditing = editingWorkout?.doc_id === workout.doc_id;
-
-  // Fetch progression data only when editing and toggle is on
-  const { data: progressionData } = useProgression(
-    isEditing && showRecentWeights ? workout.exercise : "",
-    false,
+  // dnd-kit builds new listener functions on every DndContext render, which
+  // would defeat WorkoutCardContent's memo. Hand it stable handlers that call
+  // the latest ones instead. The names match the sensors WorkoutSession sets
+  // up: PointerSensor activates on pointerdown, KeyboardSensor on keydown.
+  const listenersRef = useRef(listeners);
+  useLayoutEffect(() => {
+    listenersRef.current = listeners;
+  });
+  const stableListeners = useMemo(
+    () => ({
+      onPointerDown: (e: React.PointerEvent) =>
+        listenersRef.current?.onPointerDown?.(e),
+      onKeyDown: (e: React.KeyboardEvent) =>
+        listenersRef.current?.onKeyDown?.(e),
+    }),
+    [],
   );
 
   const style = {
@@ -143,527 +521,266 @@ const SortableWorkoutCard = ({
     animationDelay: `${index * 50}ms`,
   };
 
+  return (
+    <Card ref={setNodeRef} style={style} className="card-hover animate-in">
+      <WorkoutCardContent
+        {...contentProps}
+        isDragging={isDragging}
+        dragAttributes={attributes}
+        dragListeners={stableListeners}
+      />
+    </Card>
+  );
+});
+
+// What a card shows. Split from SortableWorkoutCard because useSortable
+// re-renders every card whenever DndContext does, which memo cannot stop;
+// keeping the subscription in that thin wrapper lets this part skip.
+type WorkoutCardContentProps = Omit<SortableWorkoutCardProps, "index"> & {
+  isDragging: boolean;
+  dragAttributes: ReturnType<typeof useSortable>["attributes"];
+  dragListeners: {
+    onPointerDown: (e: React.PointerEvent) => void;
+    onKeyDown: (e: React.KeyboardEvent) => void;
+  };
+};
+
+const WorkoutCardContent = memo(function WorkoutCardContent({
+  workout,
+  isEditing,
+  isConfirmingDelete,
+  handleEditWorkout,
+  handleToggleComplete,
+  handleToggleMobility,
+  handleDeleteClick,
+  handleDeleteConfirm,
+  handleDeleteCancel,
+  onCloseEdit,
+  isDragging,
+  dragAttributes,
+  dragListeners,
+}: WorkoutCardContentProps) {
   const catColor = getCategoryColor(workout.category);
 
   return (
-    <Card ref={setNodeRef} style={style} className="card-hover animate-in">
-      <CardContent className="set-row">
-        {isEditing && (
+    <CardContent className="set-row">
+      {isEditing && (
+        <button
+          type="button"
+          className="action-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCloseEdit();
+          }}
+          title="Close edit"
+          aria-label="Close edit"
+          style={{
+            position: "absolute",
+            top: "var(--space-3)",
+            right: "var(--space-3)",
+            zIndex: 2,
+            width: "36px",
+            height: "36px",
+          }}
+        >
+          <X style={{ width: "20px", height: "20px" }} />
+        </button>
+      )}
+      {!isEditing && (
+        <div className="set-row__actions">
+          {/* Completion checkbox */}
           <button
-            type="button"
             className="action-btn"
             onClick={(e) => {
               e.stopPropagation();
-              resetForm();
+              handleToggleComplete(workout);
             }}
-            title="Close edit"
-            aria-label="Close edit"
+            title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
             style={{
-              position: "absolute",
-              top: "var(--space-3)",
-              right: "var(--space-3)",
-              zIndex: 2,
-              width: "36px",
-              height: "36px",
+              color: workout.completed_at
+                ? "var(--accent)"
+                : "var(--text-muted)",
+              opacity: workout.completed_at ? 1 : 0.5,
+              padding: "4px",
             }}
           >
-            <X style={{ width: "20px", height: "20px" }} />
-          </button>
-        )}
-        {!isEditing && (
-          <div className="set-row__actions">
-            {/* Completion checkbox */}
-            <button
-              className="action-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleComplete.mutate({
-                  id: workout.doc_id,
-                  completed: !workout.completed_at,
-                });
-              }}
-              title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
-              style={{
-                color: workout.completed_at
-                  ? "var(--accent)"
-                  : "var(--text-muted)",
-                opacity: workout.completed_at ? 1 : 0.5,
-                padding: "4px",
-              }}
-            >
-              {workout.completed_at ? (
-                <CheckCircle2 className="set-row__icon" />
-              ) : (
-                <Circle className="set-row__icon" />
-              )}
-            </button>
-
-            {/* Mobility toggle.
-                Whether a set was mobility work is a property of *that set*:
-                the same movement is a lift one day and a loaded stretch the
-                next, so it cannot be answered on the exercise. The most
-                recent day carrying any flagged set is the session the agent
-                writes the next prescription from, which is why this is one
-                tap and sits beside completion rather than behind Edit. */}
-            <button
-              className="action-btn"
-              role="checkbox"
-              aria-checked={!!workout.is_mobility}
-              aria-label="Mobility work"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleMobility(workout);
-              }}
-              title={
-                workout.is_mobility
-                  ? "Mobility work — feeds the next mobility session"
-                  : "Mark as mobility work"
-              }
-              style={{
-                color: workout.is_mobility
-                  ? "var(--accent)"
-                  : "var(--text-muted)",
-                opacity: workout.is_mobility ? 1 : 0.5,
-                padding: "4px",
-              }}
-            >
-              <StretchHorizontal className="set-row__icon" />
-            </button>
-
-            {/* Drag handle */}
-            <button
-              className="action-btn drag-handle"
-              style={{
-                cursor: isDragging ? "grabbing" : "grab",
-                touchAction: "none",
-                padding: "4px",
-              }}
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="set-row__icon" />
-            </button>
-
-            {/* Delete button */}
-            {confirmingDelete === workout.doc_id ? (
-              <div
-                className="flex"
-                style={{ gap: "4px", gridColumn: "1 / -1" }}
-              >
-                <button
-                  className="action-btn action-btn--danger"
-                  onClick={() => handleDeleteConfirm(workout.doc_id)}
-                  title="Confirm delete"
-                  style={{ padding: "4px" }}
-                >
-                  <Check className="set-row__icon" />
-                </button>
-                <button
-                  className="action-btn"
-                  onClick={handleDeleteCancel}
-                  title="Cancel"
-                  style={{ padding: "4px" }}
-                >
-                  <X className="set-row__icon" />
-                </button>
-              </div>
+            {workout.completed_at ? (
+              <CheckCircle2 className="set-row__icon" />
             ) : (
+              <Circle className="set-row__icon" />
+            )}
+          </button>
+
+          {/* Mobility toggle.
+              Whether a set was mobility work is a property of *that set*:
+              the same movement is a lift one day and a loaded stretch the
+              next, so it cannot be answered on the exercise. The most
+              recent day carrying any flagged set is the session the agent
+              writes the next prescription from, which is why this is one
+              tap and sits beside completion rather than behind Edit. */}
+          <button
+            className="action-btn"
+            role="checkbox"
+            aria-checked={!!workout.is_mobility}
+            aria-label="Mobility work"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleMobility(workout);
+            }}
+            title={
+              workout.is_mobility
+                ? "Mobility work — feeds the next mobility session"
+                : "Mark as mobility work"
+            }
+            style={{
+              color: workout.is_mobility
+                ? "var(--accent)"
+                : "var(--text-muted)",
+              opacity: workout.is_mobility ? 1 : 0.5,
+              padding: "4px",
+            }}
+          >
+            <StretchHorizontal className="set-row__icon" />
+          </button>
+
+          {/* Drag handle */}
+          <button
+            className="action-btn drag-handle"
+            style={{
+              cursor: isDragging ? "grabbing" : "grab",
+              touchAction: "none",
+              padding: "4px",
+            }}
+            {...dragAttributes}
+            {...dragListeners}
+          >
+            <GripVertical className="set-row__icon" />
+          </button>
+
+          {/* Delete button */}
+          {isConfirmingDelete ? (
+            <div
+              className="flex"
+              style={{ gap: "4px", gridColumn: "1 / -1" }}
+            >
               <button
                 className="action-btn action-btn--danger"
-                onClick={() => handleDeleteClick(workout.doc_id)}
+                onClick={() => handleDeleteConfirm(workout.doc_id)}
+                title="Confirm delete"
                 style={{ padding: "4px" }}
               >
-                <Trash2 className="set-row__icon" />
+                <Check className="set-row__icon" />
               </button>
-            )}
-          </div>
-        )}
-
-        {/* Main content - clickable area */}
-        <div
-          className="set-row__body log-line"
-          onClick={() =>
-            !editingWorkout || editingWorkout.doc_id !== workout.doc_id
-              ? handleEditWorkout(workout)
-              : undefined
-          }
-          style={{
-            cursor:
-              !editingWorkout || editingWorkout.doc_id !== workout.doc_id
-                ? "pointer"
-                : "default",
-          }}
-        >
-          {/* Exercise name and category - inline */}
-          <div className="log-line__title">
-            <h3
-              style={{
-                fontFamily: "var(--font-body)",
-                fontSize: "18px",
-                fontWeight: 600,
-                color: "var(--text-primary)",
-                margin: 0,
-              }}
+              <button
+                className="action-btn"
+                onClick={handleDeleteCancel}
+                title="Cancel"
+                style={{ padding: "4px" }}
+              >
+                <X className="set-row__icon" />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="action-btn action-btn--danger"
+              onClick={() => handleDeleteClick(workout.doc_id)}
+              style={{ padding: "4px" }}
             >
-              {workout.exercise}
-            </h3>
-            <span
-              style={{
-                padding: "4px 10px",
-                borderRadius: "var(--radius-sm)",
-                border: `1px solid ${catColor.border}`,
-                color: catColor.text,
-                background: `${catColor.bg}20`,
-                fontSize: "13px",
-                fontWeight: 500,
-              }}
-            >
-              {workout.category}
-            </span>
-          </div>
-
-          {/* Data chips */}
-          <div className="log-line__chips">
-            {workout.weight && (
-              <div className="workout-chip">
-                <Weight
-                  style={{
-                    width: "14px",
-                    height: "14px",
-                    color: "var(--accent)",
-                  }}
-                />
-                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
-                  {workout.weight} {workout.weight_unit}
-                </span>
-              </div>
-            )}
-            {workout.reps && (
-              <div className="workout-chip">
-                <Hash
-                  style={{
-                    width: "14px",
-                    height: "14px",
-                    color: "var(--accent)",
-                  }}
-                />
-                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
-                  {workout.reps} reps
-                </span>
-              </div>
-            )}
-            {workout.comment && (
-              <div className="workout-chip">
-                <MessageSquare
-                  style={{
-                    width: "14px",
-                    height: "14px",
-                    color: "var(--text-muted)",
-                  }}
-                />
-                <span className="workout-chip__comment">
-                  {workout.comment}
-                </span>
-              </div>
-            )}
-          </div>
+              <Trash2 className="set-row__icon" />
+            </button>
+          )}
         </div>
+      )}
 
-        {/* Inline Edit Form */}
-        {editingWorkout?.doc_id === workout.doc_id && (
-          <div
-            className="animate-in"
+      {/* Main content - clickable area */}
+      <div
+        className="set-row__body log-line"
+        onClick={() => (!isEditing ? handleEditWorkout(workout) : undefined)}
+        style={{
+          cursor: !isEditing ? "pointer" : "default",
+        }}
+      >
+        {/* Exercise name and category - inline */}
+        <div className="log-line__title">
+          <h3
             style={{
-              marginTop: "var(--space-5)",
-              padding: "var(--space-5)",
-              borderTop: "1px solid var(--border-subtle)",
-              background:
-                "linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)",
-              borderRadius: "var(--radius-md)",
+              fontFamily: "var(--font-body)",
+              fontSize: "18px",
+              fontWeight: 600,
+              color: "var(--text-primary)",
+              margin: 0,
             }}
           >
-            <form
-              onSubmit={handleSubmit}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--space-4)",
-              }}
-            >
-              <div
-                className="grid grid-cols-1 md:grid-cols-2"
-                style={{ gap: "var(--space-4)" }}
-              >
-                <div className="form-field">
-                  <Label htmlFor="weight-edit" className="form-label">
-                    <Weight style={{ width: "14px", height: "14px" }} />
-                    Weight
-                  </Label>
-                  <div className="stepper">
-                    <button
-                      type="button"
-                      className="stepper__btn stepper__btn--start"
-                      onClick={() => {
-                        const current = formData.weight || 0;
-                        const increment = getWeightIncrement(current);
-                        setFormData({
-                          ...formData,
-                          weight: Math.max(0, current - increment),
-                        });
-                      }}
-                    >
-                      <Minus style={{ width: "18px", height: "18px" }} />
-                    </button>
-                    <input
-                      id="weight-edit"
-                      type="number"
-                      inputMode="decimal"
-                      step="0.1"
-                      placeholder="0"
-                      className="input--stepper"
-                      value={formData.weight || ""}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setFormData({
-                          ...formData,
-                          weight: e.target.value
-                            ? parseFloat(e.target.value)
-                            : null,
-                        })
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="stepper__btn stepper__btn--end"
-                      onClick={() => {
-                        const current = formData.weight || 0;
-                        const increment = getWeightIncrement(current);
-                        setFormData({
-                          ...formData,
-                          weight: current + increment,
-                        });
-                      }}
-                    >
-                      <Plus style={{ width: "18px", height: "18px" }} />
-                    </button>
-                    <span className="stepper__unit">
-                      {formData.weight_unit || "lbs"}
-                    </span>
-                  </div>
-                </div>
+            {workout.exercise}
+          </h3>
+          <span
+            style={{
+              padding: "4px 10px",
+              borderRadius: "var(--radius-sm)",
+              border: `1px solid ${catColor.border}`,
+              color: catColor.text,
+              background: `${catColor.bg}20`,
+              fontSize: "13px",
+              fontWeight: 500,
+            }}
+          >
+            {workout.category}
+          </span>
+        </div>
 
-                <div className="form-field">
-                  <Label htmlFor="reps-edit" className="form-label">
-                    <Hash style={{ width: "14px", height: "14px" }} />
-                    Reps
-                  </Label>
-                  <div className="stepper">
-                    <button
-                      type="button"
-                      className="stepper__btn stepper__btn--start"
-                      onClick={() => {
-                        const currentReps = formData.reps || 0;
-                        const newValue = Math.max(0, currentReps - 1);
-                        setFormData({
-                          ...formData,
-                          reps: newValue > 0 ? newValue : null,
-                        });
-                      }}
-                    >
-                      <Minus style={{ width: "18px", height: "18px" }} />
-                    </button>
-                    <input
-                      id="reps-edit"
-                      type="number"
-                      inputMode="numeric"
-                      placeholder="e.g., 5"
-                      className="input--stepper input--mono"
-                      value={formData.reps || ""}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const value = e.target.value ? parseInt(e.target.value) : null;
-                        setFormData({
-                          ...formData,
-                          reps: value,
-                        });
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="stepper__btn stepper__btn--end"
-                      onClick={() => {
-                        const currentReps = formData.reps || 0;
-                        const newValue = currentReps + 1;
-                        setFormData({
-                          ...formData,
-                          reps: newValue,
-                        });
-                      }}
-                    >
-                      <Plus style={{ width: "18px", height: "18px" }} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+        {/* Data chips */}
+        <div className="log-line__chips">
+          {workout.weight && (
+            <div className="workout-chip">
+              <Weight
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  color: "var(--accent)",
+                }}
+              />
+              <span className="workout-chip__value" style={{ fontSize: "14px" }}>
+                {workout.weight} {workout.weight_unit}
+              </span>
+            </div>
+          )}
+          {workout.reps && (
+            <div className="workout-chip">
+              <Hash
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  color: "var(--accent)",
+                }}
+              />
+              <span className="workout-chip__value" style={{ fontSize: "14px" }}>
+                {workout.reps} reps
+              </span>
+            </div>
+          )}
+          {workout.comment && (
+            <div className="workout-chip">
+              <MessageSquare
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  color: "var(--text-muted)",
+                }}
+              />
+              <span className="workout-chip__comment">
+                {workout.comment}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
 
-              <div className="form-field">
-                <Label htmlFor="comment-edit" className="form-label">
-                  <MessageSquare style={{ width: "14px", height: "14px" }} />
-                  Comment
-                </Label>
-                <Input
-                  id="comment-edit"
-                  type="text"
-                  placeholder="Optional comment"
-                  value={formData.comment || ""}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setFormData({
-                      ...formData,
-                      comment: e.target.value || null,
-                    })
-                  }
-                />
-              </div>
-
-              {/* Action buttons - 2x2 grid */}
-              <div
-                className="grid grid-cols-2"
-                style={{ gap: "var(--space-3)" }}
-              >
-                <Button
-                  type="button"
-                  variant={showRecentWeights ? "default" : "secondary"}
-                  onClick={() => setShowRecentWeights(!showRecentWeights)}
-                  className="w-full justify-center"
-                >
-                  <History style={{ width: "18px", height: "18px" }} />
-                  Recent
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleDuplicate}
-                  className="w-full justify-center"
-                >
-                  <Copy style={{ width: "18px", height: "18px" }} />
-                  Duplicate
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={resetForm}
-                  className="w-full justify-center"
-                >
-                  <X style={{ width: "18px", height: "18px" }} />
-                  Cancel
-                </Button>
-                <Button type="submit" className="w-full justify-center">
-                  <Check style={{ width: "18px", height: "18px" }} />
-                  Save
-                </Button>
-              </div>
-
-              {/* Recent weights dropdown */}
-              {showRecentWeights &&
-                progressionData?.historical &&
-                progressionData.historical.length > 0 && (
-                  <div
-                    style={{
-                      padding: "var(--space-3)",
-                      background: "var(--bg-secondary)",
-                      borderRadius: "var(--radius-sm)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "var(--space-2)",
-                        maxHeight: "150px",
-                        overflowY: "auto",
-                      }}
-                    >
-                      {progressionData.historical
-                        .slice(-5)
-                        .reverse()
-                        .map((entry, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => {
-                              setFormData({
-                                ...formData,
-                                weight: entry.weight,
-                                reps: entry.reps,
-                              });
-                            }}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              padding: "var(--space-2)",
-                              background: "var(--bg-tertiary)",
-                              border: "1px solid var(--border-subtle)",
-                              borderRadius: "var(--radius-sm)",
-                              cursor: "pointer",
-                              transition: "all 0.15s ease",
-                              textAlign: "left",
-                            }}
-                            onMouseOver={(e) => {
-                              e.currentTarget.style.background =
-                                "var(--bg-hover)";
-                              e.currentTarget.style.borderColor =
-                                "var(--accent-muted)";
-                            }}
-                            onMouseOut={(e) => {
-                              e.currentTarget.style.background =
-                                "var(--bg-tertiary)";
-                              e.currentTarget.style.borderColor =
-                                "var(--border-subtle)";
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontFamily: "var(--font-mono)",
-                                fontSize: "13px",
-                                color: "var(--text-primary)",
-                              }}
-                            >
-                              {entry.weight} {entry.weight_unit} × {entry.reps}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: "12px",
-                                color: "var(--text-muted)",
-                              }}
-                            >
-                              {entry.date}
-                            </span>
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-              {showRecentWeights &&
-                (!progressionData?.historical ||
-                  progressionData.historical.length === 0) && (
-                  <p
-                    style={{
-                      fontSize: "13px",
-                      color: "var(--text-muted)",
-                      fontStyle: "italic",
-                    }}
-                  >
-                    No previous entries for this exercise
-                  </p>
-                )}
-            </form>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {isEditing && (
+        <InlineEditForm workout={workout} onClose={onCloseEdit} />
+      )}
+    </CardContent>
   );
-};
+});
 
 const WorkoutSession = () => {
   const { date } = useParams<{ date: string }>();
@@ -696,7 +813,7 @@ const WorkoutSession = () => {
   );
 
   const [showForm, setShowForm] = useState(false);
-  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedExercise, setSelectedExercise] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
@@ -733,31 +850,6 @@ const WorkoutSession = () => {
     });
   };
 
-  const handleEditWorkout = (workout: Workout) => {
-    setEditingWorkout(workout);
-
-    // Look up the exercise's actual category (in case workout data is stale)
-    const exerciseData = exercises?.find((e) => e.name === workout.exercise);
-    const actualCategory = exerciseData?.category || workout.category;
-
-    setSelectedCategory(actualCategory);
-    setSelectedExercise(workout.exercise);
-    setFormData({
-      date: workout.date,
-      exercise: workout.exercise,
-      category: actualCategory,
-      weight: workout.weight,
-      weight_unit: workout.weight_unit || "lbs",
-      reps: workout.reps,
-      distance: workout.distance,
-      distance_unit: workout.distance_unit,
-      time: workout.time,
-      comment: workout.comment,
-    });
-    // Don't show the top form when editing
-    setShowForm(false);
-  };
-
   const resetForm = useCallback(() => {
     setFormData({
       date: date || format(new Date(), "yyyy-MM-dd"),
@@ -773,10 +865,22 @@ const WorkoutSession = () => {
     });
     setSelectedCategory("");
     setSelectedExercise("");
-    setEditingWorkout(null);
+    setEditingId(null);
     setShowForm(false);
     setShowAddRecent(false);
   }, [date]);
+
+  // Opening a set for editing closes and clears the add form; the edit
+  // itself lives in that card's InlineEditForm.
+  const handleEditWorkout = useCallback(
+    (workout: Workout) => {
+      resetForm();
+      setEditingId(workout.doc_id);
+    },
+    [resetForm],
+  );
+
+  const handleCloseEdit = useCallback(() => setEditingId(null), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -785,33 +889,9 @@ const WorkoutSession = () => {
       return;
     }
 
-    if (editingWorkout) {
-      await updateWorkout.mutateAsync({
-        id: editingWorkout.doc_id,
-        workout: formData,
-      });
-    } else {
-      await createWorkout.mutateAsync(formData);
-    }
-
+    await createWorkout.mutateAsync(formData);
     resetForm();
   };
-
-  // Sync exercise selection when editing and exercises data is available
-  const [lastSyncedEdit, setLastSyncedEdit] = useState<number | null>(null);
-  if (editingWorkout && exercises && lastSyncedEdit !== editingWorkout.doc_id) {
-    const exerciseData = exercises.find(
-      (e) => e.name === editingWorkout.exercise,
-    );
-    if (exerciseData) {
-      setSelectedCategory(exerciseData.category);
-      setSelectedExercise(editingWorkout.exercise);
-      setLastSyncedEdit(editingWorkout.doc_id);
-    }
-  }
-  if (!editingWorkout && lastSyncedEdit !== null) {
-    setLastSyncedEdit(null);
-  }
 
   // Auto-cancel delete confirmation after 3 seconds
   useEffect(() => {
@@ -825,34 +905,55 @@ const WorkoutSession = () => {
     setConfirmingDelete(id);
   }, []);
 
+  // The mutation objects change identity with their own pending state, so
+  // the callbacks depend on `mutate`/`mutateAsync`, which are stable. That
+  // keeps one card's toggle from re-rendering every other card.
+  const { mutateAsync: deleteWorkoutAsync } = deleteWorkout;
   const handleDeleteConfirm = useCallback(
     async (id: number) => {
-      await deleteWorkout.mutateAsync(id);
+      await deleteWorkoutAsync(id);
       setConfirmingDelete(null);
     },
-    [deleteWorkout],
+    [deleteWorkoutAsync],
   );
 
   const handleDeleteCancel = useCallback(() => {
     setConfirmingDelete(null);
   }, []);
 
-  const handleDuplicate = useCallback(async () => {
-    if (!formData.exercise || !formData.category || !date) return;
+  const { mutate: toggleCompleteMutate } = toggleComplete;
+  const handleToggleComplete = useCallback(
+    (workout: Workout) => {
+      toggleCompleteMutate({
+        id: workout.doc_id,
+        completed: !workout.completed_at,
+      });
+    },
+    [toggleCompleteMutate],
+  );
 
-    await createWorkout.mutateAsync({
-      ...formData,
-      date,
-    });
-    resetForm();
-  }, [formData, date, createWorkout, resetForm]);
+  // Sorted once per change of the day's sets, into a new array. Sorting
+  // `workouts` in place, as render used to, mutated React Query's cache.
+  const sortedWorkouts = useMemo(
+    () => (workouts ? [...workouts].sort((a, b) => a.order - b.order) : []),
+    [workouts],
+  );
+  // Every card's useSortable subscribes to SortableContext, which memo does
+  // not block, and the context changes whenever `items` is a new array. So
+  // the id list keeps its identity until the order itself changes; otherwise
+  // ticking one set re-renders every card on the day.
+  const sortedIdsKey = sortedWorkouts.map((w) => w.doc_id).join(",");
+  const sortedIds = useMemo(
+    () => (sortedIdsKey ? sortedIdsKey.split(",").map(Number) : []),
+    [sortedIdsKey],
+  );
 
+  const { mutate: bulkReorderMutate } = bulkReorderWorkouts;
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
 
-      if (over && active.id !== over.id && workouts) {
-        const sortedWorkouts = [...workouts].sort((a, b) => a.order - b.order);
+      if (over && active.id !== over.id) {
         const oldIndex = sortedWorkouts.findIndex(
           (w) => w.doc_id === active.id,
         );
@@ -861,11 +962,11 @@ const WorkoutSession = () => {
         if (oldIndex !== -1 && newIndex !== -1) {
           const reordered = arrayMove(sortedWorkouts, oldIndex, newIndex);
           const workoutIds = reordered.map((w) => w.doc_id);
-          bulkReorderWorkouts.mutate(workoutIds);
+          bulkReorderMutate(workoutIds);
         }
       }
     },
-    [workouts, bulkReorderWorkouts],
+    [sortedWorkouts, bulkReorderMutate],
   );
 
   const handleMoveToDate = useCallback(async () => {
@@ -908,9 +1009,10 @@ const WorkoutSession = () => {
   // the only field that changes. The backend leaves the flag alone when the
   // key is absent, so sending it explicitly is what makes this a deliberate
   // edit rather than a side effect of some other save.
+  const { mutate: updateWorkoutMutate } = updateWorkout;
   const handleToggleMobility = useCallback(
     (workout: Workout) => {
-      updateWorkout.mutate({
+      updateWorkoutMutate({
         id: workout.doc_id,
         workout: {
           date: workout.date,
@@ -928,52 +1030,20 @@ const WorkoutSession = () => {
         },
       });
     },
-    [updateWorkout],
+    [updateWorkoutMutate],
   );
 
   // Progression data for add form's selected exercise
   const { data: addFormProgression } = useProgression(
-    showAddRecent && selectedExercise && !editingWorkout ? selectedExercise : "",
+    showAddRecent && selectedExercise && editingId === null
+      ? selectedExercise
+      : "",
     false,
   );
 
   const categoryExercises =
     exercises?.filter((e) => e.category === selectedCategory) || [];
   const formattedDate = date ? format(parseISO(date), "MMMM d, yyyy") : "";
-
-  const getCategoryColor = (category: string) => {
-    // Predefined colors for common categories
-    const predefined: Record<string, string> = {
-      Push: "var(--chart-2)", // Blue
-      Pull: "var(--accent)", // Green
-      Legs: "var(--chart-3)", // Purple
-      Core: "var(--chart-4)", // Orange
-      Cardio: "var(--error)", // Red
-    };
-
-    // Color palette for hash-based assignment
-    const palette = [
-      "var(--chart-1)", // Green
-      "var(--chart-2)", // Blue
-      "var(--chart-3)", // Purple
-      "var(--chart-4)", // Orange
-      "var(--chart-5)", // Yellow
-      "var(--info)", // Light blue
-      "var(--error)", // Red
-    ];
-
-    let color = predefined[category];
-    if (!color) {
-      // Simple hash function for consistent color assignment
-      let hash = 0;
-      for (let i = 0; i < category.length; i++) {
-        hash = category.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      color = palette[Math.abs(hash) % palette.length];
-    }
-
-    return { bg: color, text: color, border: color };
-  };
 
   return (
     <>
@@ -1186,7 +1256,7 @@ const WorkoutSession = () => {
           )}
 
           {/* Add Exercise Form - Only show at top for new exercises */}
-          {showForm && !editingWorkout && (
+          {showForm && editingId === null && (
             <Card
               className="animate-in"
               style={{
@@ -1215,7 +1285,7 @@ const WorkoutSession = () => {
                     minWidth: 0,
                   }}
                 >
-                  {editingWorkout ? (
+                  {editingId !== null ? (
                     <Pencil
                       style={{
                         width: "20px",
@@ -1232,7 +1302,7 @@ const WorkoutSession = () => {
                       }}
                     />
                   )}
-                  {editingWorkout ? "EDIT EXERCISE" : "ADD EXERCISE"}
+                  {editingId !== null ? "EDIT EXERCISE" : "ADD EXERCISE"}
                 </CardTitle>
                 {/* Closing lives here rather than as a third footer button.
                     Three buttons on one justify-end row do not fit a phone,
@@ -1526,12 +1596,12 @@ const WorkoutSession = () => {
                       type="submit"
                       disabled={!formData.exercise || !formData.category}
                     >
-                      {editingWorkout ? (
+                      {editingId !== null ? (
                         <Pencil style={{ width: "20px", height: "20px" }} />
                       ) : (
                         <Plus style={{ width: "20px", height: "20px" }} />
                       )}
-                      {editingWorkout ? "Save" : "Add Workout"}
+                      {editingId !== null ? "Save" : "Add Workout"}
                     </Button>
                   </div>
 
@@ -1660,9 +1730,7 @@ const WorkoutSession = () => {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={workouts
-                  .sort((a, b) => a.order - b.order)
-                  .map((w) => w.doc_id)}
+                items={sortedIds}
                 strategy={verticalListSortingStrategy}
               >
                 <div
@@ -1673,29 +1741,22 @@ const WorkoutSession = () => {
                     gap: "var(--space-4)",
                   }}
                 >
-                  {workouts
-                    .sort((a, b) => a.order - b.order)
-                    .map((workout, index) => (
-                      <SortableWorkoutCard
-                        key={workout.doc_id}
-                        workout={workout}
-                        index={index}
-                        editingWorkout={editingWorkout}
-                        confirmingDelete={confirmingDelete}
-                        formData={formData}
-                        getCategoryColor={getCategoryColor}
-                        handleEditWorkout={handleEditWorkout}
-                        toggleComplete={toggleComplete}
-                        handleToggleMobility={handleToggleMobility}
-                        handleDeleteClick={handleDeleteClick}
-                        handleDeleteConfirm={handleDeleteConfirm}
-                        handleDeleteCancel={handleDeleteCancel}
-                        setFormData={setFormData}
-                        handleSubmit={handleSubmit}
-                        handleDuplicate={handleDuplicate}
-                        resetForm={resetForm}
-                      />
-                    ))}
+                  {sortedWorkouts.map((workout, index) => (
+                    <SortableWorkoutCard
+                      key={workout.doc_id}
+                      workout={workout}
+                      index={index}
+                      isEditing={editingId === workout.doc_id}
+                      isConfirmingDelete={confirmingDelete === workout.doc_id}
+                      handleEditWorkout={handleEditWorkout}
+                      handleToggleComplete={handleToggleComplete}
+                      handleToggleMobility={handleToggleMobility}
+                      handleDeleteClick={handleDeleteClick}
+                      handleDeleteConfirm={handleDeleteConfirm}
+                      handleDeleteCancel={handleDeleteCancel}
+                      onCloseEdit={handleCloseEdit}
+                    />
+                  ))}
                 </div>
               </SortableContext>
             </DndContext>

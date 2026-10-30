@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useDeferredValue, useMemo, useState } from "react";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import type { LucideIcon } from "lucide-react";
 import { Bluetooth, Weight, TrendingDown, TrendingUp } from "lucide-react";
@@ -29,7 +29,6 @@ import {
 import { ScaleAsleepError, type ScaleCredentials } from "@/lib/scale";
 import {
     ComposedChart,
-    LineChart,
     Line,
     Scatter,
     XAxis,
@@ -37,7 +36,17 @@ import {
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
+    DefaultTooltipContent,
+    getNiceTickValues,
+    usePlotArea,
+    type TooltipContentProps,
 } from "recharts";
+import {
+    SMOOTHING_MAX,
+    describeSmoothing,
+    trendLine,
+    type TrendPoint,
+} from "@/lib/trend";
 
 // openScale is a line; BodySpec is scatter only. This is the whole point of
 // plotting them together: bioimpedance is precise but not accurate, so its
@@ -123,6 +132,271 @@ const DexaDot = (props: { cx?: number; cy?: number }) => {
     );
 };
 
+/**
+ * A y axis fitted to the readings, rounded the way Recharts rounds an "auto"
+ * domain. Set explicitly so ScaleDots can place dots on the same scale, and so
+ * the axis holds still while the slider moves the line; a trendline only
+ * ever runs within the readings, give or take a fitted end.
+ */
+const readingsAxis = (values: (number | null)[]) => {
+    const finite = values.filter((v): v is number => v != null && Number.isFinite(v));
+    if (finite.length === 0) return null;
+    const ticks = getNiceTickValues([Math.min(...finite), Math.max(...finite)], 5, true);
+    return { domain: [ticks[0], ticks[ticks.length - 1]] as [number, number], ticks };
+};
+
+// Matches every YAxis's `padding`: the y scale's range is inset by this much
+// at top and bottom, so ScaleDots has to inset by the same.
+const Y_PADDING = 10;
+const SCALE_DOT_RADIUS = 2.5;
+
+/**
+ * Every scale reading as a dot, under its trendline: one <path> per chart.
+ *
+ * Not a <Scatter>, because Recharts redraws every scatter symbol whenever a
+ * chart re-renders for any reason, and each slider step re-renders all four.
+ * On a year of readings that was the whole cost of dragging the slider -
+ * hundreds of ms a step on a phone. This reads the plot area Recharts computed,
+ * and only redraws when that, the axes or the readings change, which the slider never does. The axes' domains are passed in
+ * rather than read from Recharts: `useYAxisDomain` reports the extent of one
+ * series, not the rounded domain the axis draws, and put every dot 100px+
+ * out. Small and translucent: there are
+ * hundreds of these to the DEXA series' handful, and the line is the read.
+ */
+const ScaleDots = ({
+    points,
+    color,
+    xDomain,
+    yDomain,
+}: {
+    points: TrendPoint[];
+    color: string;
+    xDomain: [number, number];
+    yDomain: [number, number];
+}) => {
+    const plot = usePlotArea();
+    const d = useMemo(() => {
+        if (!plot) return "";
+        const [x0, x1] = xDomain;
+        const [y0, y1] = yDomain;
+        const top = plot.y + Y_PADDING;
+        const height = plot.height - 2 * Y_PADDING;
+        const xAt = (t: number) =>
+            x1 === x0 ? plot.x + plot.width / 2 : plot.x + ((t - x0) / (x1 - x0)) * plot.width;
+        const yAt = (v: number) =>
+            y1 === y0 ? top + height / 2 : top + height - ((v - y0) / (y1 - y0)) * height;
+        const r = SCALE_DOT_RADIUS;
+        return points
+            .map((p) => {
+                const x = xAt(p.t);
+                const y = yAt(p.y);
+                return `M${(x - r).toFixed(2)},${y.toFixed(2)}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0`;
+            })
+            .join("");
+    }, [plot, xDomain, yDomain, points]);
+    if (!d) return null;
+    return (
+        <path
+            className="scale-dots"
+            d={d}
+            fill={color}
+            fillOpacity={0.55}
+            pointerEvents="none"
+        />
+    );
+};
+
+// The x axis is time, not a list of dates. On a category axis every reading
+// sat one step from the next whatever the gap between them, so a straight fit
+// drew bent wherever readings were missed.
+const formatTick = (t: number) => format(new Date(t), "MMM d");
+const formatTooltipDate = (t: unknown) =>
+    format(new Date(Number(t)), "MMM d, yyyy");
+
+// The default tooltip, with two scatter quirks fixed. A scatter point reports
+// its x as an entry of its own, which on a time axis printed the raw epoch
+// milliseconds as "t : 1790380800000.0 lbs"; that entry is dropped. And a
+// scatter entry carries no colour, so it was drawn in black on the dark
+// tooltip; it gets the ordinary text colour instead.
+const TimeTooltip = (props: TooltipContentProps<number | string, string>) => (
+    <DefaultTooltipContent
+        {...props}
+        payload={props.payload
+            ?.filter((entry) => entry.dataKey !== "t")
+            .map((entry) => ({ ...entry, color: entry.color ?? "var(--text-primary)" }))}
+    />
+);
+
+// Where the trendline slider sits is a viewing preference, so it is
+// remembered per browser and never sent anywhere.
+const SMOOTHING_KEY = "helf.body.trendSmoothing";
+const DEFAULT_SMOOTHING = 60;
+
+const loadSmoothing = (): number => {
+    try {
+        const raw = localStorage.getItem(SMOOTHING_KEY);
+        const n = Number(raw);
+        return raw !== null && raw !== "" && Number.isFinite(n)
+            ? Math.min(Math.max(n, 0), SMOOTHING_MAX)
+            : DEFAULT_SMOOTHING;
+    } catch {
+        return DEFAULT_SMOOTHING;
+    }
+};
+
+// These series never depend on the slider, so their elements are made once,
+// here. Handing React the same element lets it skip that whole subtree when a
+// chart redraws for a new trendline.
+const DOTS = {
+    weightScale: (
+        // Invisible: it carries each reading into the tooltip. ScaleDots
+        // draws the readings.
+        <Line
+            dataKey="weightScale"
+            name="Scale"
+            stroke="none"
+            dot={false}
+            activeDot={false}
+            legendType="none"
+            isAnimationActive={false}
+        />
+    ),
+    bodyFatScale: (
+        // Invisible: it carries each reading into the tooltip. ScaleDots
+        // draws the readings.
+        <Line
+            dataKey="bodyFatScale"
+            name="Scale"
+            stroke="none"
+            dot={false}
+            activeDot={false}
+            legendType="none"
+            isAnimationActive={false}
+        />
+    ),
+    muscleMass: (
+        // Invisible: it carries each reading into the tooltip. ScaleDots
+        // draws the readings.
+        <Line
+            dataKey="muscleMass"
+            name="Muscle %"
+            stroke="none"
+            dot={false}
+            activeDot={false}
+            legendType="none"
+            isAnimationActive={false}
+        />
+    ),
+    water: (
+        // Invisible: it carries each reading into the tooltip. ScaleDots
+        // draws the readings.
+        <Line
+            dataKey="water"
+            name="Water %"
+            stroke="none"
+            dot={false}
+            activeDot={false}
+            legendType="none"
+            isAnimationActive={false}
+        />
+    ),
+};
+
+interface LineChange {
+    delta: number;
+    days: number;
+}
+
+const lineChange = (line: TrendPoint[]): LineChange | null => {
+    if (line.length < 2) return null;
+    const first = line[0];
+    const last = line[line.length - 1];
+    return {
+        delta: last.y - first.y,
+        days: Math.round((last.t - first.t) / 86_400_000),
+    };
+};
+
+/**
+ * The straight-line fit's change over the period, beside a chart's title. Coloured by
+ * the same rules as the stat tiles: weight and water are neutral, because
+ * which way is good depends on what you are doing.
+ */
+const TrendChange = ({
+    change,
+    unit,
+    trendDirection = 'neutral',
+}: {
+    change: LineChange | null;
+    unit: string;
+    trendDirection?: 'up-good' | 'down-good' | 'neutral';
+}) => {
+    if (!change) return null;
+    const rounded = Math.round(change.delta * 10) / 10;
+    const sign = rounded > 0 ? "+" : rounded < 0 ? "\u2212" : "±";
+    const color =
+        trendDirection === 'neutral' || rounded === 0
+            ? 'var(--text-primary)'
+            : (rounded > 0) === (trendDirection === 'up-good')
+              ? 'var(--success)'
+              : 'var(--error)';
+    return (
+        <div
+            className="trend-change"
+            aria-label={`Straight-line change over ${change.days} days`}
+            title="Change along a straight line fitted to every reading in the period"
+        >
+            <span className="trend-change__value" style={{ color }}>
+                {sign}
+                {Math.abs(rounded).toFixed(1)}
+                {unit}
+            </span>
+            <span className="trend-change__span">
+                {change.days} day{change.days === 1 ? "" : "s"}
+            </span>
+        </div>
+    );
+};
+
+/**
+ * One control for every chart's trendline: a straight fit at the left, a line
+ * through every day at the right, narrowing moving-window fits in between.
+ * The maths, and why it is a local line rather than a plain moving average,
+ * is in `lib/trend.ts`.
+ */
+const TrendSlider = ({
+    value,
+    onChange,
+    spanDays,
+}: {
+    value: number;
+    onChange: (n: number) => void;
+    spanDays: number;
+}) => (
+    <div className="trend-slider animate-in">
+        <div className="trend-slider__header">
+            <label htmlFor="trend-smoothing">Trendline</label>
+            <span className="trend-slider__value" aria-live="polite">
+                {describeSmoothing(value, spanDays)}
+            </span>
+        </div>
+        <input
+            id="trend-smoothing"
+            type="range"
+            min={0}
+            max={SMOOTHING_MAX}
+            step={1}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            aria-valuetext={describeSmoothing(value, spanDays)}
+        />
+        <div className="trend-slider__ends" aria-hidden="true">
+            <span>Straight</span>
+            <span>Every day</span>
+        </div>
+    </div>
+);
+
 const StatCard = ({
     title,
     value,
@@ -192,7 +466,7 @@ const StatCard = ({
  * `type="password"` so it is not shoulder-surfable or captured in a
  * screenshot.
  */
-const BodySpecSync = () => {
+const BodySpecSync = memo(function BodySpecSync() {
     const [token, setToken] = useState("");
     const sync = useSyncBodySpec();
 
@@ -257,7 +531,7 @@ const BodySpecSync = () => {
             </CardContent>
         </Card>
     );
-};
+});
 
 /**
  * Pairing for the BF720 - plan 0015.
@@ -447,7 +721,9 @@ const ScaleTile = ({
  * nobody would ever scroll. Both timestamps are shown side by side so the gap
  * is the visible thing.
  */
-const MeasurementLog = () => {
+// Memoized, as is BodySpecSync: neither takes props, and without it both
+// re-rendered with the page on every step of the trendline slider.
+const MeasurementLog = memo(function MeasurementLog() {
     const { data: measurements, isLoading } = useBodyCompositions({
         limit: 50,
         sort: "ingested",
@@ -593,10 +869,23 @@ const MeasurementLog = () => {
             </CardContent>
         </Card>
     );
-};
+});
 
 const BodyComposition = () => {
     const [trendDays, setTrendDays] = useState(30);
+    const [smoothing, setSmoothingState] = useState(loadSmoothing);
+    // The charts follow the slider at whatever pace they can redraw. Without
+    // this, every step of a drag redrew all four charts before the thumb
+    // could move again, and on a phone the thumb stuck for hundreds of ms.
+    const chartSmoothing = useDeferredValue(smoothing);
+    const setSmoothing = (n: number) => {
+        setSmoothingState(n);
+        try {
+            localStorage.setItem(SMOOTHING_KEY, String(n));
+        } catch {
+            // Storage blocked: the slider still works for this visit.
+        }
+    };
 
     // Held here because two children read it: the tile that drains the scale
     // and the form that pairs it. Saving from the form has to make the tile
@@ -617,22 +906,131 @@ const BodyComposition = () => {
     // not, because only those two quantities are genuinely dual-source. DEXA
     // reports `lean_mass_kg`, a mass, where openScale reports a percentage of
     // a different model - they share no axis and neither refines the other.
-    const chartData = trends
-        ? trends.dates.map((date, index) => {
-              const isDexa = trends.sources[index] === "bodyspec";
-              return {
-                  date,
-                  weight: trends.weights[index],
-                  bodyFat: trends.body_fat_pcts[index],
-                  weightScale: isDexa ? null : trends.weights[index],
-                  weightDexa: isDexa ? trends.weights[index] : null,
-                  bodyFatScale: isDexa ? null : trends.body_fat_pcts[index],
-                  bodyFatDexa: isDexa ? trends.body_fat_pcts[index] : null,
-                  muscleMass: trends.muscle_masses[index],
-                  water: trends.water_pcts[index],
-              };
-          })
-        : [];
+    const rows = useMemo(
+        () =>
+            trends
+                ? trends.dates.map((date, index) => {
+                      const isDexa = trends.sources[index] === "bodyspec";
+                      return {
+                          date,
+                          t: parseISO(date).getTime(),
+                          weight: trends.weights[index],
+                          bodyFat: trends.body_fat_pcts[index],
+                          weightScale: isDexa ? null : trends.weights[index],
+                          weightDexa: isDexa ? trends.weights[index] : null,
+                          bodyFatScale: isDexa ? null : trends.body_fat_pcts[index],
+                          bodyFatDexa: isDexa ? trends.body_fat_pcts[index] : null,
+                          muscleMass: trends.muscle_masses[index],
+                          water: trends.water_pcts[index],
+                      };
+                  })
+                : [],
+        [trends],
+    );
+
+    // Trendlines are fitted to the scale's readings only. DEXA stays points:
+    // a fit through both would average two instruments that disagree by
+    // design, which is the one thing this page never does.
+    const scalePoints = useMemo(() => {
+        const pick = (key: "weightScale" | "bodyFatScale" | "muscleMass" | "water") =>
+            rows.flatMap((r) => {
+                const y = r[key];
+                return y == null ? [] : [{ t: r.t, y }];
+            });
+        return {
+            weight: pick("weightScale"),
+            bodyFat: pick("bodyFatScale"),
+            muscle: pick("muscleMass"),
+            water: pick("water"),
+        };
+    }, [rows]);
+
+    // Each line is its own small series, one point per day, so moving the
+    // slider changes only the lines. The dots read `rows`, which stays the
+    // same object until the period changes; when the trend values lived on
+    // those rows, every slider step handed Recharts new data for every dot
+    // and it redrew all of them (hundreds a chart on a year).
+    const trendData = useMemo(
+        () => ({
+            weight: trendLine(scalePoints.weight, chartSmoothing),
+            bodyFat: trendLine(scalePoints.bodyFat, chartSmoothing),
+            muscle: trendLine(scalePoints.muscle, chartSmoothing),
+            water: trendLine(scalePoints.water, chartSmoothing),
+        }),
+        [scalePoints, chartSmoothing],
+    );
+
+    // Change along the least-squares line, whatever the slider shows. It
+    // uses every reading in the period; a smoothed line's ends lean on the
+    // first and last few weigh-ins, and at "Every day" the change was just
+    // two single readings (-9.1 lbs against the fit's -3.8 on 90 days).
+    const changes = useMemo(
+        () => ({
+            weight: lineChange(trendLine(scalePoints.weight, 0)),
+            bodyFat: lineChange(trendLine(scalePoints.bodyFat, 0)),
+            muscle: lineChange(trendLine(scalePoints.muscle, 0)),
+            water: lineChange(trendLine(scalePoints.water, 0)),
+        }),
+        [scalePoints],
+    );
+
+    const chartData = rows;
+
+    // DEXA scans as their own series of just the scans. Reading the shared
+    // rows, Recharts made a symbol for every row - every scale reading too,
+    // empty - and redrew them all on each slider step.
+    const dexaDots = useMemo(() => {
+        const scans = rows.filter((r) => r.weightDexa != null || r.bodyFatDexa != null);
+        if (scans.length === 0) return null;
+        return {
+            weight: (
+                <Scatter
+                    data={scans}
+                    dataKey="weightDexa"
+                    name="DEXA"
+                    fill={DEXA_COLOR}
+                    shape={<DexaDot />}
+                />
+            ),
+            bodyFat: (
+                <Scatter
+                    data={scans}
+                    dataKey="bodyFatDexa"
+                    name="DEXA"
+                    fill={DEXA_COLOR}
+                    shape={<DexaDot />}
+                />
+            ),
+        };
+    }, [rows]);
+
+    // Both instruments count toward the y axis: DEXA dots must land on it too.
+    const axes = useMemo(
+        () => ({
+            weight: readingsAxis(rows.map((r) => r.weight)),
+            bodyFat: readingsAxis(rows.map((r) => r.bodyFat)),
+            muscle: readingsAxis(rows.map((r) => r.muscleMass)),
+            water: readingsAxis(rows.map((r) => r.water)),
+        }),
+        [rows],
+    );
+
+    // Made once per period, like DOTS, so a slider step leaves them alone.
+    const dotLayers = useMemo(() => {
+        if (rows.length === 0) return null;
+        const x: [number, number] = [rows[0].t, rows[rows.length - 1].t];
+        const layer = (points: TrendPoint[], axis: ReturnType<typeof readingsAxis>, color: string) =>
+            axis && <ScaleDots points={points} color={color} xDomain={x} yDomain={axis.domain} />;
+        return {
+            weight: layer(scalePoints.weight, axes.weight, SCALE_COLOR),
+            bodyFat: layer(scalePoints.bodyFat, axes.bodyFat, SCALE_COLOR),
+            muscle: layer(scalePoints.muscle, axes.muscle, "var(--accent)"),
+            water: layer(scalePoints.water, axes.water, "var(--info)"),
+        };
+    }, [rows, scalePoints, axes]);
+
+    const spanDays =
+        rows.length > 1 ? (rows[rows.length - 1].t - rows[0].t) / 86_400_000 : 0;
 
     const hasDexa = chartData.some((d) => d.weightDexa != null || d.bodyFatDexa != null);
 
@@ -752,6 +1150,14 @@ const BodyComposition = () => {
                                 </div>
                             </div>
 
+                            {!trendsLoading && chartData.length > 1 && (
+                                <TrendSlider
+                                    value={smoothing}
+                                    onChange={setSmoothing}
+                                    spanDays={spanDays}
+                                />
+                            )}
+
                             {trendsLoading ? (
                                 <div className="text-center" style={{ padding: 'var(--space-12) 0' }}>
                                     <div className="loading-spinner inline-block" style={{ width: '40px', height: '40px' }} />
@@ -779,35 +1185,44 @@ const BodyComposition = () => {
                                     {chartData.some(d => d.weight != null) && (
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
-                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--chart-2)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-                                                    Weight
-                                                </CardTitle>
+                                                <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--chart-2)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                        Weight
+                                                    </CardTitle>
+                                                    <TrendChange change={changes.weight} unit=" lbs" />
+                                                </div>
                                             </CardHeader>
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
                                                     <ComposedChart data={chartData}>
                                                         <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
-                                                            dataKey="date"
+                                                            dataKey="t"
+                                                            type="number"
+                                                            scale="time"
+                                                            domain={['dataMin', 'dataMax']}
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                            tickFormatter={formatTick}
                                                         />
                                                         <YAxis
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            domain={['auto', 'auto']}
+                                                            domain={axes.weight?.domain ?? ['auto', 'auto']}
+                                                            ticks={axes.weight?.ticks}
+                                                            allowDataOverflow
                                                             tickFormatter={(v) => v.toFixed(0)}
-                                                            padding={{ top: 10, bottom: 10 }}
+                                                            padding={{ top: Y_PADDING, bottom: Y_PADDING }}
                                                         />
                                                         <Tooltip
+                                                            content={TimeTooltip}
                                                             contentStyle={{
                                                                 backgroundColor: "var(--bg-tertiary)",
                                                                 border: "1px solid var(--border)",
                                                                 borderRadius: 'var(--radius-md)',
                                                                 color: 'var(--text-primary)',
                                                             }}
-                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
+                                                            labelFormatter={formatTooltipDate}
                                                             formatter={(value, name) =>
                                                                 formatChartValue(value, " lbs", (name as string) ?? "Weight")
                                                             }
@@ -816,21 +1231,20 @@ const BodyComposition = () => {
                                                             make the offset between the instruments
                                                             unreadable, and that offset is the most
                                                             useful thing this chart shows. */}
+                                                        {dotLayers?.weight}
+                                                        {DOTS.weightScale}
                                                         <Line
                                                             type="monotone"
-                                                            dataKey="weightScale"
+                                                            data={trendData.weight}
+                                                            dataKey="y"
                                                             stroke={SCALE_COLOR}
-                                                            name="Scale"
+                                                            name="Trend"
                                                             strokeWidth={2}
                                                             dot={false}
                                                             connectNulls
+                                                            isAnimationActive={false}
                                                         />
-                                                        <Scatter
-                                                            dataKey="weightDexa"
-                                                            name="DEXA"
-                                                            fill={DEXA_COLOR}
-                                                            shape={<DexaDot />}
-                                                        />
+                                                        {dexaDots?.weight}
                                                     </ComposedChart>
                                                 </ResponsiveContainer>
                                             </CardContent>
@@ -841,35 +1255,44 @@ const BodyComposition = () => {
                                     {chartData.some(d => d.bodyFat != null) && (
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
-                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--error)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-                                                    Body Fat %
-                                                </CardTitle>
+                                                <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--error)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                        Body Fat %
+                                                    </CardTitle>
+                                                    <TrendChange change={changes.bodyFat} unit="%" trendDirection="down-good" />
+                                                </div>
                                             </CardHeader>
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
                                                     <ComposedChart data={chartData}>
                                                         <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
-                                                            dataKey="date"
+                                                            dataKey="t"
+                                                            type="number"
+                                                            scale="time"
+                                                            domain={['dataMin', 'dataMax']}
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                            tickFormatter={formatTick}
                                                         />
                                                         <YAxis
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            domain={['auto', 'auto']}
+                                                            domain={axes.bodyFat?.domain ?? ['auto', 'auto']}
+                                                            ticks={axes.bodyFat?.ticks}
+                                                            allowDataOverflow
                                                             tickFormatter={(v) => v.toFixed(1) + "%"}
-                                                            padding={{ top: 10, bottom: 10 }}
+                                                            padding={{ top: Y_PADDING, bottom: Y_PADDING }}
                                                         />
                                                         <Tooltip
+                                                            content={TimeTooltip}
                                                             contentStyle={{
                                                                 backgroundColor: "var(--bg-tertiary)",
                                                                 border: "1px solid var(--border)",
                                                                 borderRadius: 'var(--radius-md)',
                                                                 color: 'var(--text-primary)',
                                                             }}
-                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
+                                                            labelFormatter={formatTooltipDate}
                                                             formatter={(value, name) =>
                                                                 formatChartValue(value, "%", (name as string) ?? "Body Fat")
                                                             }
@@ -878,21 +1301,20 @@ const BodyComposition = () => {
                                                             always will - bioimpedance reads high.
                                                             Keeping them as separate marks is what
                                                             stops that gap reading as fat lost. */}
+                                                        {dotLayers?.bodyFat}
+                                                        {DOTS.bodyFatScale}
                                                         <Line
                                                             type="monotone"
-                                                            dataKey="bodyFatScale"
+                                                            data={trendData.bodyFat}
+                                                            dataKey="y"
                                                             stroke={SCALE_COLOR}
-                                                            name="Scale"
+                                                            name="Trend"
                                                             strokeWidth={2}
                                                             dot={false}
                                                             connectNulls
+                                                            isAnimationActive={false}
                                                         />
-                                                        <Scatter
-                                                            dataKey="bodyFatDexa"
-                                                            name="DEXA"
-                                                            fill={DEXA_COLOR}
-                                                            shape={<DexaDot />}
-                                                        />
+                                                        {dexaDots?.bodyFat}
                                                     </ComposedChart>
                                                 </ResponsiveContainer>
                                             </CardContent>
@@ -903,49 +1325,62 @@ const BodyComposition = () => {
                                     {chartData.some(d => d.muscleMass != null) && (
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
-                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-                                                    Muscle %
-                                                </CardTitle>
+                                                <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                        Muscle %
+                                                    </CardTitle>
+                                                    <TrendChange change={changes.muscle} unit="%" trendDirection="up-good" />
+                                                </div>
                                             </CardHeader>
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
-                                                    <LineChart data={chartData}>
+                                                    <ComposedChart data={chartData}>
                                                         <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
-                                                            dataKey="date"
+                                                            dataKey="t"
+                                                            type="number"
+                                                            scale="time"
+                                                            domain={['dataMin', 'dataMax']}
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                            tickFormatter={formatTick}
                                                         />
                                                         <YAxis
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            domain={['auto', 'auto']}
+                                                            domain={axes.muscle?.domain ?? ['auto', 'auto']}
+                                                            ticks={axes.muscle?.ticks}
+                                                            allowDataOverflow
                                                             tickFormatter={(v) => v.toFixed(1) + "%"}
-                                                            padding={{ top: 10, bottom: 10 }}
+                                                            padding={{ top: Y_PADDING, bottom: Y_PADDING }}
                                                         />
                                                         <Tooltip
+                                                            content={TimeTooltip}
                                                             contentStyle={{
                                                                 backgroundColor: "var(--bg-tertiary)",
                                                                 border: "1px solid var(--border)",
                                                                 borderRadius: 'var(--radius-md)',
                                                                 color: 'var(--text-primary)',
                                                             }}
-                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value) =>
-                                                                formatChartValue(value, " %", "Muscle %")
+                                                            labelFormatter={formatTooltipDate}
+                                                            formatter={(value, name) =>
+                                                                formatChartValue(value, " %", (name as string) ?? "Muscle %")
                                                             }
                                                         />
+                                                        {dotLayers?.muscle}
+                                                        {DOTS.muscleMass}
                                                         <Line
                                                             type="monotone"
-                                                            dataKey="muscleMass"
-                                                            stroke="var(--accent)"
-                                                            name="Muscle Mass"
+                                                            data={trendData.muscle}
+                                                            dataKey="y"
+                                                            stroke={"var(--accent)"}
+                                                            name="Trend"
                                                             strokeWidth={2}
                                                             dot={false}
                                                             connectNulls
+                                                            isAnimationActive={false}
                                                         />
-                                                    </LineChart>
+                                                    </ComposedChart>
                                                 </ResponsiveContainer>
                                             </CardContent>
                                         </Card>
@@ -955,49 +1390,62 @@ const BodyComposition = () => {
                                     {chartData.some(d => d.water != null) && (
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
-                                                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--info)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-                                                    Water %
-                                                </CardTitle>
+                                                <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--info)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                        Water %
+                                                    </CardTitle>
+                                                    <TrendChange change={changes.water} unit="%" />
+                                                </div>
                                             </CardHeader>
                                             <CardContent>
                                                 <ResponsiveContainer width="100%" height={220}>
-                                                    <LineChart data={chartData}>
+                                                    <ComposedChart data={chartData}>
                                                         <CartesianGrid stroke="var(--border)" />
                                                         <XAxis
-                                                            dataKey="date"
+                                                            dataKey="t"
+                                                            type="number"
+                                                            scale="time"
+                                                            domain={['dataMin', 'dataMax']}
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            tickFormatter={(date) => format(parseISO(date), "MMM d")}
+                                                            tickFormatter={formatTick}
                                                         />
                                                         <YAxis
                                                             stroke="var(--text-muted)"
                                                             style={{ fontSize: '11px' }}
-                                                            domain={['auto', 'auto']}
+                                                            domain={axes.water?.domain ?? ['auto', 'auto']}
+                                                            ticks={axes.water?.ticks}
+                                                            allowDataOverflow
                                                             tickFormatter={(v) => v.toFixed(1) + "%"}
-                                                            padding={{ top: 10, bottom: 10 }}
+                                                            padding={{ top: Y_PADDING, bottom: Y_PADDING }}
                                                         />
                                                         <Tooltip
+                                                            content={TimeTooltip}
                                                             contentStyle={{
                                                                 backgroundColor: "var(--bg-tertiary)",
                                                                 border: "1px solid var(--border)",
                                                                 borderRadius: 'var(--radius-md)',
                                                                 color: 'var(--text-primary)',
                                                             }}
-                                                            labelFormatter={(date) => format(parseISO(date), "MMM d, yyyy")}
-                                                            formatter={(value) =>
-                                                                formatChartValue(value, "%", "Water")
+                                                            labelFormatter={formatTooltipDate}
+                                                            formatter={(value, name) =>
+                                                                formatChartValue(value, "%", (name as string) ?? "Water")
                                                             }
                                                         />
+                                                        {dotLayers?.water}
+                                                        {DOTS.water}
                                                         <Line
                                                             type="monotone"
-                                                            dataKey="water"
-                                                            stroke="var(--info)"
-                                                            name="Water %"
+                                                            data={trendData.water}
+                                                            dataKey="y"
+                                                            stroke={"var(--info)"}
+                                                            name="Trend"
                                                             strokeWidth={2}
                                                             dot={false}
                                                             connectNulls
+                                                            isAnimationActive={false}
                                                         />
-                                                    </LineChart>
+                                                    </ComposedChart>
                                                 </ResponsiveContainer>
                                             </CardContent>
                                         </Card>

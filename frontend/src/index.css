@@ -1065,6 +1065,65 @@
         grid-column: 1 / -1;
     }
 
+    /* The trendline control: one slider for every chart, between the period
+       picker and the charts it shapes. Full width so the travel is long
+       enough to place a thumb with a finger. */
+    .trend-slider {
+        margin-bottom: var(--space-4);
+    }
+
+    .trend-slider__header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .trend-slider__value {
+        font-family: var(--font-mono);
+        color: var(--text-primary);
+        text-transform: none;
+        letter-spacing: 0;
+    }
+
+    .trend-slider input[type="range"] {
+        width: 100%;
+        height: 28px;
+        margin: var(--space-1) 0 0;
+        accent-color: var(--accent);
+        cursor: pointer;
+    }
+
+    .trend-slider__ends {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
+    /* The trendline's change over the period, top right of each chart. */
+    .trend-change {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        flex-shrink: 0;
+        line-height: 1.2;
+    }
+
+    .trend-change__value {
+        font-family: var(--font-mono);
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .trend-change__span {
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
     /* Install prompt — a corner toast, never a centred modal.
        On mobile it clears the bottom nav bar; on desktop it sits in the bottom
        right, out of the reading column. */

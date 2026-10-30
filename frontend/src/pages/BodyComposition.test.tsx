@@ -9,7 +9,7 @@
  * The drain itself is not mounted: it needs a GATT server, and the decoding it
  * feeds is covered by `src/lib/bcs.test.ts` against fixture bytes.
  */
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
@@ -511,4 +511,60 @@ it("stays quiet when body composition did arrive", async () => {
 
     await waitFor(() => expect(api.syncScale).toHaveBeenCalled());
     expect(screen.queryByText(/sent no bioimpedance/i)).not.toBeInTheDocument();
+});
+
+describe("trendline slider", () => {
+    const TRENDS = {
+        dates: ["2026-08-01", "2026-08-03", "2026-08-03", "2026-08-10", "2026-08-20"],
+        weights: [190.2, 189.6, 190.4, 188.8, 187.9],
+        body_fat_pcts: [24.1, 23.9, 24.3, 23.6, 23.2],
+        muscle_masses: [38.5, 38.6, 38.4, 38.7, 38.9],
+        water_pcts: [55.1, 55.3, 55.0, 55.4, 55.6],
+        sources: ["openscale", "openscale", "openscale", "openscale", "openscale"],
+    };
+
+    it("moves between a straight line and every day, and remembers where it was", async () => {
+        api.getTrends.mockResolvedValue({ data: TRENDS } as never);
+        const { unmount } = renderPage(<BodyComposition />, "/body-composition");
+
+        const slider = await screen.findByRole("slider", { name: /Trendline/i });
+        expect(slider).toHaveValue("60");
+
+        // aria-valuetext is what is announced, and the label shows the same.
+        fireEvent.change(slider, { target: { value: "0" } });
+        expect(slider).toHaveAttribute("aria-valuetext", "Straight line");
+        fireEvent.change(slider, { target: { value: "100" } });
+        expect(slider).toHaveAttribute("aria-valuetext", "Every day");
+        fireEvent.change(slider, { target: { value: "70" } });
+        expect(slider.getAttribute("aria-valuetext")).toMatch(/^±\d+ days?$/);
+
+        unmount();
+        renderPage(<BodyComposition />, "/body-composition");
+        expect(
+            await screen.findByRole("slider", { name: /Trendline/i }),
+        ).toHaveValue("70");
+    });
+
+    it("states each line's straight-fit change, whatever the slider shows", async () => {
+        api.getTrends.mockResolvedValue({ data: TRENDS } as never);
+        renderPage(<BodyComposition />, "/body-composition");
+        const slider = await screen.findByRole("slider", { name: /Trendline/i });
+
+        // Least-squares slope x 19 days. Endpoints alone would say -2.3 lbs,
+        // -0.9% and +0.4%; the fit uses all five readings.
+        for (const value of ["0", "60", "100"]) {
+            fireEvent.change(slider, { target: { value } });
+            expect(screen.getByText("\u22122.4 lbs")).toBeInTheDocument();
+            // Body fat fell, which is good; muscle rose, which is good.
+            expect(screen.getByText("\u22121.0%")).toHaveStyle({ color: "var(--success)" });
+            expect(screen.getByText("+0.4%")).toHaveStyle({ color: "var(--success)" });
+            expect(screen.getAllByText("19 days")).toHaveLength(4);
+        }
+    });
+
+    it("is not offered when there is nothing to fit", async () => {
+        renderPage(<BodyComposition />, "/body-composition");
+        await screen.findByText(/Nothing measured in this period/i);
+        expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    });
 });

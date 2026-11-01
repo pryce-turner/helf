@@ -8,7 +8,12 @@ export interface Exercise {
   application: string | null;
   /** 1-5. `null` is unrated, which is not the same as a bad rating. */
   rating: number | null;
-  /** Also mobility work. A flag across categories, not a category. */
+  /**
+   * The unit a cardio exercise is measured in. Non-null *is* what makes it
+   * cardio — there is no separate flag. Only the default a new set starts
+   * with; each set keeps its own `amount_unit`.
+   */
+  cardio_unit: string | null;
   last_used: string | null;
   use_count: number;
   created_at: string;
@@ -20,6 +25,7 @@ export interface ExerciseCreate {
   form?: string;
   application?: string;
   rating?: number | null;
+  cardio_unit?: string | null;
 }
 
 export interface ExerciseUpdate {
@@ -29,6 +35,8 @@ export interface ExerciseUpdate {
   application?: string;
   /** Sending `null` clears the rating; omitting the key leaves it alone. */
   rating?: number | null;
+  /** Sending `null` makes it resistance work again; omitting leaves it. */
+  cardio_unit?: string | null;
 }
 
 export interface Category {

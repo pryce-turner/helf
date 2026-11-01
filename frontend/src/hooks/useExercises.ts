@@ -53,6 +53,7 @@ export function useCreateExercise() {
         form: newExercise.form ?? null,
         application: newExercise.application ?? null,
         rating: newExercise.rating ?? null,
+        cardio_unit: newExercise.cardio_unit ?? null,
         last_used: null,
         use_count: 0,
         created_at: new Date().toISOString(),

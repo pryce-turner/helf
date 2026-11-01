@@ -221,3 +221,59 @@ describe("Exercises: form and application", () => {
         );
     });
 });
+
+describe("Exercises: cardio", () => {
+    const openAddForm = async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.click(await screen.findByRole("button", { name: "Add Exercise" }));
+        await user.type(screen.getByLabelText("Exercise Name"), "Stairmaster");
+        // An existing category, picked from the list the field offers.
+        await user.click(screen.getByRole("combobox", { name: /category/i }));
+        await user.click(await screen.findByRole("option", { name: "Legs" }));
+    };
+
+    it("creates a resistance exercise when the switch is left off", async () => {
+        const user = userEvent.setup();
+        mockedExercises.create.mockResolvedValue({ data: exercise() } as never);
+        renderPage(<ExercisesPage />, "/exercises");
+        await openAddForm(user);
+
+        expect(screen.getByRole("switch", { name: "Cardio" })).toHaveAttribute(
+            "aria-checked",
+            "false",
+        );
+        await user.click(screen.getAllByRole("button", { name: "Add Exercise" }).at(-1)!);
+
+        await waitFor(() => expect(mockedExercises.create).toHaveBeenCalled());
+        expect(mockedExercises.create.mock.calls[0][0]).not.toHaveProperty(
+            "cardio_unit",
+        );
+    });
+
+    it("creates a cardio exercise with the unit picked", async () => {
+        const user = userEvent.setup();
+        mockedExercises.create.mockResolvedValue({ data: exercise() } as never);
+        renderPage(<ExercisesPage />, "/exercises");
+        await openAddForm(user);
+
+        await user.click(screen.getByRole("switch", { name: "Cardio" }));
+        await user.click(screen.getByRole("combobox", { name: /unit/i }));
+        await user.click(await screen.findByRole("option", { name: "Floors" }));
+        await user.click(screen.getAllByRole("button", { name: "Add Exercise" }).at(-1)!);
+
+        await waitFor(() =>
+            expect(mockedExercises.create).toHaveBeenCalledWith(
+                expect.objectContaining({ name: "Stairmaster", cardio_unit: "floors" }),
+            ),
+        );
+    });
+
+    it("will not create a cardio exercise until a unit is picked", async () => {
+        const user = userEvent.setup();
+        renderPage(<ExercisesPage />, "/exercises");
+        await openAddForm(user);
+
+        await user.click(screen.getByRole("switch", { name: "Cardio" }));
+
+        expect(screen.getAllByRole("button", { name: "Add Exercise" }).at(-1)).toBeDisabled();
+    });
+});

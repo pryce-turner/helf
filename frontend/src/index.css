@@ -891,6 +891,47 @@
         }
     }
 
+    /* An on/off switch (the cardio toggle). A real button with
+       role="switch", so it is a tab stop and reads its state aloud. */
+    .switch {
+        position: relative;
+        flex-shrink: 0;
+        width: 44px;
+        height: 24px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-full);
+        background: var(--bg-tertiary);
+        cursor: pointer;
+        transition: background var(--duration-normal), border-color var(--duration-normal);
+    }
+
+    .switch__thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: var(--radius-full);
+        background: var(--text-secondary);
+        transition: transform var(--duration-normal), background var(--duration-normal);
+    }
+
+    .switch[aria-checked="true"] {
+        background: var(--accent);
+        border-color: var(--accent);
+    }
+
+    .switch[aria-checked="true"] .switch__thumb {
+        transform: translateX(20px);
+        background: var(--text-primary);
+    }
+
+    .switch:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
     /* Rating stars. Unrated is five outlines, not zero of five, because
        nobody having judged a movement yet is not the same as judging it
        badly. */

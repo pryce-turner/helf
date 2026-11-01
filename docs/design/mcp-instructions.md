@@ -46,6 +46,14 @@ rows sharing a `date`, ordered by `order`. `reps` is an integer — compare and
 aggregate it normally, and note there is no AMRAP notation anywhere in the data
 model; that intent lives in `comment` as prose.
 
+**Cardio sets are time and an amount, not weight × reps.** An exercise with a
+non-null `exercises.cardio_unit` is cardio. Its sets carry `duration_s` (whole
+seconds), `amount` and `amount_unit` (`miles`, `km`, `meters`, `floors`,
+`steps` or `kcal`), and their `weight` and `reps` are NULL. Read the unit from
+the set, not the exercise: the exercise's unit is only the default a new set
+starts with. Never sum `amount` across units. `distance`, `distance_unit` and
+`time` are legacy columns the app does not write.
+
 **`kcal_target` is measured, not assumed.** It is the last DEXA scan's
 Katch-McArdle resting rate times an activity multiplier of 1.4, carried forward
 from the most recent scan on or before that day. It is NULL before the first

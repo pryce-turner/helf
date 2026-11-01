@@ -220,6 +220,17 @@ vocabulary in `metric_def`. Adding a *quantity* is a row. Adding a *name* is a
 migration, on purpose: the name carries the unit, so `vitamin_d_iu` cannot
 quietly become mcg later.
 
+### Cardio is a unit on the exercise, and time + amount on the set
+
+`exercises.cardio_unit` non-null **is** "this exercise is cardio". There is no
+flag beside it to disagree with it. A cardio set carries `duration_s`, `amount`
+and `amount_unit`, and leaves `weight`/`reps` NULL. The unit is copied onto the
+set (prefilled from the exercise, editable), so re-labelling an exercise does
+not rewrite its history. The vocabulary is a CHECK on both columns, mirrored in
+`app/models/cardio.py` and `frontend/src/lib/cardio.ts`: adding a unit means a
+migration plus both copies. The legacy `distance`/`distance_unit`/`time`
+columns are unused and are not these (plan 0017 §3).
+
 ### Units live in names
 
 Pounds are canonical for body mass (ADR-0003) and **no row carries a unit
@@ -539,7 +550,8 @@ docker-compose up -d
 - `POST /` - Create exercise
 - `PUT /{id}` - Update exercise. Omitting a key leaves it alone; sending
   `rating: null` *clears* the rating — the two are told apart by
-  `model_fields_set`, not by value
+  `model_fields_set`, not by value. `cardio_unit` works the same way: `null`
+  makes the exercise resistance work again
 - `DELETE /{id}` - Delete exercise
 - `POST /seed` - Generate preset exercises (16 across 6 categories)
 - `GET /categories/` - List categories
@@ -654,7 +666,10 @@ nothing separate to assert (plan 0013).
 - Exercise logging with category-based organization
 - Set tracking: weight, reps (an **integer** — no AMRAP notation in the data
   model, ADR-0005; `5+` is Liftoscript source only and resolves to a comment)
-- Optional fields: distance, time, comments
+- Optional fields: comments
+- **Cardio sets** — an exercise switched to cardio (`/exercises`) is logged as
+  time (`mm:ss`, `h:mm:ss` or minutes), an amount and a unit (plan 0017)
+  instead of weight and reps
 - Drag-to-reorder exercises within sessions (dnd-kit)
 - Move/copy all workouts between dates
 - Toggle completion status per exercise

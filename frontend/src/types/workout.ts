@@ -20,6 +20,10 @@ export interface Workout {
    * the next mobility session, so clearing one changes what it sees.
    */
   is_mobility: boolean;
+  /** A cardio set: whole seconds, and how much of `amount_unit`. */
+  duration_s: number | null;
+  amount: number | null;
+  amount_unit: string | null;
   order: number;
   created_at: string;
   updated_at: string;
@@ -39,6 +43,9 @@ export interface WorkoutCreate {
   completed_at?: string | null;
   /** Omit to leave a set's flag alone; the backend only writes it when sent. */
   is_mobility?: boolean;
+  duration_s?: number | null;
+  amount?: number | null;
+  amount_unit?: string | null;
   order?: number;
 }
 

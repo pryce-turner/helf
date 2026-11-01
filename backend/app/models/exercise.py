@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.cardio import CardioUnit
+
 
 class CategoryBase(BaseModel):
     """Base category model."""
@@ -36,6 +38,8 @@ class ExerciseCreate(ExerciseBase):
     # Bounded here *and* by a CHECK: the agent writes raw SQL and never passes
     # through Pydantic (ADR-0002), so the constraint is the rule both obey.
     rating: int | None = Field(None, ge=1, le=5)
+    # Non-null makes this a cardio exercise; the unit its sets default to.
+    cardio_unit: CardioUnit | None = None
 
 
 class ExerciseUpdate(BaseModel):
@@ -51,6 +55,9 @@ class ExerciseUpdate(BaseModel):
     form: str | None = None
     application: str | None = None
     rating: int | None = Field(None, ge=1, le=5)
+    # Like `rating`, an explicit null is an edit: it makes the exercise
+    # resistance work again. Told apart from omission by `model_fields_set`.
+    cardio_unit: CardioUnit | None = None
 
 
 class Exercise(ExerciseBase):
@@ -59,6 +66,7 @@ class Exercise(ExerciseBase):
     form: str | None = None
     application: str | None = None
     rating: int | None = None
+    cardio_unit: CardioUnit | None = None
     last_used: str | None = None
     use_count: int = 0
     created_at: datetime

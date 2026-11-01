@@ -3,6 +3,7 @@ import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Spa
 import Navigation from '@/components/Navigation';
 import CategoryField from '@/components/CategoryField';
 import StarRating from '@/components/StarRating';
+import { CardioSwitch } from '@/components/CardioSwitch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,11 +63,14 @@ const Exercises = () => {
   const [newCategory, setNewCategory] = useState('');
   const [newForm, setNewForm] = useState('');
   const [newApplication, setNewApplication] = useState('');
+  // null is resistance; '' is cardio with no unit picked yet (CardioSwitch).
+  const [newCardioUnit, setNewCardioUnit] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editForm, setEditForm] = useState('');
   const [editApplication, setEditApplication] = useState('');
+  const [editCardioUnit, setEditCardioUnit] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -118,17 +122,19 @@ const Exercises = () => {
   }, []);
 
   const handleAddExercise = async () => {
-    if (!newName.trim() || !newCategory.trim()) return;
+    if (!newName.trim() || !newCategory.trim() || newCardioUnit === '') return;
     await createExercise.mutateAsync({
       name: newName.trim(),
       category: newCategory.trim(),
       form: newForm.trim() || undefined,
       application: newApplication.trim() || undefined,
+      ...(newCardioUnit ? { cardio_unit: newCardioUnit } : {}),
     });
     setNewName('');
     setNewCategory('');
     setNewForm('');
     setNewApplication('');
+    setNewCardioUnit(null);
     setShowAddForm(false);
   };
 
@@ -138,6 +144,7 @@ const Exercises = () => {
     setEditCategory(exercise.category);
     setEditForm(exercise.form || '');
     setEditApplication(exercise.application || '');
+    setEditCardioUnit(exercise.cardio_unit);
   };
 
   const cancelEditing = () => {
@@ -146,10 +153,11 @@ const Exercises = () => {
     setEditCategory('');
     setEditForm('');
     setEditApplication('');
+    setEditCardioUnit(null);
   };
 
   const saveEditing = async () => {
-    if (editingId === null || !editName.trim() || !editCategory.trim()) return;
+    if (editingId === null || !editName.trim() || !editCategory.trim() || editCardioUnit === '') return;
     await updateExercise.mutateAsync({
       id: editingId,
       data: {
@@ -157,6 +165,9 @@ const Exercises = () => {
         category: editCategory.trim(),
         form: editForm.trim() || '',
         application: editApplication.trim() || '',
+        // Sent every time: null is a real edit here (back to resistance), and
+        // sets keep their own unit, so changing this rewrites no history.
+        cardio_unit: editCardioUnit,
       },
     });
     cancelEditing();
@@ -274,6 +285,11 @@ const Exercises = () => {
                       />
                     </div>
                   </div>
+                  <CardioSwitch
+                    idPrefix="new"
+                    value={newCardioUnit}
+                    onChange={setNewCardioUnit}
+                  />
                   <div>
                     <Label htmlFor="new-form" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
                       Form <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(how to perform it)</span>
@@ -308,7 +324,7 @@ const Exercises = () => {
                     </Button>
                     <Button
                       onClick={handleAddExercise}
-                      disabled={createExercise.isPending || !newName.trim() || !newCategory.trim()}
+                      disabled={createExercise.isPending || !newName.trim() || !newCategory.trim() || newCardioUnit === ''}
                     >
                       {createExercise.isPending ? 'Adding...' : 'Add Exercise'}
                     </Button>
@@ -436,6 +452,11 @@ const Exercises = () => {
                                     />
                                   </div>
                                 </div>
+                                <CardioSwitch
+                                  idPrefix={`edit-${exercise.doc_id}`}
+                                  value={editCardioUnit}
+                                  onChange={setEditCardioUnit}
+                                />
                                 <textarea
                                   className="input"
                                   aria-label="Form"
@@ -466,7 +487,7 @@ const Exercises = () => {
                                   <Button
                                     size="sm"
                                     onClick={saveEditing}
-                                    disabled={updateExercise.isPending || !editName.trim() || !editCategory.trim()}
+                                    disabled={updateExercise.isPending || !editName.trim() || !editCategory.trim() || editCardioUnit === ''}
                                   >
                                     <Check style={{ width: '16px', height: '16px' }} />
                                     Save

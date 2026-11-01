@@ -303,3 +303,93 @@ it("rolls the whole day back when the bulk write fails", async () => {
 
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "false"));
 });
+
+const stairmaster = {
+    doc_id: 7,
+    name: "Stairmaster",
+    category: "Cardio",
+    form: null,
+    application: null,
+    rating: null,
+    cardio_unit: "floors",
+    last_used: DATE,
+    use_count: 3,
+    created_at: "2026-01-01",
+};
+
+const cardioSet = (overrides: Record<string, unknown> = {}) =>
+    set({
+        exercise: "Stairmaster",
+        category: "Cardio",
+        weight: null,
+        reps: null,
+        duration_s: 1200,
+        amount: 60,
+        amount_unit: "floors",
+        ...overrides,
+    });
+
+it("shows a cardio set as its time and amount", async () => {
+    workouts.getAll.mockResolvedValue({ data: [cardioSet()] } as never);
+    renderDay();
+
+    expect(await screen.findByText("20:00")).toBeInTheDocument();
+    expect(screen.getByText("60 floors")).toBeInTheDocument();
+});
+
+it("logs a cardio set as time, amount and the exercise's unit", async () => {
+    const user = userEvent.setup();
+    workouts.getAll.mockResolvedValue({ data: [] } as never);
+    vi.mocked(exercisesApi).getAll.mockResolvedValue({ data: [stairmaster] } as never);
+    vi.mocked(exercisesApi).getRecent.mockResolvedValue({ data: [stairmaster] } as never);
+    vi.mocked(categoriesApi).getAll.mockResolvedValue({
+        data: [{ doc_id: 1, name: "Cardio", created_at: "2026-01-01" }],
+    } as never);
+    workouts.create.mockResolvedValue({ data: cardioSet() } as never);
+    renderDay();
+
+    await user.click(await screen.findByRole("button", { name: /^add$/i }));
+    await user.click(await screen.findByRole("button", { name: "Stairmaster" }));
+
+    // Weight and reps mean nothing here; the unit arrives prefilled.
+    expect(screen.queryByLabelText(/weight/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /unit/i })).toHaveTextContent("Floors");
+
+    await user.type(screen.getByLabelText(/time/i), "20:00");
+    await user.type(screen.getByLabelText(/amount/i), "60");
+    await user.click(screen.getByRole("button", { name: /add workout/i }));
+
+    await waitFor(() =>
+        expect(workouts.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                exercise: "Stairmaster",
+                duration_s: 1200,
+                amount: 60,
+                amount_unit: "floors",
+                weight: null,
+                reps: null,
+            }),
+        ),
+    );
+});
+
+it("keeps a cardio set's time and amount when its mobility flag is flipped", async () => {
+    workouts.getAll.mockResolvedValue({ data: [cardioSet()] } as never);
+    renderDay();
+    await waitFor(() => expect(toggle()).toBeInTheDocument());
+
+    await userEvent.click(toggle());
+
+    // The PUT is a full replace, so a field left out is a field erased.
+    await waitFor(() =>
+        expect(workouts.update).toHaveBeenCalledWith(
+            1,
+            expect.objectContaining({
+                is_mobility: true,
+                duration_s: 1200,
+                amount: 60,
+                amount_unit: "floors",
+            }),
+        ),
+    );
+});

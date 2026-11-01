@@ -38,6 +38,8 @@ import {
   History,
   Copy,
   StretchHorizontal,
+  Timer,
+  Ruler,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -67,6 +69,8 @@ import type { Workout } from "@/types/workout";
 import { useCategories, useExercises, useRecentExercises } from "@/hooks/useExercises";
 import { useProgression } from "@/hooks/useProgression";
 import type { WorkoutCreate } from "@/types/workout";
+import { CardioFields } from "@/components/CardioFields";
+import { formatAmount, formatDuration } from "@/lib/cardio";
 
 // Get weight increment based on current weight value
 const getWeightIncrement = (weight: number): number => {
@@ -78,6 +82,8 @@ const getWeightIncrement = (weight: number): number => {
 // Sortable workout card component
 interface SortableWorkoutCardProps {
   workout: Workout;
+  /** Edit as time + amount rather than weight x reps. */
+  isCardio: boolean;
   index: number;
   editingWorkout: Workout | null;
   confirmingDelete: number | null;
@@ -101,6 +107,7 @@ interface SortableWorkoutCardProps {
 
 const SortableWorkoutCard = ({
   workout,
+  isCardio,
   index,
   editingWorkout,
   confirmingDelete,
@@ -351,6 +358,34 @@ const SortableWorkoutCard = ({
                 </span>
               </div>
             )}
+            {workout.duration_s != null && (
+              <div className="workout-chip">
+                <Timer
+                  style={{
+                    width: "14px",
+                    height: "14px",
+                    color: "var(--accent)",
+                  }}
+                />
+                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
+                  {formatDuration(workout.duration_s)}
+                </span>
+              </div>
+            )}
+            {workout.amount != null && (
+              <div className="workout-chip">
+                <Ruler
+                  style={{
+                    width: "14px",
+                    height: "14px",
+                    color: "var(--accent)",
+                  }}
+                />
+                <span className="workout-chip__value" style={{ fontSize: "14px" }}>
+                  {formatAmount(workout.amount, workout.amount_unit)}
+                </span>
+              </div>
+            )}
             {workout.comment && (
               <div className="workout-chip">
                 <MessageSquare
@@ -389,6 +424,13 @@ const SortableWorkoutCard = ({
                 gap: "var(--space-4)",
               }}
             >
+              {isCardio ? (
+                <CardioFields
+                  idPrefix="edit"
+                  value={formData}
+                  onChange={(cardio) => setFormData({ ...formData, ...cardio })}
+                />
+              ) : (
               <div
                 className="grid grid-cols-1 md:grid-cols-2"
                 style={{ gap: "var(--space-4)" }}
@@ -502,6 +544,7 @@ const SortableWorkoutCard = ({
                   </div>
                 </div>
               </div>
+              )}
 
               <div className="form-field">
                 <Label htmlFor="comment-edit" className="form-label">
@@ -527,15 +570,18 @@ const SortableWorkoutCard = ({
                 className="grid grid-cols-2"
                 style={{ gap: "var(--space-3)" }}
               >
-                <Button
-                  type="button"
-                  variant={showRecentWeights ? "default" : "secondary"}
-                  onClick={() => setShowRecentWeights(!showRecentWeights)}
-                  className="w-full justify-center"
-                >
-                  <History style={{ width: "18px", height: "18px" }} />
-                  Recent
-                </Button>
+                {/* Recent is weight x reps history; a cardio set has neither. */}
+                {!isCardio && (
+                  <Button
+                    type="button"
+                    variant={showRecentWeights ? "default" : "secondary"}
+                    onClick={() => setShowRecentWeights(!showRecentWeights)}
+                    className="w-full justify-center"
+                  >
+                    <History style={{ width: "18px", height: "18px" }} />
+                    Recent
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="secondary"
@@ -714,6 +760,9 @@ const WorkoutSession = () => {
     distance: null,
     distance_unit: null,
     time: null,
+    duration_s: null,
+    amount: null,
+    amount_unit: null,
     comment: null,
   });
 
@@ -722,15 +771,25 @@ const WorkoutSession = () => {
     setFormData({ ...formData, category });
   };
 
-  const handleExerciseChange = (exercise: string) => {
+  // Picking an exercise decides which fields the set has. A cardio exercise
+  // prefills its unit and drops any weight/reps; a resistance one drops any
+  // cardio fields, so switching between the two cannot save a hybrid set.
+  const selectExercise = (exercise: string, category?: string) => {
     const exerciseData = exercises?.find((e) => e.name === exercise);
+    const cardioUnit = exerciseData?.cardio_unit ?? null;
     setSelectedExercise(exercise);
+    if (category) setSelectedCategory(category);
     setFormData({
       ...formData,
       exercise,
-      category: exerciseData?.category || formData.category,
+      category: category || exerciseData?.category || formData.category,
+      ...(cardioUnit
+        ? { weight: null, reps: null, amount_unit: cardioUnit }
+        : { duration_s: null, amount: null, amount_unit: null }),
     });
   };
+
+  const handleExerciseChange = (exercise: string) => selectExercise(exercise);
 
   const handleEditWorkout = (workout: Workout) => {
     setEditingWorkout(workout);
@@ -751,6 +810,9 @@ const WorkoutSession = () => {
       distance: workout.distance,
       distance_unit: workout.distance_unit,
       time: workout.time,
+      duration_s: workout.duration_s,
+      amount: workout.amount,
+      amount_unit: workout.amount_unit,
       comment: workout.comment,
     });
     // Don't show the top form when editing
@@ -768,6 +830,9 @@ const WorkoutSession = () => {
       distance: null,
       distance_unit: null,
       time: null,
+      duration_s: null,
+      amount: null,
+      amount_unit: null,
       comment: null,
     });
     setSelectedCategory("");
@@ -920,6 +985,9 @@ const WorkoutSession = () => {
           distance: workout.distance,
           distance_unit: workout.distance_unit,
           time: workout.time,
+          duration_s: workout.duration_s,
+          amount: workout.amount,
+          amount_unit: workout.amount_unit,
           comment: workout.comment,
           completed_at: workout.completed_at,
           order: workout.order,
@@ -938,6 +1006,15 @@ const WorkoutSession = () => {
 
   const categoryExercises =
     exercises?.filter((e) => e.category === selectedCategory) || [];
+
+  const isAddCardio = !!exercises?.find((e) => e.name === selectedExercise)
+    ?.cardio_unit;
+  // A set already carrying cardio fields edits as cardio even if its
+  // exercise has since been switched back to resistance.
+  const isCardioSet = (workout: Workout) =>
+    !!exercises?.find((e) => e.name === workout.exercise)?.cardio_unit ||
+    workout.duration_s != null ||
+    workout.amount_unit != null;
   const formattedDate = date ? format(parseISO(date), "MMMM d, yyyy") : "";
 
   const getCategoryColor = (category: string) => {
@@ -1263,15 +1340,7 @@ const WorkoutSession = () => {
                           <button
                             key={ex.doc_id}
                             type="button"
-                            onClick={() => {
-                              setSelectedCategory(ex.category);
-                              setSelectedExercise(ex.name);
-                              setFormData({
-                                ...formData,
-                                exercise: ex.name,
-                                category: ex.category,
-                              });
-                            }}
+                            onClick={() => selectExercise(ex.name, ex.category)}
                             style={{
                               padding: "8px 14px",
                               borderRadius: "var(--radius-sm)",
@@ -1362,6 +1431,13 @@ const WorkoutSession = () => {
                     </div>
                   </div>
 
+                  {isAddCardio ? (
+                    <CardioFields
+                      idPrefix="add"
+                      value={formData}
+                      onChange={(cardio) => setFormData({ ...formData, ...cardio })}
+                    />
+                  ) : (<>
                   <div className="form-field">
                     <Label htmlFor="weight" className="form-label">
                       <Weight style={{ width: "14px", height: "14px" }} />
@@ -1470,6 +1546,7 @@ const WorkoutSession = () => {
                       </button>
                     </div>
                   </div>
+                  </>)}
 
                   <div className="form-field" style={{ overflow: "hidden" }}>
                     <Label htmlFor="comment" className="form-label">
@@ -1499,7 +1576,7 @@ const WorkoutSession = () => {
                       marginTop: "var(--space-4)",
                     }}
                   >
-                    {selectedExercise && (
+                    {selectedExercise && !isAddCardio && (
                       <Button
                         type="button"
                         variant={showAddRecent ? "default" : "secondary"}
@@ -1666,6 +1743,7 @@ const WorkoutSession = () => {
                       <SortableWorkoutCard
                         key={workout.doc_id}
                         workout={workout}
+                        isCardio={isCardioSet(workout)}
                         index={index}
                         editingWorkout={editingWorkout}
                         confirmingDelete={confirmingDelete}

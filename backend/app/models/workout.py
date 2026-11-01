@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.cardio import CardioUnit
+
 
 class WorkoutBase(BaseModel):
     """Base workout model."""
@@ -24,6 +26,10 @@ class WorkoutBase(BaseModel):
     # the next. A mobility day is derived from these (d7e4f2a91b83), which is
     # what the agent reads to write the next session.
     is_mobility: bool = False
+    # A cardio set (plan 0017). Full replace on PUT, like weight and reps.
+    duration_s: int | None = Field(None, ge=0)
+    amount: float | None = Field(None, ge=0)
+    amount_unit: CardioUnit | None = None
 
 
 class WorkoutCreate(WorkoutBase):

@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models."""
 
 from datetime import datetime
+from typing import get_args
 
 from sqlalchemy import (
     Boolean,
@@ -19,6 +20,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.cardio import CardioUnit
+
+CARDIO_UNIT_SQL = ", ".join(f"'{u}'" for u in get_args(CardioUnit))
 
 
 class Category(Base):
@@ -54,6 +58,10 @@ class Exercise(Base):
         CheckConstraint(
             "rating IS NULL OR rating BETWEEN 1 AND 5", name="ck_exercises_rating"
         ),
+        CheckConstraint(
+            f"cardio_unit IS NULL OR cardio_unit IN ({CARDIO_UNIT_SQL})",
+            name="ck_exercises_cardio_unit",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -80,6 +88,12 @@ class Exercise(Base):
     # value is a candidate to cut, and a 1-rated movement of high value needs
     # its friction diagnosed rather than its place defended.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The unit a cardio exercise is measured in - and being non-null is what
+    # *makes* it cardio. There is deliberately no `is_cardio` beside it: a
+    # flag and a unit could disagree, and one column cannot (plan 0017). It is
+    # only the default a new set is prefilled with; each set carries its own
+    # `amount_unit`, so changing this relabels no history.
+    cardio_unit: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_used: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -110,6 +124,14 @@ class Workout(Base):
     __table_args__ = (
         Index("ix_workouts_date_order", "date", "order"),
         CheckConstraint("is_mobility IN (0, 1)", name="ck_workouts_is_mobility"),
+        CheckConstraint(
+            "duration_s IS NULL OR duration_s >= 0", name="ck_workouts_duration_s"
+        ),
+        CheckConstraint("amount IS NULL OR amount >= 0", name="ck_workouts_amount"),
+        CheckConstraint(
+            f"amount_unit IS NULL OR amount_unit IN ({CARDIO_UNIT_SQL})",
+            name="ck_workouts_amount_unit",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -135,6 +157,17 @@ class Workout(Base):
         nullable=False,
         server_default="0",
     )
+    # A cardio set: how long, and how much of what (plan 0017). Whole seconds
+    # so durations can be summed; the unit is in the name (ADR-0003 §4).
+    # `amount_unit` is copied from the exercise's `cardio_unit` when the set is
+    # logged and can differ from it - a run logged in km is still a run.
+    #
+    # Not the legacy `distance`/`distance_unit`/`time` above, which predate
+    # this and are not written by the app: floors are not a distance, and
+    # `time` is free text.
+    duration_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    amount_unit: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     exercise: Mapped[Exercise] = relationship("Exercise", back_populates="workouts")
     category: Mapped[Category] = relationship("Category", back_populates="workouts")

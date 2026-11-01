@@ -21,6 +21,7 @@ class ExerciseRepository:
             "form": exercise.form,
             "application": exercise.application,
             "rating": exercise.rating,
+            "cardio_unit": exercise.cardio_unit,
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
             "created_at": exercise.created_at,
@@ -91,6 +92,7 @@ class ExerciseRepository:
                 form=exercise.form,
                 application=exercise.application,
                 rating=exercise.rating,
+                cardio_unit=exercise.cardio_unit,
                 last_used=None,
                 use_count=0,
                 created_at=now,
@@ -154,6 +156,8 @@ class ExerciseRepository:
             # what the client actually sent.
             if "rating" in data.model_fields_set:
                 exercise.rating = data.rating
+            if "cardio_unit" in data.model_fields_set:
+                exercise.cardio_unit = data.cardio_unit
 
             session.commit()
             session.refresh(exercise)

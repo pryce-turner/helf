@@ -32,6 +32,9 @@ class WorkoutRepository:
             "updated_at": workout.updated_at,
             "completed_at": workout.completed_at,
             "is_mobility": bool(workout.is_mobility),
+            "duration_s": workout.duration_s,
+            "amount": workout.amount,
+            "amount_unit": workout.amount_unit,
         }
 
     def _get_or_create_category(self, session, name: str) -> Category:
@@ -134,6 +137,9 @@ class WorkoutRepository:
                 updated_at=now,
                 completed_at=workout_dict.get("completed_at"),
                 is_mobility=bool(workout_dict.get("is_mobility")),
+                duration_s=workout_dict.get("duration_s"),
+                amount=workout_dict.get("amount"),
+                amount_unit=workout_dict.get("amount_unit"),
             )
             session.add(new_workout)
             session.commit()
@@ -163,6 +169,9 @@ class WorkoutRepository:
             existing.distance_unit = workout_dict.get("distance_unit")
             existing.time = workout_dict.get("time")
             existing.comment = workout_dict.get("comment")
+            existing.duration_s = workout_dict.get("duration_s")
+            existing.amount = workout_dict.get("amount")
+            existing.amount_unit = workout_dict.get("amount_unit")
             if workout_dict.get("order") is not None:
                 existing.order = workout_dict.get("order")
             existing.completed_at = workout_dict.get("completed_at")
@@ -348,6 +357,9 @@ class WorkoutRepository:
                     # Copied sets keep their intent: a mobility session
                     # copied to another date is still mobility work.
                     is_mobility=source_workout.is_mobility,
+                    duration_s=source_workout.duration_s,
+                    amount=source_workout.amount,
+                    amount_unit=source_workout.amount_unit,
                 )
                 session.add(new_workout)
 

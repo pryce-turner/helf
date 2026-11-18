@@ -435,6 +435,10 @@ cd backend && QS_DB_PATH=../data/helf.db .venv/bin/python -m app.mcp.qs_mcp
 - Server instructions live in `docs/design/mcp-instructions.md` and are loaded
   at startup. Missing is fatal — an agent without them misreads this database
   confidently.
+- Clients that drop the FastMCP `instructions` string (Hermes does) still get
+  the protocol: the `mobility_protocol()` read tool returns the same file
+  verbatim, and every mobility tool's docstring ends by pointing at it. The
+  rules reach the agent where it acts, not only at startup.
 
 ## Architecture Layers
 

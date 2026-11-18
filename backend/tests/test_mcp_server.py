@@ -969,3 +969,49 @@ def _tool_names(server) -> set[str]:
     import anyio
 
     return {tool.name for tool in anyio.run(server.list_tools)}
+
+
+# --------------------------------------------------------------------------
+# The protocol meta-tool
+# --------------------------------------------------------------------------
+def test_mobility_protocol_returns_the_instructions(mcp):
+    """The meta-tool and the startup instructions are one text, not two.
+
+    A summary would drift from the file and the file is the source of record,
+    so the tool returns it verbatim — a client that dropped the instructions
+    string reads the same rules where it acts.
+    """
+    assert mcp.mobility_protocol() == mcp.load_instructions()
+    assert "loaded stretching" in mcp.mobility_protocol()
+
+
+def test_mobility_protocol_is_present_in_read_only_mode(mcp, monkeypatch):
+    """It is a read tool, so the safe mode must not be what hides the rules."""
+    monkeypatch.setattr(mcp, "READ_ONLY", True)
+    assert "mobility_protocol" in _tool_names(mcp.build_server())
+
+
+def test_protocol_constants_match_the_tool_docstrings(mcp):
+    """The duplication between PROTOCOL and the literal docstrings is
+    deliberate; this is what keeps it honest.
+
+    FastMCP serves `__doc__` — dedented by the compiler since 3.13 — so the
+    constants are held in that exact form and compared byte for byte. An edit
+    made to only one of the pair fails here rather than drifting.
+    """
+    tools = mcp.READ_TOOLS + mcp.WRITE_TOOLS + mcp.ALWAYS_TOOLS
+    assert set(mcp.PROTOCOL) == {tool.__name__ for tool in tools}
+    for tool in tools:
+        assert tool.__doc__ == mcp.PROTOCOL[tool.__name__], tool.__name__
+
+
+def test_mobility_tool_docstrings_point_at_the_meta_tool(mcp):
+    """A client that never saw the instructions still meets the pointer where
+    it acts — every mobility docstring ends by naming the source of record."""
+    for tool in (
+        mcp.read_latest_mobility_session,
+        mcp.read_pending_mobility_session,
+        mcp.write_next_mobility_session,
+        mcp.update_mobility_movement,
+    ):
+        assert "mobility_protocol()" in tool.__doc__, tool.__name__

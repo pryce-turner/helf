@@ -549,6 +549,27 @@ def log_workout(
 SESSION_KIND = "mobility_session"
 
 
+def mobility_protocol() -> str:
+    """The server's instructions, in full — and the mobility protocol's source
+    of record. Call this **first** in any mobility conversation, before reading
+    sessions and before prescribing.
+
+    Returns `docs/design/mcp-instructions.md` verbatim: how to read this
+    database, then the mobility program — the session loop, the program rules
+    the user has stated, the philosophy behind them. It is the same text the
+    server hands every client at startup as FastMCP `instructions`, which some
+    clients drop before the model ever sees it. The tool exists so that no
+    client has to surface that string for you to be held to the rules: if you
+    can call tools at all, you can read this.
+
+    The mobility tools' own docstrings are summaries of what is in here. Where
+    one of them seems to say something different, this wins.
+    """
+    # The file, not a summary of it — a summary would drift, and this is the
+    # one place drift is not allowed.
+    return load_instructions()
+
+
 def read_latest_mobility_session(date: str | None = None) -> dict:
     """Read the last mobility session that was actually performed, and what was
     said about it. Call this **before** write_next_mobility_session — it is the
@@ -579,6 +600,10 @@ def read_latest_mobility_session(date: str | None = None) -> dict:
     `rationale` is what the previous session was written to achieve, so you can
     tell an instruction that worked from one that was never tried. It is null
     for a session the user assembled by hand, because nothing prescribed it.
+
+    Before turning what you read here into a prescription, call
+    mobility_protocol() — the canonical session loop and program rules live
+    there; this docstring is the summary.
     """
     conn = _ro()
     try:
@@ -654,6 +679,10 @@ def read_pending_mobility_session() -> dict:
     two identical rows on the way out, in prescribed order. `pending` is false
     when nothing is waiting, and a rationale with no items is a leftover rather
     than a plan, so it is not reported on its own.
+
+    Before writing against any label you see here, call mobility_protocol() —
+    the canonical session loop and program rules live there; this docstring is
+    the summary.
     """
     conn = _ro()
     try:
@@ -734,6 +763,9 @@ def write_next_mobility_session(
     The user picks which pending session to run from the mobility tab, so a
     label that says what the session is *for* is worth more than one that says
     what is in it.
+
+    Before prescribing, call mobility_protocol() — the canonical session loop
+    and program rules live there; this docstring is the summary.
     """
     if not label or not label.strip():
         return {
@@ -878,6 +910,10 @@ def update_mobility_movement(
     a movement earns its place in the pool by having been used that way, which
     is the user's judgement expressed in the log rather than in a checkbox.
     Returns the previous values so you can see what you superseded.
+
+    Before writing back what a session taught you, call mobility_protocol() —
+    the canonical session loop and program rules live there; this docstring is
+    the summary.
     """
     if form is None and application is None and rating is None:
         return {"ok": False, "error": "provide form, application or rating"}
@@ -946,9 +982,241 @@ def update_mobility_movement(
 
 
 # --------------------------------------------------------------------------
+# The protocol as data
+# --------------------------------------------------------------------------
+# Every tool's docstring, held a second time as a plain string, in the exact
+# form `__doc__` carries it at runtime: Python 3.13 strips the common indent
+# from docstrings at compile time, which is why most of these sit at column 0
+# and one does not. FastMCP serves `__doc__`, so the copies are the text as
+# the client actually receives it — and, as data, what a summary or a test can
+# work with at all. The duplication is the point, and it is kept honest by a
+# test that asserts the two are identical, byte for byte. Edit both or neither.
+PROTOCOL = {
+    "query": """Run a single read-only SELECT and return rows.
+
+Free-form SQL is allowed because the connection is read-only, so any write
+is rejected by SQLite itself. Prefer the views - v_daily_summary,
+v_body_comp_daily, v_body_comp_series, v_metric_coverage. Results are
+capped at 1000 rows (`truncated` flags more). Call get_schema() first if
+unsure of names. SQL errors come back as text so you can fix and retry.
+""",
+
+    "get_schema": "Return the full DDL (tables and views) so you can write correct SQL.",
+
+    "daily_summary": """Per-day rows joining training, intake, body composition and notes, for
+the inclusive date range [start, end]. Dates are 'YYYY-MM-DD'.
+
+This is the object to reach for first. It is a view over the day spine, so
+a day appears if anything at all happened on it.
+""",
+
+    "add_metric": """Record a scalar measurement - mood, sleep_hours, alcohol_units, a weight.
+
+Log alcohol_units = 0 on dry days, so a streak query can tell a dry day
+from an unrecorded one. Provide `value` or `text_value`. `observed_at`
+defaults to now. `source` names the instrument or the observer; re-logging
+the same (observed_at, source, name) updates in place.
+
+Call get_metric_names() if unsure - the name must already be defined.
+""",
+
+    "get_metric_names": """List the metrics that may be written, and how much of each exists.
+
+Reads `v_metric_coverage`, not `metric_def`, because the two answer
+different questions: a metric can be defined with nothing behind it, and
+`n_rows = 0` is what distinguishes "never recorded" from "flat".
+""",
+
+    "add_note": """Save free text: `kind` is e.g. 'intention', 'review', 'injury'.
+
+For prose with no fixed shape. A named number over time is *not* a note -
+it has a shape already, and belongs in add_metric.
+
+`source` defaults to 'agent' here rather than 'manual', because a note
+written through this tool was written by a model.
+""",
+
+    "log_food": """Record a food consumption event.
+
+Resolves the food by (name, brand), creating it if new, then logs the
+serving. Pass macros only when creating a new food - to correct an existing
+food's macros, say so rather than re-passing them, because the correction
+is retroactive across every past entry.
+""",
+
+    "log_workout": """Log a training session. `sets` is a list of
+{exercise, reps, weight_lb, comment?}, in the order performed.
+
+**Weights are pounds** (ADR-0003), not kilograms.
+
+Exercises not already in the catalog are created and named back in
+`exercises_created` - check that list, because a name that appears there
+unexpectedly is a typo that has just become a permanent exercise.
+""",
+
+    "mobility_protocol": """The server's instructions, in full — and the mobility protocol's source
+of record. Call this **first** in any mobility conversation, before reading
+sessions and before prescribing.
+
+Returns `docs/design/mcp-instructions.md` verbatim: how to read this
+database, then the mobility program — the session loop, the program rules
+the user has stated, the philosophy behind them. It is the same text the
+server hands every client at startup as FastMCP `instructions`, which some
+clients drop before the model ever sees it. The tool exists so that no
+client has to surface that string for you to be held to the rules: if you
+can call tools at all, you can read this.
+
+The mobility tools' own docstrings are summaries of what is in here. Where
+one of them seems to say something different, this wins.
+""",
+
+    "read_latest_mobility_session": """Read the last mobility session that was actually performed, and what was
+said about it. Call this **before** write_next_mobility_session — it is the
+entire input to the next prescription.
+
+Pass a **`date`** (YYYY-MM-DD) to read a specific day instead of the most
+recent one — that is how you build a session from a day the user names
+rather than from whatever happened last. A named date with no flagged sets
+returns `found: false`: the flag is the only thing that says a set was
+mobility work, and programming from a day's lifting sets because they
+happened to be there is worse than reporting nothing.
+
+With no argument the session is **the mobility-flagged sets of the most
+recent day that has any**. `workouts.is_mobility` is per set, not per movement: the same
+exercise is a lift in one row and a loaded stretch in another, so a
+mobility session run alongside lifting comes back as its own sets rather
+than as the whole day. Sets the user did not flag are not part of it.
+
+Returns those sets in performed order with their `comment` fields. The
+comments are the user's feedback and the only feedback channel there is, so
+read every one: some describe the movement they hang off ("failed right
+side at 7"), and some are about the program as a whole ("keep this to 7
+movements max") and are attached to whichever set was on screen at the
+time. That last case is the cost of returning the subset — a program-level
+remark left on a lifting set is not here, so `query` the day if a session
+reads as though feedback is missing.
+
+`rationale` is what the previous session was written to achieve, so you can
+tell an instruction that worked from one that was never tried. It is null
+for a session the user assembled by hand, because nothing prescribed it.
+
+Before turning what you read here into a prescription, call
+mobility_protocol() — the canonical session loop and program rules live
+there; this docstring is the summary.
+""",
+
+    "read_pending_mobility_session": """Read the session that is on deck — written, but not yet run.
+
+Distinct from `read_latest_mobility_session`, which reads the last session
+*performed*. **Several can be pending at once** — rehabbing a low back and
+a shoulder means two prescriptions alive on different schedules — so this
+returns a list, each with the `label` that addresses it.
+
+Read it before writing, but the old rule ("stop if anything is pending") is
+gone: a write only replaces the session whose label it names. Check here so
+you write under the right label, and so you revise a session rather than
+adding a near-duplicate beside it.
+
+Rows come back one per set, as they are stored — `sets: 2` on the way in is
+two identical rows on the way out, in prescribed order. `pending` is false
+when nothing is waiting, and a rationale with no items is a leftover rather
+than a plan, so it is not reported on its own.
+
+Before writing against any label you see here, call mobility_protocol() —
+the canonical session loop and program rules live there; this docstring is
+the summary.
+""",
+
+    "write_next_mobility_session": """Write a pending mobility session under `label`, creating or replacing it.
+
+**`label` is the key.** "Low back", "Shoulder" — a new one adds a session
+to the tab, an existing one replaces *that* session and cannot touch the
+others. This is what lets two rehab programmes run at once, and it is why
+writing no longer discards whatever was waiting. Use the label the user
+uses; check `read_pending_mobility_session()` first so you revise rather
+than duplicate.
+
+`items` is the routine in the order it is to be performed. Each is
+{exercise, sets?, reps?, weight_lb?, category?}:
+
+- **`sets` expands into rows**, one per set, because that is how the user
+  logs — "8 and then 10 reps" is two different numbers and needs two rows
+  to land in. `sets: 2, reps: 8` becomes two rows of 8.
+- **`weight_lb` is pounds** (ADR-0003).
+- **There is no per-set comment, and passing one is an error.** The set's
+  comment field is the user's, and only the user's — see `rationale`.
+
+`rationale` is what you changed and why, for the whole session. The user
+reads it on the mobility tab before running the session, so write it to
+them, not to yourself, and put **everything** there: loads, cues, what
+moved since last time and why.
+
+It used to be split — reasoning here, cues on the individual sets — and
+the cues travelled onto the logged rows, landing in the one field the user
+writes feedback into. Anything they did not overwrite came back on the next
+read as though they had said it. On 2026-08-22 the lateral raise returned
+"down from 25lb, your call — 15 is where it last moved cleanly", which was
+the previous prescription's text, still describing a weight the user had
+already overruled. A prescription that reads back as feedback is worse than
+no cue at all, because it is indistinguishable from the thing it corrupts.
+
+So the field is left empty on the way out, and a non-empty comment on a
+mobility set now means exactly one thing: the user wrote it.
+
+The user picks which pending session to run from the mobility tab, so a
+label that says what the session is *for* is worth more than one that says
+what is in it.
+
+Before prescribing, call mobility_protocol() — the canonical session loop
+and program rules live there; this docstring is the summary.
+""",
+
+    "update_mobility_movement": """Record what a session taught you about a movement — the write-back step
+    of the loop, after the next session has been prescribed.
+
+**`application` is the field you are usually here for.** Write it as
+    symptom → likely cause → what to change: "second set drops 3+ reps →
+    load too high to hold → take 5lb off rather than cutting the set". That is
+    what turns next session's comment into a decision, and it is the only part
+    of this database that compounds.
+
+    **`form` is how to perform the movement** — reference material, changed
+    only when the movement is genuinely set up differently. You will rarely
+    touch it. It is a separate field precisely so that recording what you
+    learned cannot damage it: this was one `notes` blob until e2b9c4d17a05, and
+    writing to it meant re-emitting the setup instructions from memory every
+    time, where a single slip silently rewrote reference material.
+
+    Both are **current state, not a log.** Each replaces what is there, so
+    carry forward everything still true in *that* field and supersede only what
+    is not. The running history is the sessions themselves; a field that
+    accumulates becomes a changelog nobody reads, including you.
+
+    `rating` is 1-5 enjoyment and exists to protect adherence, so set it
+    **only from a direct statement of liking or disliking**. "Hard" and
+    "frustrating" are not "disliked", and inferring it from performance
+    destroys the one thing the column is for.
+
+    Omit a field to leave it alone. Restricted to movements that have actually
+    been performed as mobility work — at least one logged set with
+    `is_mobility = 1`. This is the mobility loop's tool, not an exercise
+    editor, and since d7e4f2a91b83 there is no flag on the exercise to gate on:
+    a movement earns its place in the pool by having been used that way, which
+    is the user's judgement expressed in the log rather than in a checkbox.
+    Returns the previous values so you can see what you superseded.
+
+    Before writing back what a session taught you, call mobility_protocol() —
+    the canonical session loop and program rules live there; this docstring is
+    the summary.
+    """,
+}
+
+
+# --------------------------------------------------------------------------
 # Server assembly
 # --------------------------------------------------------------------------
 READ_TOOLS = (query, get_schema, daily_summary, get_metric_names,
+              mobility_protocol,
               read_latest_mobility_session, read_pending_mobility_session)
 WRITE_TOOLS = (add_metric, add_note, log_food, log_workout)
 

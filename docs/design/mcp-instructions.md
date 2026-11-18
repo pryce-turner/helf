@@ -1,8 +1,10 @@
 # Server instructions for the Helf MCP server
 
 Loaded verbatim at startup by `backend/app/mcp/qs_mcp.py` and handed to every
-client as FastMCP `instructions`. This file is the source of record; editing it
-changes what the model is told.
+client as FastMCP `instructions`, and returned verbatim by the
+`mobility_protocol()` tool — clients that drop the instructions string before
+the model sees it (Hermes does) still get this text where they act. This file
+is the source of record; editing it changes what the model is told.
 
 Everything here is a thing the tool signatures cannot express and that an agent
 gets wrong by default. Keep it short — instructions that go unread protect
@@ -70,7 +72,7 @@ than what you inferred, and use `source` to keep the two apart.
 
 This is the one thing here you *run* rather than answer questions about. Each
 routine is adjusted one session at a time — not a program generated in advance
-and then followed. All four mobility tools are available in both modes.
+and then followed. All five mobility tools are available in both modes.
 
 **Several sessions can be pending at once**, each addressed by a `label`:
 rehabbing a low back and a shoulder means two prescriptions alive on different

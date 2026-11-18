@@ -111,7 +111,14 @@ export default defineConfig({
     server: {
         port: 5173,
         host: true,
-        allowedHosts: ["dev.pryce.fyi"],
+        // `true` disables the host check, so any Host header gets in — a
+        // tunnel, a LAN name, a raw IP. The check is there to stop DNS
+        // rebinding: a page on some other site resolving to 127.0.0.1 and
+        // reading source off this server. That needs a dev server listening
+        // and a browser on the same machine, and this one is a personal app
+        // on a home network, so the trade is worth never hitting the block
+        // again. Revert to a host list before exposing this any wider.
+        allowedHosts: true,
         proxy: {
             "/api": {
                 target: "http://localhost:8000",

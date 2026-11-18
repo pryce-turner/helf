@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   CirclePause,
@@ -11,11 +11,15 @@ import {
   Plus,
   RotateCcw,
   RotateCw,
+  Shuffle,
   Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
+import { useMovementBreakPool } from "@/hooks/useExercises";
+import { useLogMovementBreak } from "@/hooks/useMobility";
+import type { Exercise } from "@/types/exercise";
 
 /**
  * Client-side interval timer — a circuit of exercises, each a work interval
@@ -38,6 +42,13 @@ import { Button } from "@/components/ui/button";
  * timing system to keep in step with the first — not worth it for a workout
  * timer the user is looking at. A screen wake lock is held while running so
  * the phone does not sleep — and so stop the loop — mid-session.
+ *
+ * Movement break is the same machine pointed at one movement: the shuffle picks an
+ * equipment-free movement and sets the times from it, and a run that reaches
+ * the end writes itself to the day as mobility sets. The movement and the
+ * times stay separate afterwards — adjusting a setting does not swap the
+ * movement out, and what gets logged is what the timer was set to when the
+ * run finished rather than the movement's default.
  */
 
 interface TimerSettings {
@@ -54,7 +65,7 @@ interface TimerSettings {
   roundRestSeconds: number;
 }
 
-type PhaseKind = "work" | "rest" | "roundRest";
+type PhaseKind = "getReady" | "work" | "rest" | "roundRest";
 
 interface Phase {
   kind: PhaseKind;
@@ -70,12 +81,65 @@ type Status = "idle" | "running" | "paused" | "done";
 
 const STORAGE_KEY = "helf-interval-timer-settings";
 
+/**
+ * The lead-in before the first work of a session: once per Start, never
+ * between exercises or rounds. Not a setting and not part of `buildPhases`,
+ * so the READY total stays the workout's own length.
+ */
+const GET_READY_MS = 5000;
+
 const DEFAULT_SETTINGS: TimerSettings = {
   workSeconds: 20,
   restSeconds: 10,
   exercises: 5,
   rounds: 2,
   roundRestSeconds: 10,
+};
+
+/**
+ * The rest a movement break bout gets: half the work, inside 10 and 30 seconds. A
+ * flat 15s would be a long wait after a 20s movement and a short one after a
+ * 60s hold.
+ */
+const breakRest = (workSeconds: number): number =>
+  Math.min(30, Math.max(10, Math.round(workSeconds / 2)));
+
+/** How many candidates the shuffle draws before picking one. */
+const SHUFFLE_CANDIDATES = 3;
+
+/** NULL `last_used` sorts first: never done, so the most overdue. */
+const leastRecentlyUsed = (movements: Exercise[]): Exercise =>
+  movements.reduce((a, b) => ((a.last_used ?? "") <= (b.last_used ?? "") ? a : b));
+
+/**
+ * Three candidates, then the least recently used of them.
+ *
+ * Not uniform over the pool: that hands back the movement just done one time
+ * in twenty-eight, which for something run several times a day is a repeat
+ * most days. Three candidates and a tiebreak makes a repeat rare without
+ * becoming a rotation the user has to wait through.
+ */
+const shuffleMovement = (
+  pool: Exercise[],
+  currentName: string | null,
+): Exercise | null => {
+  if (pool.length === 0) return null;
+
+  const choices = pool.filter((m) => m.name !== currentName);
+  // A pool of one has nothing to choose between; excluding the current pick
+  // must not leave the button dead.
+  if (choices.length === 0) return pool[0];
+  if (choices.length <= SHUFFLE_CANDIDATES) return leastRecentlyUsed(choices);
+
+  // Partial Fisher-Yates: three draws, no replacement, no full sort.
+  const remaining = [...choices];
+  const drawn: Exercise[] = [];
+  for (let i = 0; i < SHUFFLE_CANDIDATES; i++) {
+    const index = i + Math.floor(Math.random() * (remaining.length - i));
+    [remaining[i], remaining[index]] = [remaining[index], remaining[i]];
+    drawn.push(remaining[i]);
+  }
+  return leastRecentlyUsed(drawn);
 };
 
 const clampInt = (
@@ -156,6 +220,18 @@ const buildPhases = (settings: TimerSettings): Phase[] => {
   return phases;
 };
 
+/** The schedule a Start actually runs: the lead-in, then the workout. */
+const buildRunPhases = (settings: TimerSettings): Phase[] => [
+  {
+    kind: "getReady",
+    round: 1,
+    exercise: 1,
+    lastOfRound: false,
+    durationMs: GET_READY_MS,
+  },
+  ...buildPhases(settings),
+];
+
 /** mm:ss of the second the countdown is currently in (ceil, not floor). */
 const formatClock = (ms: number): string => {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
@@ -179,7 +255,8 @@ interface BeepSpec {
  * rising run — and none is a variant of another:
  *
  *   pip pip pip   last three seconds of any phase; high before work starts
- *                 ("get ready"), low before work stops ("nearly there")
+ *                 ("get ready"), low before work stops ("nearly there").
+ *                 The 5s lead-in after Start is silent until these.
  *   GO            work starts: one long bright tone, the loudest cue
  *   fall          rest starts: two soft notes stepping down
  *   ding-ding     a round ends, then one tap per round done (2 taps = round 2
@@ -196,6 +273,7 @@ const PIP_BEFORE_WORK: BeepSpec[] = [{ frequency: 988, durationMs: 70, gain: 0.2
 const PIP_BEFORE_REST: BeepSpec[] = [{ frequency: 698, durationMs: 70, gain: 0.25 }];
 
 const COUNTDOWN_PIP: Record<PhaseKind, BeepSpec[]> = {
+  getReady: PIP_BEFORE_WORK,
   work: PIP_BEFORE_REST,
   rest: PIP_BEFORE_WORK,
   roundRest: PIP_BEFORE_WORK,
@@ -300,6 +378,7 @@ const playBeeps = (ctx: AudioContext, specs: BeepSpec[]) => {
  */
 const HERO_COLOR = {
   idle: "#e2504f",
+  getReady: "#2563eb",
   work: "#16a34a",
   rest: "#dc2626",
   roundRest: "#ca8a04",
@@ -307,6 +386,7 @@ const HERO_COLOR = {
 } as const;
 
 const PHASE_LABEL: Record<PhaseKind, string> = {
+  getReady: "GET READY",
   work: "WORK",
   rest: "REST",
   roundRest: "ROUND RESET",
@@ -479,6 +559,7 @@ const SettingRow = ({
 
 const IntervalTimer = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [settings, setSettings] = useState<TimerSettings>(loadSettings);
   const [phases, setPhases] = useState<Phase[]>(() => buildPhases(settings));
@@ -489,10 +570,40 @@ const IntervalTimer = () => {
   );
   const [openSetting, setOpenSetting] = useState<SettingKey | null>(null);
 
+  // Movement break. The movement is state of its own rather than a setting, because
+  // it is not one of the five rows: it names what the run is *of*, and the
+  // rows stay adjustable around it.
+  const [movement, setMovement] = useState<Exercise | null>(null);
+  // Which pool the auto-shuffle has already picked from, so it picks once.
+  const [seenPool, setSeenPool] = useState<Exercise[] | null>(null);
+
   const endAtRef = useRef(0);
   const rafRef = useRef(0);
   const audioRef = useRef<AudioContext | null>(null);
   const lastTickSecondRef = useRef(-1);
+
+  const { data: pool, isLoading: poolLoading } = useMovementBreakPool();
+  const logMovementBreak = useLogMovementBreak();
+
+  // A run is identified by a counter bumped on Start, and the log records
+  // which run it has written. Without it a re-render after `done` could post
+  // the same session twice, and two identical sets would be indistinguishable
+  // from a run that was done twice.
+  const runIdRef = useRef(0);
+  const loggedRunRef = useRef(-1);
+  // Read inside the rAF tick, which is not a render: the movement has to be
+  // visible there without putting it in the loop's dependencies.
+  const movementRef = useRef<Exercise | null>(null);
+  // The countdown effect's dependencies are the schedule, not the render. A
+  // callback rebuilt every render would cancel and re-request the frame each
+  // time, so it is reached through a ref instead of a dependency.
+  const logRunRef = useRef<() => void>(() => {});
+
+  // A ref, not a dependency of the countdown: the tick needs the movement
+  // without re-requesting its frame whenever one is chosen.
+  useEffect(() => {
+    movementRef.current = movement;
+  }, [movement]);
 
   // Settings persist across visits, on this device only.
   useEffect(() => {
@@ -538,6 +649,9 @@ const IntervalTimer = () => {
         setRemainingMs(0);
         setStatus("done");
         if (audioRef.current) playBeeps(audioRef.current, SESSION_DONE);
+        // Only a run that reached the end is written. Resetting halfway
+        // abandons it, and an abandoned session is not history.
+        logRunRef.current();
         return;
       }
       const prev = phases[phaseIndex];
@@ -607,15 +721,17 @@ const IntervalTimer = () => {
   };
 
   const handleStart = () => {
-    const ctx = ensureAudio();
-    const schedule = buildPhases(settings);
+    ensureAudio();
+    const schedule = buildRunPhases(settings);
     setOpenSetting(null);
     setPhases(schedule);
     setPhaseIndex(0);
+    runIdRef.current += 1;
     lastTickSecondRef.current = -1;
     endAtRef.current = performance.now() + schedule[0].durationMs;
     setRemainingMs(schedule[0].durationMs);
-    if (ctx) playBeeps(ctx, WORK_START);
+    // No GO here: the lead-in pips count down to it, and it sounds as the
+    // first work starts. The tap still has to create the AudioContext.
     setStatus("running");
   };
 
@@ -627,11 +743,15 @@ const IntervalTimer = () => {
 
   const handlePause = () => setStatus("paused");
 
+  // Back to the workout's own schedule, without the lead-in a Start adds.
+  // The rows are locked mid-run, so `settings` is what the run was built from.
   const handleReset = () => {
+    const schedule = buildPhases(settings);
     setStatus("idle");
+    setPhases(schedule);
     setPhaseIndex(0);
     lastTickSecondRef.current = -1;
-    setRemainingMs(phases[0].durationMs);
+    setRemainingMs(schedule[0].durationMs);
   };
 
   // Reachable only while idle or done — the rows are disabled mid-run — so a
@@ -643,10 +763,85 @@ const IntervalTimer = () => {
     setSettings(next);
     setPhases(schedule);
     setPhaseIndex(0);
-    lastTickSecondRef.current = -1;
+    // Not resetting the pip dedupe here, unlike `handleStart`: this runs
+    // during render as well as from a tap, and a ref is not writable there.
+    // The dedupe is reset when a run starts and at every phase boundary, so a
+    // stale value can only cost the first pip of the first phase.
     setRemainingMs(schedule[0].durationMs);
     setStatus("idle");
   };
+
+  /**
+   * Point the timer at a movement from the pool, and set the times from it.
+   *
+   * The times are *prepopulated*, not imposed: this is the last thing to
+   * touch them, and every row stays editable afterwards.
+   */
+  const loadMovement = (next: Exercise) => {
+    const workSeconds = next.movement_break_seconds ?? settings.workSeconds;
+    setMovement(next);
+    handleSettingsChange({
+      workSeconds,
+      restSeconds: breakRest(workSeconds),
+      exercises: 2,
+      rounds: 1,
+    });
+  };
+
+  const handleShuffle = () => {
+    const next = shuffleMovement(pool ?? [], movement?.name ?? null);
+    if (next) loadMovement(next);
+  };
+
+  /**
+   * Write the run to the day, as it was actually run.
+   *
+   * Counted off `phases` rather than the settings rows, because `phases` is
+   * the schedule the countdown followed: if a row was edited mid-planning,
+   * the schedule is what happened.
+   *
+   * Called from the tick, at the one point reached exactly once per session —
+   * not from an effect, where a later re-render could fire it again.
+   */
+  const logFinishedRun = () => {
+    const current = movementRef.current;
+    if (!current) return;
+    if (loggedRunRef.current === runIdRef.current) return;
+    loggedRunRef.current = runIdRef.current;
+
+    const work = phases.filter((p) => p.kind === "work");
+    logMovementBreak.mutate({
+      exercise: current.name,
+      sets: work.length,
+      seconds: Math.round(work[0].durationMs / 1000),
+    });
+  };
+
+  // Handed to the tick through a ref rather than a dependency, so the
+  // countdown effect keeps depending on the schedule instead of the render.
+  useEffect(() => {
+    logRunRef.current = logFinishedRun;
+  });
+
+  // `/timer?break=1` — the way in from the mobility tab, so the page opens
+  // on a movement rather than on a button.
+  //
+  // Adjusted during render rather than in an effect, because the pool arrives
+  // asynchronously and this is the "adjust state when a value changes" case
+  // React documents: guarded on the pool's identity, it settles before the
+  // browser paints instead of showing an empty page for one frame first.
+  // Compared through the same normalisation on both sides. `pool` is
+  // `undefined` while the query is in flight and `seenPool` is `null` before
+  // it has seen one, so comparing the raw values is never equal and the
+  // render loops.
+  const poolSeen = pool ?? null;
+  if (poolSeen !== seenPool) {
+    setSeenPool(poolSeen);
+    if (pool?.length && !movement && searchParams.get("break") === "1") {
+      const first = shuffleMovement(pool, null);
+      if (first) loadMovement(first);
+    }
+  }
 
   const isLive = status === "running" || status === "paused";
   const phase = phases[phaseIndex];
@@ -654,6 +849,19 @@ const IntervalTimer = () => {
   const sessionLeftMs =
     remainingMs +
     phases.slice(phaseIndex + 1).reduce((sum, p) => sum + p.durationMs, 0);
+
+  // Whether a finished run reached the log. Shown rather than swallowed: a
+  // session that silently did not get written is worse than one that did not
+  // run, because the user believes it counted.
+  const logState = !movement
+    ? null
+    : logMovementBreak.isPending
+      ? "Saving…"
+      : logMovementBreak.isSuccess
+        ? `Logged · ${logMovementBreak.data?.sets ?? 0} × ${logMovementBreak.data?.time ?? ""}`
+        : logMovementBreak.isError
+          ? "Not logged — the write failed"
+          : null;
 
   // Idle shows the whole session's length, the way the screenshot's 04:50 is
   // 5 × 20s work + 4 × 10s rest, twice, plus one 10s reset. Running shows the
@@ -664,7 +872,12 @@ const IntervalTimer = () => {
           label: "DONE",
           color: HERO_COLOR.done,
           clock: "00:00",
-          detail: `${settings.rounds} round${settings.rounds !== 1 ? "s" : ""} complete`,
+          detail: [
+            `${settings.rounds} round${settings.rounds !== 1 ? "s" : ""} complete`,
+            logState,
+          ]
+            .filter(Boolean)
+            .join(" · "),
         }
       : status === "idle"
         ? {
@@ -727,6 +940,63 @@ const IntervalTimer = () => {
           </div>
 
           <div className="interval-timer animate-in">
+            {/* Movement break — the movement, above the clock it is timed against. */}
+            {movement ? (
+              <div className="movement-break-card">
+                <div className="movement-break-card__head">
+                  <div className="movement-break-card__title">
+                    <span className="movement-break-card__name">{movement.name}</span>
+                    <span className="movement-break-card__category">
+                      {movement.category}
+                    </span>
+                  </div>
+                  <div className="movement-break-card__actions">
+                    <button
+                      type="button"
+                      className="movement-break-card__btn"
+                      onClick={handleShuffle}
+                      disabled={isLive}
+                      aria-label="Shuffle a different movement"
+                    >
+                      <Shuffle style={{ width: "14px", height: "14px" }} />
+                      Shuffle
+                    </button>
+                    <button
+                      type="button"
+                      className="movement-break-card__btn"
+                      onClick={() => setMovement(null)}
+                      disabled={isLive}
+                      aria-label="Clear the movement"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                {movement.form && (
+                  <p className="movement-break-card__form">{movement.form}</p>
+                )}
+              </div>
+            ) : (pool?.length ?? 0) > 0 ? (
+              <button
+                type="button"
+                className="movement-break-shuffle"
+                onClick={handleShuffle}
+                disabled={isLive}
+              >
+                <Shuffle style={{ width: "18px", height: "18px" }} />
+                Movement break — shuffle a movement
+              </button>
+            ) : (
+              // Only worth saying to someone who came here for a movement break.
+              !poolLoading &&
+              searchParams.get("break") === "1" && (
+                <p className="movement-break-empty">
+                  No movements are set up for movement breaks yet. Add one
+                  from the Exercises page and it will start appearing here.
+                </p>
+              )
+            )}
+
             {/* Countdown */}
             <div
               className="timer-hero"
@@ -737,7 +1007,7 @@ const IntervalTimer = () => {
                 role="timer"
                 aria-label={
                   isLive
-                    ? `${display.label}, exercise ${phase.exercise} of ${settings.exercises}, round ${phase.round} of ${settings.rounds}`
+                    ? `${display.label}, exercise ${phase.exercise} of ${settings.exercises}, round ${phase.round} of ${settings.rounds}${movement ? `, ${movement.name}` : ""}`
                     : display.label
                 }
                 className="timer-hero__clock"
@@ -763,6 +1033,20 @@ const IntervalTimer = () => {
                   style={PrimaryIcon === Play ? { marginLeft: "4px" } : undefined}
                 />
               </button>
+              {status === "done" && logMovementBreak.isError && (
+                <button
+                  type="button"
+                  className="movement-break-retry"
+                  onClick={() => {
+                    // Unwritten rather than already-written: let the same run
+                    // through the once-per-run guard again.
+                    loggedRunRef.current = -1;
+                    logFinishedRun();
+                  }}
+                >
+                  Retry logging
+                </button>
+              )}
               {status !== "idle" && (
                 <button
                   type="button"

@@ -41,6 +41,7 @@ table.
 | 0014 | [Several mobility sessions](0014-several-mobility-sessions.md) | Implemented 2026-08-20 | `b6f31a90c4de` | Retires 0012 §2's "one rolling routine, not a queue" |
 | 0015 | [The scale talks to the browser](0015-scale-over-web-bluetooth.md) | **In progress** | `f8a9cbb`, `00672bf` | Working on real hardware, desktop and Android. One question left (§10): whether several weighings between drains all arrive, or only the latest. §4 is revised — the scale sends undelivered readings, not its whole buffer |
 | 0016 | [Supplements leave the food page](0016-supplements-leave-the-food-page.md) | Implemented 2026-08-20 | no migration | — |
+| 0017 | [Popcorn: equipment-free mobility, timed](0017-popcorn-mobility.md) | Implemented 2026-11-16 | `5d1a7c3e8f02`, renamed to *movement break* in `c8e1f4a7b293` | The pool is seeded by `migrations/seed_movement_break_pool.py`, not the migration — run it on a fresh install (§2) |
 
 ## Where things stand
 

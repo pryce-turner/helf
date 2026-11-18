@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
 import Mobility from "./Mobility";
-import { mobilityApi } from "@/lib/api";
+import { exercisesApi, mobilityApi } from "@/lib/api";
 
 vi.mock("@/lib/api", async (importOriginal) => {
     const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -23,10 +23,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
             transfer: vi.fn(),
             clearPending: vi.fn(),
         },
+        // The page's movement break card reads the pool. Left unmocked it would
+        // attempt a real request from the test and fail it silently.
+        exercisesApi: { ...actual.exercisesApi, getMovementBreaks: vi.fn() },
     };
 });
 
 const mobility = vi.mocked(mobilityApi);
+const pool = vi.mocked(exercisesApi.getMovementBreaks);
 
 const row = (
     exercise: string,
@@ -75,7 +79,37 @@ const LAST_SESSION = {
     ],
 };
 
+const POOL = [
+    {
+        doc_id: 1,
+        name: "Deep Squat Hold",
+        category: "Legs",
+        form: "Sink and stay.",
+        application: null,
+        rating: null,
+        movement_break_seconds: 40,
+        last_used: null,
+        use_count: 0,
+        created_at: "2026-11-12",
+    },
+    {
+        doc_id: 2,
+        name: "Wall Angel",
+        category: "Shoulders",
+        form: "Three contact points.",
+        application: null,
+        rating: null,
+        movement_break_seconds: 40,
+        last_used: null,
+        use_count: 0,
+        created_at: "2026-11-12",
+    },
+];
+
 beforeEach(() => {
+    // Empty by default: "One of 2 movements" would otherwise match the
+    // `/2 movements/` assertion in the prescription-folding test below.
+    pool.mockResolvedValue({ data: [] } as never);
     vi.clearAllMocks();
     // One test mocks the clock to pin down the timezone bug. Reset here rather
     // than at the end of that test, so a failure part-way through cannot leave
@@ -256,4 +290,29 @@ it("lists every pending session, each with its own label and controls", async ()
     await waitFor(() =>
         expect(mobility.transfer).toHaveBeenCalledWith("2026-08-21", 2),
     );
+});
+
+it("offers a movement break whenever the pool has movements, in either state", async () => {
+    pool.mockResolvedValue({ data: POOL } as never);
+    mobility.getPending.mockResolvedValue({
+        data: { ready: false, sessions: [], last_session: null },
+    } as never);
+    renderPage(<Mobility />);
+
+    // A count, not a bare button: the pool is what makes the link worth
+    // following, and an empty one makes it a dead end.
+    expect(await screen.findByText(/One of 2 movements/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Shuffle/ })).toBeEnabled();
+});
+
+it("says where to fill the pool rather than offering an empty shuffle", async () => {
+    mobility.getPending.mockResolvedValue({
+        data: { ready: false, sessions: [], last_session: null },
+    } as never);
+    renderPage(<Mobility />);
+
+    expect(
+        await screen.findByText(/No movements in the pool yet/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Shuffle/ })).toBeDisabled();
 });

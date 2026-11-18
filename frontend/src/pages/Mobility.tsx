@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   ArrowRight,
   CalendarDays,
   Check,
   MessageSquare,
+  Coffee,
   Sparkles,
+  Timer,
   Trash2,
   X,
 } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import TrainingSectionTabs from '@/components/TrainingSectionTabs';
+import { useMovementBreakPool } from '@/hooks/useExercises';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
@@ -348,6 +352,65 @@ const PendingSessionCard = ({ session }: { session: MobilityPendingSession }) =>
   );
 };
 
+/**
+ * Movement break: one equipment-free movement, timed, for between tasks.
+ *
+ * A link and not a session. It is not prescribed in advance and is not the
+ * agent's to write, so there is nothing here for `mobility_plan` to hold — the
+ * timer does the timing and writes the sets when the run finishes.
+ *
+ * The pool size is on the card because an empty pool makes the button a dead
+ * end, and the Exercises page is where it gets filled.
+ */
+const MovementBreakCard = () => {
+  const navigate = useNavigate();
+  const { data: pool } = useMovementBreakPool();
+  const count = pool?.length ?? 0;
+
+  return (
+    <Card className="animate-in">
+      <CardContent
+        className="flex items-center justify-between flex-wrap"
+        style={{ gap: 'var(--space-4)' }}
+      >
+        <div style={{ minWidth: 0, flex: '1 1 240px' }}>
+          <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+            <Coffee
+              style={{
+                width: '18px',
+                height: '18px',
+                color: 'var(--warning)',
+              }}
+            />
+            <h2 className="font-display text-lg tracking-tight">MOVEMENT BREAK</h2>
+          </div>
+          <p
+            style={{
+              fontSize: '13px',
+              color: 'var(--text-muted)',
+              marginTop: 'var(--space-1)',
+              lineHeight: 1.5,
+            }}
+          >
+            {count === 0
+              ? 'No movements in the pool yet. Add one from the Exercises page.'
+              : `One of ${count} movements, a minute or two between tasks. Logged when the run finishes.`}
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          onClick={() => navigate('/timer?break=1')}
+          disabled={count === 0}
+          style={{ flexShrink: 0 }}
+        >
+          <Timer style={{ width: '16px', height: '16px' }} />
+          Shuffle
+        </Button>
+      </CardContent>
+    </Card>
+  );
+};
+
 const Mobility = () => {
   const { data, isLoading } = useMobilityPending();
 
@@ -364,6 +427,8 @@ const Mobility = () => {
           </div>
 
           <TrainingSectionTabs />
+
+          <MovementBreakCard />
 
           {isLoading ? (
             <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>

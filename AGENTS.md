@@ -553,6 +553,11 @@ docker-compose up -d
 - `GET /categories/{name}` - Get category by name
 - `GET /categories/{name}/exercises` - Exercises in category
 - `POST /categories/` - Create category
+- `GET /movement-breaks` - **The movement break pool**: movements with a `movement_break_seconds`,
+  and their default bout. Registered above `/{exercise_name}`, which would
+  otherwise match "movement-breaks" and 404. A dedicated read rather than a filter over
+  `GET /` because the catalog carries every movement's `form` and
+  `application`, and the shuffle runs on a phone in an office (plan 0017 §2)
 
 ### Progression (`/api/progression`)
 - `GET /` - Main lifts progression (Bench, Squat, Deadlift)
@@ -618,6 +623,13 @@ docker-compose up -d
   mobility work. Transferring one leaves the others pending
 - `DELETE /pending/{session}` - Discard one pending session without running it,
   taking both its rows and the plan row that names them
+- `POST /movement-break` - Write a **finished movement break run** to a day: `{exercise,
+  sets, seconds, date?}`. One row per timed interval, all `is_mobility`, all
+  with `reps` NULL and `time` as `m:ss` — a timed hold is not a rep (ADR-0005)
+  — and none with a comment, which is the user's field. `seconds` is what the
+  timer was set to when the run ended, not the movement's default. 404 on an
+  unknown movement. Called automatically when the timer's run finishes (plan
+  0017 §4)
 - `POST /pending` - Write one pending session under `label`, creating it or
   replacing *that* session: `{label, rationale, items: [{exercise, sets=1,
   reps?, weight_lb?, category?}]}`. The same contract as the MCP tool
@@ -760,6 +772,40 @@ model section above.*
   so that the agent recording what a session taught it cannot damage how the
   movement is performed — with one blob it had to re-emit the setup
   instructions from memory on every write
+
+### Movement break — equipment-free, timed, between tasks
+
+One movement, held or repeated for a timed interval, done in the office with no
+equipment. 30 seconds on, a short rest, 30 seconds on — a minute or two. It is
+the interval timer doing the timing and a shuffle deciding what to do.
+
+Plan 0017 built this under the codename **popcorn**; `c8e1f4a7b293` renamed the
+column (`popcorn_seconds` → `movement_break_seconds`), its CHECK and the API
+routes to match the UI. Audit rows written before that revision still carry
+the old key — `audit_log` is append-only, so read the two as one field.
+
+- **The pool is `exercises.movement_break_seconds`**, NULL meaning "not in the pool"
+  and a number being that movement's default bout. It is a fact about the
+  movement's setup, in the same family as `form`, and **not** the mobility flag
+  plan 0013 removed: a pushup is in the pool and is still a lift. The agent
+  keeps prescribing from `form` and `application` exactly as before — the pool
+  exists because a shuffle button has no judgement to make.
+- **The shuffle draws three candidates and takes the least recently used**,
+  which is why `exercises.last_used` matters; it had no writer for eleven
+  months and is now maintained in `WorkoutRepository.create` (plan 0017 §5).
+- **A run that reaches the end writes itself to the day**: one `workouts` row
+  per work interval, all `is_mobility`, `reps` NULL, `time` as `m:ss`, already
+  completed. Abandoning a run with Reset writes nothing. What is logged is the
+  schedule the countdown followed, not the movement's default — the times are
+  adjustable after a shuffle.
+- Entered from the **Movement break card on `/mobility`**, which goes to
+  `/timer?break=1` and shuffles on arrival. The day view's Timer button is
+  still there. `/timer` is not a Training tab: that section's nav item is
+  labelled "Upcoming", and a Timer tab would sit under the wrong heading.
+- The movements themselves are seeded by
+  `backend/migrations/seed_movement_break_pool.py`, **run by hand, not by the
+  migration** — the migration carries only the column, the CHECK and the
+  rebuilt audit triggers.
 - `rating` on those movements is **enjoyment**, not value. It protects
   adherence; how much a movement is worth lives in `application`, and the
   divergence between the two is the useful signal
@@ -830,6 +876,14 @@ model section above.*
   is mobility work depends on the objective that day, so it lives on the set;
   `rating` stays here precisely because it is an opinion about the movement and
   not about one performance of it.
+- **`movement_break_seconds`** is the one thing here that looks like that flag and is
+  not one (plan 0017). NULL is "not in the movement break pool"; a number means the
+  movement needs no equipment and that is how long one bout of it lasts. A
+  property of the movement's setup, in the same family as `form` — *not* a
+  judgement that it suits an objective, which is still made from `form` and
+  `application`. A pushup is in the pool and is still a lift. Toggled inline on
+  `/exercises`; the seconds are edited in the same page's edit form. The pool
+  exists because a shuffle button has no judgement to make.
 
 ### PWA Features
 - Offline support with service worker (Workbox)

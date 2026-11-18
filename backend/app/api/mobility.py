@@ -24,6 +24,8 @@ from app.models.mobility import (
     MobilityPending,
     MobilityPendingWrite,
     MobilityPendingWriteResponse,
+    MovementBreakLog,
+    MovementBreakLogged,
     MobilityTransferRequest,
     MobilityTransferResponse,
 )
@@ -56,6 +58,27 @@ def transfer_pending_session(request: MobilityTransferRequest):
         raise HTTPException(status_code=404, detail="No pending mobility session")
 
     return MobilityTransferResponse(**result)
+
+
+@router.post("/movement-break", response_model=MovementBreakLogged)
+def log_movement_break_run(request: MovementBreakLog):
+    """Write a finished movement break run to the day, as mobility sets.
+
+    One row per timed interval, all `is_mobility`, none with a `reps` — a
+    timed hold is not a rep — and none with a comment, which is the user's
+    field and the only feedback channel there is.
+    """
+    result = MobilityService().log_movement_break(
+        request.exercise,
+        request.sets,
+        request.seconds,
+        request.date,
+    )
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="No such movement")
+
+    return MovementBreakLogged(**result)
 
 
 @router.delete("/pending/{session}", status_code=204)

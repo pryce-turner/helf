@@ -53,6 +53,7 @@ export function useCreateExercise() {
         form: newExercise.form ?? null,
         application: newExercise.application ?? null,
         rating: newExercise.rating ?? null,
+        movement_break_seconds: newExercise.movement_break_seconds ?? null,
         last_used: null,
         use_count: 0,
         created_at: new Date().toISOString(),
@@ -196,6 +197,23 @@ export function useCreateCategory() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+    },
+  });
+}
+
+/**
+ * The movement break pool: movements that need no equipment, with their default bout.
+ *
+ * Fetched once and shuffled client-side. A round trip per shuffle would put a
+ * network wait between the thought and the movement, which is the whole thing
+ * this is for.
+ */
+export function useMovementBreakPool() {
+  return useQuery({
+    queryKey: ['exercises', 'movement-breaks'],
+    queryFn: async () => {
+      const response = await exercisesApi.getMovementBreaks();
+      return response.data;
     },
   });
 }

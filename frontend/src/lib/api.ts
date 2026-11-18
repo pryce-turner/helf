@@ -46,6 +46,8 @@ import type {
 } from "../types/upcoming";
 import type {
     MobilityPending,
+    MovementBreakLog,
+    MovementBreakLogged,
     MobilityTransferResponse,
 } from "../types/mobility";
 
@@ -121,6 +123,9 @@ export const exercisesApi = {
 
     getRecent: (limit: number = 10) =>
         api.get<Exercise[]>("/api/exercises/recent", { params: { limit } }),
+
+    /** The equipment-free movements the timer's shuffle draws from. */
+    getMovementBreaks: () => api.get<Exercise[]>("/api/exercises/movement-breaks"),
 
     getByName: (name: string) =>
         api.get<Exercise>(`/api/exercises/${encodeURIComponent(name)}`),
@@ -223,6 +228,9 @@ export const mobilityApi = {
 
     clearPending: (session: number) =>
         api.delete(`/api/mobility/pending/${session}`),
+
+    logMovementBreak: (log: MovementBreakLog) =>
+        api.post<MovementBreakLogged>("/api/mobility/movement-break", log),
 };
 
 // Body Composition

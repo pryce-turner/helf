@@ -1,5 +1,6 @@
 import pytest
 
+from app import database
 from app.db.models import Workout
 from app.models.workout import WorkoutCreate, WorkoutUpdate
 from app.repositories.workout_repo import WorkoutRepository
@@ -184,3 +185,23 @@ def test_explicit_order_is_not_repositioned():
     )
 
     assert created["order"] == 7
+
+
+def test_creating_a_set_maintains_the_movement_usage():
+    """`update_usage` had no caller, so `exercises.last_used` was a year stale
+    — max 2025-12-21 against sets logged through today — which made
+    `GET /exercises/recent` answer from December and put the wrong movements
+    first in the day view's add form. It is maintained where the set is
+    written, because that is the only place it can be."""
+    from app.db.models import Exercise
+
+    repo = WorkoutRepository()
+    _create_workout(repo, "2026-11-12", "Cossack Squat", "Legs")
+    _create_workout(repo, "2026-11-12", "Cossack Squat", "Legs")
+
+    with database.SessionLocal() as session:
+        exercise = session.query(Exercise).filter(
+            Exercise.name == "Cossack Squat"
+        ).one()
+        assert exercise.last_used == "2026-11-12"
+        assert exercise.use_count == 2

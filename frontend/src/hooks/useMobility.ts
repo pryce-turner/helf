@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mobilityApi } from '../lib/api';
+import type { MovementBreakLog } from '../types/mobility';
 
 export function useMobilityPending() {
   return useQuery({
@@ -39,6 +40,31 @@ export function useClearMobilityPending() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mobility'] });
+    },
+  });
+}
+
+/**
+ * Log a finished movement break run to the day.
+ *
+ * No optimistic update: the point of the write is that it reaches the log, and
+ * showing "logged" before the server has said so would make the one thing the
+ * user cares about — whether the run counted — look settled while it is not.
+ */
+export function useLogMovementBreak() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (log: MovementBreakLog) => {
+      const response = await mobilityApi.logMovementBreak(log);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workouts'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['exercises'] });
+      queryClient.invalidateQueries({ queryKey: ['exercises', 'movement-breaks'] });
+      queryClient.invalidateQueries({ queryKey: ['progression'] });
     },
   });
 }

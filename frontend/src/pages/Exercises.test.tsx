@@ -221,3 +221,49 @@ describe("Exercises: form and application", () => {
         );
     });
 });
+
+describe("Exercises: the movement break pool", () => {
+    it("puts a movement in the pool, with a default bout", async () => {
+        const user = userEvent.setup();
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+
+        await user.click(
+            await screen.findByRole("button", {
+                name: "Add Plate Rollup to movement breaks",
+            }),
+        );
+
+        await waitFor(() =>
+            expect(mockedExercises.update).toHaveBeenCalledWith(1, {
+                movement_break_seconds: 30,
+            }),
+        );
+    });
+
+    it("takes a movement out of the pool with an explicit null", async () => {
+        const user = userEvent.setup();
+        mockedExercises.getAll.mockResolvedValue({
+            data: [exercise({ movement_break_seconds: 40 })],
+        } as never);
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+
+        // The button carries the bout, so the pool's state is visible without
+        // opening the editor.
+        const toggle = await screen.findByRole("button", {
+            name: "Remove Plate Rollup from movement breaks",
+        });
+        expect(toggle).toHaveTextContent("40s");
+
+        await user.click(toggle);
+
+        // An explicit null, not an omitted key: leaving the pool is a real
+        // edit, and omission means "leave it alone".
+        await waitFor(() =>
+            expect(mockedExercises.update).toHaveBeenCalledWith(1, {
+                movement_break_seconds: null,
+            }),
+        );
+    });
+});

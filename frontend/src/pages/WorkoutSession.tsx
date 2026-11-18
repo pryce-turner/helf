@@ -758,6 +758,24 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
               </span>
             </div>
           )}
+          {/* A timed set — a movement break run, or anything else held for time.
+              `time` has been in the schema since the baseline and was rendered
+              nowhere, so a set logged as a 30 second hold showed as a bare
+              exercise name with no data on it. */}
+          {workout.time && (
+            <div className="workout-chip">
+              <Timer
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  color: "var(--accent)",
+                }}
+              />
+              <span className="workout-chip__value" style={{ fontSize: "14px" }}>
+                {workout.time}
+              </span>
+            </div>
+          )}
           {workout.comment && (
             <div className="workout-chip">
               <MessageSquare

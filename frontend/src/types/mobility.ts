@@ -53,3 +53,27 @@ export interface MobilityTransferResponse {
     count: number;
     message: string;
 }
+
+/**
+ * One finished movement break run: a movement, and how it was actually timed.
+ *
+ * `seconds` is what the timer was set to when the run ended, not the
+ * movement's default bout — the times are adjustable after a shuffle, and the
+ * log says what was done rather than what was suggested.
+ */
+export interface MovementBreakLog {
+    exercise: string;
+    sets: number;
+    seconds: number;
+    date?: string;
+}
+
+export interface MovementBreakLogged {
+    date: string;
+    exercise: string;
+    sets: number;
+    /** `m:ss`, which is the format `workouts.time` is written in. */
+    time: string;
+    ids: number[];
+    message: string;
+}

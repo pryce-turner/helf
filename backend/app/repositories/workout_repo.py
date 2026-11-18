@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
 from app.db.models import Category, Exercise, Workout
+from app.repositories.exercise_repo import ExerciseRepository
 from app.models.workout import WorkoutCreate, WorkoutUpdate
 from app.utils.date_helpers import get_current_datetime
 from app.utils.units import CANONICAL_WEIGHT_UNIT
@@ -148,7 +149,18 @@ class WorkoutRepository:
             session.refresh(new_workout)
             session.refresh(exercise)
             session.refresh(category)
-            return self._serialize(new_workout)
+            # Serialised inside the session: `_serialize` walks the
+            # relationships, which a closed session cannot load.
+            result = self._serialize(new_workout)
+
+        # `exercises.last_used` and `use_count` are written here because this
+        # is where a set is written, and nowhere else does it. They were a year
+        # stale — max `last_used` was 2025-12-21 against workouts logged
+        # through today — which made `GET /exercises/recent` answer from
+        # December and put the wrong movements first in the day view's add
+        # form. `update_usage` existed and had no caller.
+        ExerciseRepository().update_usage(workout_dict["exercise"], workout.date)
+        return result
 
     @staticmethod
     def _open_slot_after_last_completed(session, date: str) -> int | None:

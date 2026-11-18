@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Sparkles, ChevronDown } from 'lucide-react';
+import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Sparkles, ChevronDown, Coffee, Timer } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import ExerciseSectionTabs from '@/components/ExerciseSectionTabs';
 import CategoryField from '@/components/CategoryField';
@@ -17,6 +17,9 @@ import {
   useSeedExercises,
 } from '@/hooks/useExercises';
 import type { Exercise } from '@/types/exercise';
+
+/** What the toggle gives a movement it is adding to the pool. */
+const DEFAULT_BREAK_SECONDS = 30;
 
 // Predefined colors for common categories (matching WorkoutSession/Upcoming)
 const getCategoryColor = (category: string) => {
@@ -68,6 +71,7 @@ const Exercises = () => {
   const [editCategory, setEditCategory] = useState('');
   const [editForm, setEditForm] = useState('');
   const [editApplication, setEditApplication] = useState('');
+  const [editBreakSeconds, setEditBreakSeconds] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -139,6 +143,22 @@ const Exercises = () => {
     setEditCategory(exercise.category);
     setEditForm(exercise.form || '');
     setEditApplication(exercise.application || '');
+    setEditBreakSeconds(exercise.movement_break_seconds != null ? String(exercise.movement_break_seconds) : '');
+  };
+
+  /**
+   * In or out of the movement break pool. Entering it takes a default 30s bout, which
+   * is then editable in the edit form; leaving it sends an explicit null, the
+   * way clearing a rating does.
+   */
+  const toggleMovementBreak = (exercise: Exercise) => {
+    updateExercise.mutate({
+      id: exercise.doc_id,
+      data: {
+        movement_break_seconds:
+          exercise.movement_break_seconds != null ? null : DEFAULT_BREAK_SECONDS,
+      },
+    });
   };
 
   const cancelEditing = () => {
@@ -147,6 +167,7 @@ const Exercises = () => {
     setEditCategory('');
     setEditForm('');
     setEditApplication('');
+    setEditBreakSeconds('');
   };
 
   const saveEditing = async () => {
@@ -158,6 +179,11 @@ const Exercises = () => {
         category: editCategory.trim(),
         form: editForm.trim() || '',
         application: editApplication.trim() || '',
+        // Blank is "not in the pool", which is a different edit from "leave
+        // the membership alone" — so it is always sent, never omitted.
+        movement_break_seconds: editBreakSeconds.trim()
+          ? Math.min(600, Math.max(5, parseInt(editBreakSeconds, 10) || 0))
+          : null,
       },
     });
     cancelEditing();
@@ -457,6 +483,28 @@ const Exercises = () => {
                                   rows={2}
                                   style={{ resize: 'vertical', minHeight: '60px' }}
                                 />
+                                {/* Seconds, not a unitless number: the column
+                                    name carries the unit (ADR-0003) and the
+                                    field should say the same. Blank takes the
+                                    movement out of the pool. */}
+                                <div className="flex items-center" style={{ gap: 'var(--space-3)' }}>
+                                  <Timer style={{ width: '16px', height: '16px', color: 'var(--warning)' }} />
+                                  <Label htmlFor="edit-break-seconds" style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
+                                    Movement break seconds <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(blank = not in the pool)</span>
+                                  </Label>
+                                  <Input
+                                    id="edit-break-seconds"
+                                    type="number"
+                                    inputMode="numeric"
+                                    className="input--mono"
+                                    value={editBreakSeconds}
+                                    onChange={(e) => setEditBreakSeconds(e.target.value)}
+                                    placeholder="—"
+                                    min={5}
+                                    max={600}
+                                    style={{ width: '90px' }}
+                                  />
+                                </div>
                                 <div className="flex" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                                   <Button
                                     variant="secondary"
@@ -568,6 +616,31 @@ const Exercises = () => {
                                   </div>
                                 </div>
                                 <div className="exercise-row__actions flex items-center flex-wrap" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+                                  {/* Whether a movement is in the movement break
+                                      pool, and for how long one bout of it
+                                      lasts. Not a mobility flag — that
+                                      judgement depends on the objective that
+                                      day and is set per set on the day view
+                                      (d7e4f2a91b83). This only says the
+                                      movement needs no equipment and can be
+                                      done for a timed interval. */}
+                                  <button
+                                    type="button"
+                                    className={`movement-break-toggle${exercise.movement_break_seconds != null ? ' movement-break-toggle--on' : ''}`}
+                                    aria-pressed={exercise.movement_break_seconds != null}
+                                    aria-label={
+                                      exercise.movement_break_seconds != null
+                                        ? `Remove ${exercise.name} from movement breaks`
+                                        : `Add ${exercise.name} to movement breaks`
+                                    }
+                                    disabled={updateExercise.isPending}
+                                    onClick={() => toggleMovementBreak(exercise)}
+                                  >
+                                    <Coffee style={{ width: '14px', height: '14px' }} />
+                                    {exercise.movement_break_seconds != null
+                                      ? `${exercise.movement_break_seconds}s`
+                                      : 'Break'}
+                                  </button>
                                   {/* The rating saves on the spot: one
                                       click, where putting it behind Edit/Save
                                       would make judging a movement a

@@ -11,6 +11,7 @@ from sqlalchemy import text
 from app import database
 from app.models.upcoming import UpcomingWorkoutCreate
 from app.repositories.mobility_repo import SESSION_KIND, MobilityRepository
+from app.utils.date_helpers import get_current_date
 from app.repositories.upcoming_repo import (
     MOBILITY,
     MOBILITY_SESSION,
@@ -626,3 +627,105 @@ def test_a_failed_write_rolls_the_agent_claim_back(client):
 
     assert current_actor() == "app"
     assert MobilityRepository().get_plans() == []
+
+
+# --- Movement break ----------------------------------------------------------------
+
+def test_a_finished_movement_break_run_is_logged_as_mobility_sets(client):
+    client.post(
+        "/api/exercises/",
+        json={"name": "Deep Squat Hold", "category": "Legs", "movement_break_seconds": 40},
+    )
+    # Something already on the day, so "appended" is distinguishable from
+    # "interleaved" — two snacks in one afternoon have to stack in the order
+    # they were run, not sort themselves among the lifting.
+    client.post(
+        "/api/workouts/",
+        json={
+            "date": "2026-11-12",
+            "exercise": "Barbell Squat",
+            "category": "Legs",
+            "weight": 225,
+            "reps": 5,
+        },
+    )
+
+    response = client.post(
+        "/api/mobility/movement-break",
+        json={
+            "exercise": "Deep Squat Hold",
+            "sets": 2,
+            "seconds": 40,
+            "date": "2026-11-12",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["sets"] == 2
+    assert response.json()["time"] == "0:40"
+
+    day = client.get("/api/workouts/?date=2026-11-12").json()
+    squat = next(w for w in day if w["exercise"] == "Barbell Squat")
+    breaks = [w for w in day if w["exercise"] == "Deep Squat Hold"]
+
+    assert len(breaks) == 2
+    assert all(w["is_mobility"] for w in breaks)
+    # A timed hold is not a rep, and writing `reps = 1` for one would put a rep
+    # in the progression series that never happened (ADR-0005).
+    assert all(w["reps"] is None for w in breaks)
+    assert all(w["time"] == "0:40" for w in breaks)
+    # It was run, which is the only reason the row exists.
+    assert all(w["completed_at"] for w in breaks)
+    assert [w["order"] for w in breaks] == [squat["order"] + 1, squat["order"] + 2]
+
+
+def test_the_run_is_logged_as_it_was_run_not_as_it_was_suggested(client):
+    """The times are adjustable after a shuffle, so the log takes the timer's
+    setting rather than the movement's default bout."""
+    client.post(
+        "/api/exercises/",
+        json={"name": "Wall Sit", "category": "Legs", "movement_break_seconds": 40},
+    )
+
+    client.post(
+        "/api/mobility/movement-break",
+        json={"exercise": "Wall Sit", "sets": 3, "seconds": 20, "date": "2026-11-12"},
+    )
+
+    day = client.get("/api/workouts/?date=2026-11-12").json()
+    assert [w["time"] for w in day] == ["0:20", "0:20", "0:20"]
+
+
+def test_a_run_of_an_unknown_movement_is_a_404_not_a_silent_no_op(client):
+    response = client.post(
+        "/api/mobility/movement-break",
+        json={"exercise": "Nothing Like This", "sets": 2, "seconds": 30},
+    )
+    assert response.status_code == 404
+    assert client.get("/api/workouts/?date=2026-11-12").json() == []
+
+
+def test_a_movement_break_run_carries_no_comment(client):
+    """The set's comment is the user's only feedback channel (0012 §4). A run
+    that finished has nothing to say about itself."""
+    client.post(
+        "/api/exercises/", json={"name": "Chin Tuck", "category": "Back"}
+    )
+
+    client.post(
+        "/api/mobility/movement-break",
+        json={"exercise": "Chin Tuck", "sets": 1, "seconds": 30, "date": "2026-11-12"},
+    )
+
+    day = client.get("/api/workouts/?date=2026-11-12").json()
+    assert day[0]["comment"] is None
+
+
+def test_a_movement_break_run_defaults_to_today(client):
+    client.post("/api/exercises/", json={"name": "Plank", "category": "Core"})
+
+    response = client.post(
+        "/api/mobility/movement-break", json={"exercise": "Plank", "sets": 1, "seconds": 30}
+    )
+    assert response.status_code == 200
+    # The app's timezone, never the client's guess at a date.
+    assert response.json()["date"] == get_current_date()

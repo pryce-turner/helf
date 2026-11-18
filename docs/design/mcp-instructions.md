@@ -111,6 +111,15 @@ say what the session is *for* — "Low back", "Shoulder" — not what is in it.
    `application`, not a
    membership you can look up — which is the point: prescribing a good morning
    as a loaded stretch does not make it stop being a lifting movement.
+
+   `exercises.movement_break_seconds` is **not** that flag, and do not read it as one.
+   NULL is "not in the movement break pool"; a number means the movement needs no
+   equipment and that is how long one bout of it lasts. It is a fact about the
+   movement's setup, in the same family as `form`, and it carries no judgement
+   about what the movement is *for* — a pushup is in the pool and is still a
+   lift. The pool exists because the timer's shuffle button has no judgement to
+   make and needs something to draw from; you do not, and you should keep
+   prescribing from `form` and `application` as before.
 4. `write_next_mobility_session(label, items, rationale)` — a new label adds
    a session to the tab, an existing one replaces that session and cannot
    touch the others. **Prescribed sets carry no comment**; everything you have

@@ -102,3 +102,71 @@ def test_rating_out_of_range_is_rejected(client):
         f"/api/exercises/{created['doc_id']}", json={"rating": 9}
     )
     assert response.status_code == 422
+
+
+def test_the_movement_break_pool_is_only_the_movements_in_it(client):
+    """A dedicated read, not a filter over the catalog: the shuffle is run from
+    a phone in an office and the catalog carries every movement's full `form`
+    and `application`."""
+    client.post("/api/exercises/", json={"name": "Barbell Squat", "category": "Legs"})
+    client.post(
+        "/api/exercises/",
+        json={
+            "name": "Deep Squat Hold",
+            "category": "Legs",
+            "form": "sink and stay",
+            "movement_break_seconds": 40,
+        },
+    )
+
+    pool = client.get("/api/exercises/movement-breaks").json()
+    assert [exercise["name"] for exercise in pool] == ["Deep Squat Hold"]
+    assert pool[0]["movement_break_seconds"] == 40
+    assert pool[0]["form"] == "sink and stay"
+
+
+def test_the_pool_route_is_not_eaten_by_the_lookup_by_name(client):
+    """/movement-breaks would match `/{exercise_name}` if it were registered after it,
+    and come back 404 rather than an empty pool."""
+    assert client.get("/api/exercises/movement-breaks").status_code == 200
+    assert client.get("/api/exercises/movement-breaks").json() == []
+
+
+def test_leaving_a_movement_out_of_the_pool_is_not_the_same_as_removing_it(client):
+    created = client.post(
+        "/api/exercises/",
+        json={"name": "Wall Angel", "category": "Shoulders", "movement_break_seconds": 40},
+    ).json()
+    assert created["movement_break_seconds"] == 40
+
+    # An edit to something else must not quietly unpool it.
+    edited = client.put(
+        f"/api/exercises/{created['doc_id']}", json={"form": "keep three contacts"}
+    ).json()
+    assert edited["movement_break_seconds"] == 40
+
+    # An explicit null removes it, the way `rating` is cleared.
+    removed = client.put(
+        f"/api/exercises/{created['doc_id']}", json={"movement_break_seconds": None}
+    ).json()
+    assert removed["movement_break_seconds"] is None
+    assert client.get("/api/exercises/movement-breaks").json() == []
+
+
+def test_movement_break_seconds_is_bounded_for_the_http_writer(client):
+    created = client.post(
+        "/api/exercises/", json={"name": "Wall Sit", "category": "Legs"}
+    ).json()
+
+    assert (
+        client.put(
+            f"/api/exercises/{created['doc_id']}", json={"movement_break_seconds": 4}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.put(
+            f"/api/exercises/{created['doc_id']}", json={"movement_break_seconds": 900}
+        ).status_code
+        == 422
+    )

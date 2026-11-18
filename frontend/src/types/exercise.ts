@@ -8,6 +8,12 @@ export interface Exercise {
   application: string | null;
   /** 1-5. `null` is unrated, which is not the same as a bad rating. */
   rating: number | null;
+  /**
+   * In the movement break pool, and how long one bout of it lasts. `null` is
+   * "not in the pool" — a fact about the movement's setup, not a judgement
+   * that it is mobility work.
+   */
+  movement_break_seconds: number | null;
   /** Also mobility work. A flag across categories, not a category. */
   last_used: string | null;
   use_count: number;
@@ -20,6 +26,7 @@ export interface ExerciseCreate {
   form?: string;
   application?: string;
   rating?: number | null;
+  movement_break_seconds?: number | null;
 }
 
 export interface ExerciseUpdate {
@@ -29,6 +36,8 @@ export interface ExerciseUpdate {
   application?: string;
   /** Sending `null` clears the rating; omitting the key leaves it alone. */
   rating?: number | null;
+  /** Sending `null` removes it from the movement break pool; omitting leaves it. */
+  movement_break_seconds?: number | null;
 }
 
 export interface Category {

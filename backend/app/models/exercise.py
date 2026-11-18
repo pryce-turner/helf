@@ -36,6 +36,8 @@ class ExerciseCreate(ExerciseBase):
     # Bounded here *and* by a CHECK: the agent writes raw SQL and never passes
     # through Pydantic (ADR-0002), so the constraint is the rule both obey.
     rating: int | None = Field(None, ge=1, le=5)
+    # Seconds for one movement break bout. NULL is not-in-the-pool, not zero.
+    movement_break_seconds: int | None = Field(None, ge=5, le=600)
 
 
 class ExerciseUpdate(BaseModel):
@@ -51,6 +53,9 @@ class ExerciseUpdate(BaseModel):
     form: str | None = None
     application: str | None = None
     rating: int | None = Field(None, ge=1, le=5)
+    # Like `rating`: sending null *removes* the movement from the movement break pool,
+    # omitting the key leaves it alone. Told apart by `model_fields_set`.
+    movement_break_seconds: int | None = Field(None, ge=5, le=600)
 
 
 class Exercise(ExerciseBase):
@@ -59,6 +64,7 @@ class Exercise(ExerciseBase):
     form: str | None = None
     application: str | None = None
     rating: int | None = None
+    movement_break_seconds: int | None = None
     last_used: str | None = None
     use_count: int = 0
     created_at: datetime

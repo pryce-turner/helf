@@ -54,6 +54,10 @@ class Exercise(Base):
         CheckConstraint(
             "rating IS NULL OR rating BETWEEN 1 AND 5", name="ck_exercises_rating"
         ),
+        CheckConstraint(
+            "movement_break_seconds IS NULL OR movement_break_seconds BETWEEN 5 AND 600",
+            name="ck_exercises_movement_break_seconds",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -80,6 +84,22 @@ class Exercise(Base):
     # value is a candidate to cut, and a 1-rated movement of high value needs
     # its friction diagnosed rather than its place defended.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Membership of the movement break pool *and* the movement's default bout, in one
+    # column: NULL is "not in the pool", a number is how long one go lasts.
+    # The two are never wanted apart, and a boolean plus a duration would be
+    # two columns free to disagree with each other.
+    #
+    # This is **not** the `is_mobility` that d7e4f2a91b83 dropped from this
+    # table. That flag claimed a movement *was* mobility work, which is a fact
+    # about a performance; a good morning is a loaded hinge in one session and
+    # a loaded stretch in the next. This claims only that the movement can be
+    # done **with no equipment, for a timed bout** — a property of its setup,
+    # in the same family as `form`. A pushup is in the pool and is still a
+    # lift, and nothing stops it being logged as one.
+    #
+    # Seconds, because ADR-0003 puts the unit in the name and no row carries a
+    # unit column.
+    movement_break_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_used: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

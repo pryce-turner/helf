@@ -21,6 +21,7 @@ class ExerciseRepository:
             "form": exercise.form,
             "application": exercise.application,
             "rating": exercise.rating,
+            "movement_break_seconds": exercise.movement_break_seconds,
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
             "created_at": exercise.created_at,
@@ -91,6 +92,7 @@ class ExerciseRepository:
                 form=exercise.form,
                 application=exercise.application,
                 rating=exercise.rating,
+                movement_break_seconds=exercise.movement_break_seconds,
                 last_used=None,
                 use_count=0,
                 created_at=now,
@@ -113,6 +115,22 @@ class ExerciseRepository:
             exercise.use_count = (exercise.use_count or 0) + 1
             session.commit()
             return True
+
+    def get_movement_breaks(self) -> list[dict]:
+        """The movement break pool: movements that need no equipment, with their bout.
+
+        A dedicated read rather than a filter over `get_all()`, which carries
+        every movement's full `form` and `application` across the wire to a
+        phone in an office to pick one name out of it.
+        """
+        with SessionLocal() as session:
+            exercises = session.execute(
+                select(Exercise)
+                .options(selectinload(Exercise.category))
+                .where(Exercise.movement_break_seconds.is_not(None))
+                .order_by(Exercise.name)
+            ).scalars().all()
+            return [self._serialize(exercise) for exercise in exercises]
 
     def get_recent(self, limit: int = 10) -> list[dict]:
         """Get recently used exercises."""
@@ -154,6 +172,10 @@ class ExerciseRepository:
             # what the client actually sent.
             if "rating" in data.model_fields_set:
                 exercise.rating = data.rating
+            # The pool has the same problem `rating` has: removing a movement
+            # from it is a real edit, and a null is otherwise a no-op.
+            if "movement_break_seconds" in data.model_fields_set:
+                exercise.movement_break_seconds = data.movement_break_seconds
 
             session.commit()
             session.refresh(exercise)

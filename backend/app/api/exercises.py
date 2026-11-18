@@ -63,6 +63,15 @@ def get_recent_exercises(limit: int = 10):
     return repo.get_recent(limit=limit)
 
 
+# Registered above `/{exercise_name}`, which would otherwise match "movement-breaks"
+# and look for a movement by that name.
+@router.get("/movement-breaks", response_model=list[Exercise])
+def get_movement_break_pool():
+    """The movements that need no equipment, and how long one bout lasts."""
+    repo = ExerciseRepository()
+    return repo.get_movement_breaks()
+
+
 @router.get("/{exercise_name}", response_model=Exercise)
 def get_exercise(exercise_name: str):
     """Get a specific exercise by name."""

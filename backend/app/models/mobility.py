@@ -79,6 +79,40 @@ class MobilityPending(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class MovementBreakLog(BaseModel):
+    """One finished movement break run, to be written to the day.
+
+    A run is **one movement** repeated for `sets` timed intervals of `seconds`
+    each. It carries no weight, no reps and no comment, because it has none of
+    them: a 30 second hold is not a rep (ADR-0005) and the comment field is the
+    user's, which is why nothing here writes to it.
+
+    `seconds` is what the timer was actually set to when the run finished, not
+    the movement's default — the times are adjustable after a shuffle, and the
+    log has to say what was done rather than what was suggested.
+    """
+
+    exercise: str = Field(..., min_length=1)
+    sets: int = Field(..., ge=1, le=50)
+    seconds: int = Field(..., ge=5, le=600)
+    #: Defaults to today, in the app's timezone — never the client's guess.
+    date: str | None = Field(
+        None, description="Target date in YYYY-MM-DD format; today when omitted"
+    )
+
+
+class MovementBreakLogged(BaseModel):
+    """What the run wrote."""
+
+    date: str
+    exercise: str
+    sets: int
+    #: `m:ss` — the format `workouts.time` is written in.
+    time: str
+    ids: list[int]
+    message: str
+
+
 class MobilityTransferRequest(BaseModel):
     """Request to copy one pending session onto a date.
 

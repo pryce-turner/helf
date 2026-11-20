@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   memo,
+  Fragment,
 } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
@@ -30,7 +31,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Plus,
-  Minus,
   Trash2,
   GripVertical,
   Dumbbell,
@@ -50,6 +50,9 @@ import {
   Timer,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
+import RestDivider from "@/components/RestDivider";
+import WorkoutFields from "@/components/WorkoutFields";
+import { defaultsFromExercise, formatSeconds } from "@/lib/setTiles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -78,13 +81,6 @@ import { useCategories, useExercises, useMovementBreakPool, useRecentExercises }
 import { useProgression } from "@/hooks/useProgression";
 import { useSuggestMovementBreak } from "@/hooks/useMobility";
 import type { WorkoutCreate } from "@/types/workout";
-
-// Get weight increment based on current weight value
-const getWeightIncrement = (weight: number): number => {
-  if (weight < 100) return 2.5;
-  if (weight <= 300) return 5;
-  return 10;
-};
 
 // The inline edit form owns its own state. Typing a digit re-renders this
 // form and nothing else; while the state lived in WorkoutSession, every
@@ -116,7 +112,15 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
     distance_unit: workout.distance_unit,
     time: workout.time,
     comment: workout.comment,
+    work_seconds: workout.work_seconds,
+    rest_seconds: workout.rest_seconds,
+    rest_after_seconds: workout.rest_after_seconds,
   }));
+
+  // Which inputs the tile offers: the exercise's configuration, with the
+  // tile's own values kept visible wherever the group has since been
+  // disabled (changing an exercise never rewrites history, plan 0018).
+  const exerciseConfig = exercises?.find((e) => e.name === formData.exercise);
 
   // Fetch progression data only when the toggle is on
   const { data: progressionData } = useProgression(
@@ -160,119 +164,12 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
               gap: "var(--space-4)",
             }}
           >
-            <div
-              className="grid grid-cols-1 md:grid-cols-2"
-              style={{ gap: "var(--space-4)" }}
-            >
-              <div className="form-field">
-                <Label htmlFor="weight-edit" className="form-label">
-                  <Weight style={{ width: "14px", height: "14px" }} />
-                  Weight
-                </Label>
-                <div className="stepper">
-                  <button
-                    type="button"
-                    className="stepper__btn stepper__btn--start"
-                    onClick={() => {
-                      const current = formData.weight || 0;
-                      const increment = getWeightIncrement(current);
-                      setFormData({
-                        ...formData,
-                        weight: Math.max(0, current - increment),
-                      });
-                    }}
-                  >
-                    <Minus style={{ width: "18px", height: "18px" }} />
-                  </button>
-                  <input
-                    id="weight-edit"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.1"
-                    placeholder="0"
-                    className="input--stepper"
-                    value={formData.weight || ""}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({
-                        ...formData,
-                        weight: e.target.value
-                          ? parseFloat(e.target.value)
-                          : null,
-                      })
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="stepper__btn stepper__btn--end"
-                    onClick={() => {
-                      const current = formData.weight || 0;
-                      const increment = getWeightIncrement(current);
-                      setFormData({
-                        ...formData,
-                        weight: current + increment,
-                      });
-                    }}
-                  >
-                    <Plus style={{ width: "18px", height: "18px" }} />
-                  </button>
-                  <span className="stepper__unit">
-                    {formData.weight_unit || "lbs"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="form-field">
-                <Label htmlFor="reps-edit" className="form-label">
-                  <Hash style={{ width: "14px", height: "14px" }} />
-                  Reps
-                </Label>
-                <div className="stepper">
-                  <button
-                    type="button"
-                    className="stepper__btn stepper__btn--start"
-                    onClick={() => {
-                      const currentReps = formData.reps || 0;
-                      const newValue = Math.max(0, currentReps - 1);
-                      setFormData({
-                        ...formData,
-                        reps: newValue > 0 ? newValue : null,
-                      });
-                    }}
-                  >
-                    <Minus style={{ width: "18px", height: "18px" }} />
-                  </button>
-                  <input
-                    id="reps-edit"
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="e.g., 5"
-                    className="input--stepper input--mono"
-                    value={formData.reps || ""}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const value = e.target.value ? parseInt(e.target.value) : null;
-                      setFormData({
-                        ...formData,
-                        reps: value,
-                      });
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="stepper__btn stepper__btn--end"
-                    onClick={() => {
-                      const currentReps = formData.reps || 0;
-                      const newValue = currentReps + 1;
-                      setFormData({
-                        ...formData,
-                        reps: newValue,
-                      });
-                    }}
-                  >
-                    <Plus style={{ width: "18px", height: "18px" }} />
-                  </button>
-                </div>
-              </div>
-            </div>
+            <WorkoutFields
+              exercise={exerciseConfig}
+              values={formData}
+              onChange={(patch) => setFormData({ ...formData, ...patch })}
+              idPrefix={`edit-${workout.doc_id}`}
+            />
 
             <div className="form-field">
               <Label htmlFor="comment-edit" className="form-label">
@@ -746,7 +643,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
               </span>
             </div>
           )}
-          {workout.reps && (
+          {workout.reps != null && (
             <div className="workout-chip">
               <Hash
                 style={{
@@ -756,15 +653,45 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
                 }}
               />
               <span className="workout-chip__value" style={{ fontSize: "14px" }}>
-                {workout.reps} reps
+                {/* A stopped tile reads target versus actual; anything else
+                    is just the target. */}
+                {workout.ended_early && workout.completed_reps != null
+                  ? `${workout.completed_reps} / ${workout.reps} reps`
+                  : `${workout.reps} reps`}
               </span>
             </div>
           )}
-          {/* A timed set — a movement break run, or anything else held for time.
-              `time` has been in the schema since the baseline and was rendered
-              nowhere, so a set logged as a 30 second hold showed as a bare
-              exercise name with no data on it. */}
-          {workout.time && (
+          {/* Timed tiles. Natural completions show the one concise result;
+              a Stop shows what was measured against what was planned. */}
+          {workout.work_seconds != null && (
+            <div className="workout-chip">
+              <Timer
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  color: "var(--accent)",
+                }}
+              />
+              <span className="workout-chip__value" style={{ fontSize: "14px" }}>
+                {workout.ended_early && workout.actual_work_seconds != null
+                  ? `${formatSeconds(workout.actual_work_seconds)} / ${formatSeconds(workout.work_seconds)}`
+                  : formatSeconds(workout.work_seconds)}
+              </span>
+            </div>
+          )}
+          {workout.ended_early && (
+            <div className="workout-chip">
+              <span
+                className="workout-chip__value"
+                style={{ fontSize: "12px", color: "var(--warning)" }}
+              >
+                ended early
+              </span>
+            </div>
+          )}
+          {/* A legacy timed set — written before the numeric fields, kept so
+              old rows still say what they always said. */}
+          {!workout.work_seconds && workout.time && (
             <div className="workout-chip">
               <Timer
                 style={{
@@ -865,10 +792,14 @@ const WorkoutSession = () => {
   const handleExerciseChange = (exercise: string) => {
     const exerciseData = exercises?.find((e) => e.name === exercise);
     setSelectedExercise(exercise);
+    // The tile's values start as the exercise's defaults (plan 0018):
+    // enabled-with-blank-default starts blank, and a disabled group's
+    // default is never applied.
     setFormData({
       ...formData,
       exercise,
       category: exerciseData?.category || formData.category,
+      ...(exerciseData ? defaultsFromExercise(exerciseData) : {}),
     });
   };
 
@@ -884,6 +815,9 @@ const WorkoutSession = () => {
       distance_unit: null,
       time: null,
       comment: null,
+      work_seconds: null,
+      rest_seconds: null,
+      rest_after_seconds: null,
     });
     setSelectedCategory("");
     setSelectedExercise("");
@@ -1396,6 +1330,7 @@ const WorkoutSession = () => {
                                 ...formData,
                                 exercise: ex.name,
                                 category: ex.category,
+                                ...defaultsFromExercise(ex),
                               });
                             }}
                             style={{
@@ -1444,7 +1379,7 @@ const WorkoutSession = () => {
                         value={selectedCategory}
                         onValueChange={handleCategoryChange}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger aria-label="Category">
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1474,7 +1409,7 @@ const WorkoutSession = () => {
                         onValueChange={handleExerciseChange}
                         disabled={!selectedCategory}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger aria-label="Exercise">
                           <SelectValue placeholder="Select exercise" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1488,114 +1423,19 @@ const WorkoutSession = () => {
                     </div>
                   </div>
 
-                  <div className="form-field">
-                    <Label htmlFor="weight" className="form-label">
-                      <Weight style={{ width: "14px", height: "14px" }} />
-                      Weight
-                    </Label>
-                    <div className="stepper">
-                      <button
-                        type="button"
-                        className="stepper__btn stepper__btn--start"
-                        onClick={() => {
-                          const current = formData.weight || 0;
-                          const increment = getWeightIncrement(current);
-                          setFormData({
-                            ...formData,
-                            weight: Math.max(0, current - increment),
-                          });
-                        }}
-                      >
-                        <Minus style={{ width: "18px", height: "18px" }} />
-                      </button>
-                      <input
-                        id="weight"
-                        type="number"
-                        inputMode="decimal"
-                        step="0.1"
-                        placeholder="0"
-                        className="input--stepper"
-                        value={formData.weight || ""}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          setFormData({
-                            ...formData,
-                            weight: e.target.value
-                              ? parseFloat(e.target.value)
-                              : null,
-                          })
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="stepper__btn stepper__btn--end"
-                        onClick={() => {
-                          const current = formData.weight || 0;
-                          const increment = getWeightIncrement(current);
-                          setFormData({
-                            ...formData,
-                            weight: current + increment,
-                          });
-                        }}
-                      >
-                        <Plus style={{ width: "18px", height: "18px" }} />
-                      </button>
-                      <span className="stepper__unit">
-                        {formData.weight_unit || "lbs"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="form-field">
-                    <Label htmlFor="reps" className="form-label">
-                      <Hash style={{ width: "14px", height: "14px" }} />
-                      Reps
-                    </Label>
-                    <div className="stepper">
-                      <button
-                        type="button"
-                        className="stepper__btn stepper__btn--start"
-                        onClick={() => {
-                          const currentReps = formData.reps || 0;
-                          const newValue = Math.max(0, currentReps - 1);
-                          setFormData({
-                            ...formData,
-                            reps: newValue > 0 ? newValue : null,
-                          });
-                        }}
-                      >
-                        <Minus style={{ width: "18px", height: "18px" }} />
-                      </button>
-                      <input
-                        id="reps"
-                        type="number"
-                        inputMode="numeric"
-                        placeholder="e.g., 5"
-                        className="input--stepper input--mono"
-                        value={formData.reps || ""}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const value = e.target.value ? parseInt(e.target.value) : null;
-                          setFormData({
-                            ...formData,
-                            reps: value,
-                          });
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="stepper__btn stepper__btn--end"
-                        onClick={() => {
-                          const currentReps = formData.reps || 0;
-                          const newValue = currentReps + 1;
-                          setFormData({
-                            ...formData,
-                            reps: newValue,
-                          });
-                        }}
-                      >
-                        <Plus style={{ width: "18px", height: "18px" }} />
-                      </button>
-                    </div>
-                  </div>
+                  {/* The exercise's configuration decides which of these
+                      exist (plan 0018): nothing renders for a disabled group,
+                      and its defaults arrive with the selection. */}
+                  <WorkoutFields
+                    exercise={exercises?.find(
+                      (e) => e.name === formData.exercise,
+                    )}
+                    values={formData}
+                    onChange={(patch) =>
+                      setFormData({ ...formData, ...patch })
+                    }
+                    idPrefix="add"
+                  />
 
                   <div className="form-field" style={{ overflow: "hidden" }}>
                     <Label htmlFor="comment" className="form-label">
@@ -1785,20 +1625,32 @@ const WorkoutSession = () => {
                   }}
                 >
                   {sortedWorkouts.map((workout, index) => (
-                    <SortableWorkoutCard
-                      key={workout.doc_id}
-                      workout={workout}
-                      index={index}
-                      isEditing={editingId === workout.doc_id}
-                      isConfirmingDelete={confirmingDelete === workout.doc_id}
-                      handleEditWorkout={handleEditWorkout}
-                      handleToggleComplete={handleToggleComplete}
-                      handleToggleMobility={handleToggleMobility}
-                      handleDeleteClick={handleDeleteClick}
-                      handleDeleteConfirm={handleDeleteConfirm}
-                      handleDeleteCancel={handleDeleteCancel}
-                      onCloseEdit={handleCloseEdit}
-                    />
+                    <Fragment key={workout.doc_id}>
+                      <SortableWorkoutCard
+                        workout={workout}
+                        index={index}
+                        isEditing={editingId === workout.doc_id}
+                        isConfirmingDelete={confirmingDelete === workout.doc_id}
+                        handleEditWorkout={handleEditWorkout}
+                        handleToggleComplete={handleToggleComplete}
+                        handleToggleMobility={handleToggleMobility}
+                        handleDeleteClick={handleDeleteClick}
+                        handleDeleteConfirm={handleDeleteConfirm}
+                        handleDeleteCancel={handleDeleteCancel}
+                        onCloseEdit={handleCloseEdit}
+                      />
+                      {/* The rest after a tile is *its* rest-after value,
+                          rendered as a divider rather than a row (plan
+                          0018): not an exercise, not counted, edited through
+                          the tile it follows. Zero means no rest. */}
+                      {workout.rest_after_seconds != null &&
+                        workout.rest_after_seconds > 0 && (
+                          <RestDivider
+                            seconds={workout.rest_after_seconds}
+                            onEdit={() => handleEditWorkout(workout)}
+                          />
+                        )}
+                    </Fragment>
                   ))}
                 </div>
               </SortableContext>

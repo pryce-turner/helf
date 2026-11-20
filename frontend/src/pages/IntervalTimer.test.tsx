@@ -18,7 +18,7 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
-import { exercisesApi, mobilityApi } from "@/lib/api";
+import { exercisesApi } from "@/lib/api";
 import IntervalTimer from "./IntervalTimer";
 
 /**

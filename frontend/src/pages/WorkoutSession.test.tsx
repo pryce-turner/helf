@@ -361,3 +361,153 @@ it("does not offer the shuffle when the pool is empty", async () => {
         screen.queryByRole("button", { name: /movement break/i }),
     ).not.toBeInTheDocument();
 });
+
+// --- Exercise-driven tile fields and rest dividers (plan 0018) --------------
+
+const farmerCarry = (overrides: Record<string, unknown> = {}) => ({
+    doc_id: 20,
+    name: "Farmer Carry",
+    category: "Legs",
+    form: null,
+    application: null,
+    rating: null,
+    movement_break_enabled: true,
+    reps_enabled: true,
+    default_reps: 2,
+    weight_enabled: true,
+    default_weight_lb: null,
+    distance_enabled: false,
+    default_distance: null,
+    default_distance_unit: null,
+    time_enabled: true,
+    default_work_seconds: 40,
+    default_rest_seconds: 20,
+    default_rest_after_seconds: 15,
+    last_used: null,
+    use_count: 0,
+    created_at: "2026-11-01",
+    ...overrides,
+});
+
+it("applies the exercise's defaults when one is picked in the add form", async () => {
+    vi.mocked(exercisesApi).getAll.mockResolvedValue({
+        data: [farmerCarry()],
+    } as never);
+    vi.mocked(categoriesApi).getAll.mockResolvedValue({
+        data: [{ doc_id: 1, name: "Legs", created_at: "2026-01-01" }],
+    } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByRole("button", { name: /add/i }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Category" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Legs" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Exercise" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Farmer Carry" }));
+
+    // Enabled with a NULL default: the input appears and starts blank.
+    expect(screen.getByLabelText("Weight")).toHaveValue(null);
+    // Timed defaults come along.
+    expect(screen.getByLabelText("Reps")).toHaveValue(2);
+    expect(screen.getByLabelText("Work seconds")).toHaveValue(40);
+    expect(screen.getByLabelText("Rest seconds")).toHaveValue(20);
+    expect(screen.getByLabelText("Rest after set seconds")).toHaveValue(15);
+    // Distance is disabled on the movement: not offered.
+    expect(screen.queryByLabelText(/distance/i)).not.toBeInTheDocument();
+});
+
+it("sends the tile's timing when a suggested set is saved", async () => {
+    workouts.create.mockResolvedValue({ data: set() } as never);
+    vi.mocked(exercisesApi).getAll.mockResolvedValue({
+        data: [farmerCarry()],
+    } as never);
+    vi.mocked(categoriesApi).getAll.mockResolvedValue({
+        data: [{ doc_id: 1, name: "Legs", created_at: "2026-01-01" }],
+    } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByRole("button", { name: /add/i }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Category" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Legs" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Exercise" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Farmer Carry" }));
+    await userEvent.click(screen.getByRole("button", { name: /add workout/i }));
+
+    await waitFor(() =>
+        expect(workouts.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                exercise: "Farmer Carry",
+                reps: 2,
+                work_seconds: 40,
+                rest_seconds: 20,
+                rest_after_seconds: 15,
+            }),
+        ),
+    );
+});
+
+it("keeps a tile's existing values visible in the editor even when the group is off", async () => {
+    // The movement no longer offers Time — history is not rewritten by that
+    // (plan 0018) — but a tile with timing on it still shows it.
+    workouts.getAll.mockResolvedValue({
+        data: [set({ work_seconds: 40, rest_seconds: 20, exercise: "Farmer Carry" })],
+    } as never);
+    vi.mocked(exercisesApi).getAll.mockResolvedValue({
+        data: [farmerCarry({ time_enabled: false })],
+    } as never);
+    renderDay();
+
+    await userEvent.click(
+        await screen.findByText("Farmer Carry"),
+    );
+
+    expect(await screen.findByLabelText("Work seconds")).toHaveValue(40);
+    expect(screen.getByLabelText("Rest seconds")).toHaveValue(20);
+});
+
+it("renders a rest divider after a tile that carries one, editable through it", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [
+            set({ doc_id: 1, order: 1, rest_after_seconds: 15 }),
+            set({ doc_id: 2, order: 2, exercise: "Overhead Press" }),
+        ],
+    } as never);
+    renderDay();
+
+    const divider = await screen.findByRole("button", { name: /rest 0:15/i });
+    expect(divider).toBeInTheDocument();
+
+    // The divider has no state of its own: editing it edits the preceding
+    // tile, so it opens that tile's editor.
+    await userEvent.click(divider);
+    expect(await screen.findByLabelText("Rest after set seconds")).toHaveValue(15);
+});
+
+it("renders no divider for a zero rest-after", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ rest_after_seconds: 0 })],
+    } as never);
+    renderDay();
+
+    await waitFor(() => expect(workouts.getAll).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /rest 0:/i })).not.toBeInTheDocument();
+});
+
+it("shows the shortfall on a stopped tile", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [
+            set({
+                completed_at: `${DATE}T10:00:00`,
+                reps: 5,
+                completed_reps: 2,
+                work_seconds: 40,
+                actual_work_seconds: 85,
+                ended_early: true,
+            }),
+        ],
+    } as never);
+    renderDay();
+
+    // Target versus actual: 2 of 5 planned reps, and the Stop marked.
+    expect(await screen.findByText(/2 \/ 5/)).toBeInTheDocument();
+    expect(screen.getByText(/ended early/i)).toBeInTheDocument();
+});

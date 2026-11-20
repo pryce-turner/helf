@@ -1819,6 +1819,38 @@
         font-size: 12px;
     }
 
+    /* The rest after a set tile (plan 0018): a divider, not a row — dashed,
+       centred, quieter than a tile, because it is not work. */
+    .rest-divider {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        width: 100%;
+        padding: var(--space-1) var(--space-2);
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--text-muted);
+    }
+
+    .rest-divider__line {
+        flex: 1 1 auto;
+        border-top: 1px dashed var(--border);
+    }
+
+    .rest-divider__label {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        transition: color var(--duration-fast) var(--ease-default);
+    }
+
+    .rest-divider:hover .rest-divider__label,
+    .rest-divider:focus-visible .rest-divider__label {
+        color: var(--text-secondary);
+    }
+
     /* Colour only on press, never geometry — see "Mobile touch feedback". */
     @media (pointer: coarse) {
         .timer-play:active {

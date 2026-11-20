@@ -390,7 +390,17 @@ class WorkoutRepository:
                 workout.actual_work_seconds = actual_work_seconds
                 workout.actual_rest_seconds = actual_rest_seconds
             else:
+                # Natural completion: derived from the targets, but an
+                # explicitly sent value wins — the player writes from its
+                # immutable snapshot, and a tile edited mid-run must not
+                # change what the run records (plan 0018).
                 self._derive_actuals(workout)
+                if completed_reps is not None:
+                    workout.completed_reps = completed_reps
+                if actual_work_seconds is not None:
+                    workout.actual_work_seconds = actual_work_seconds
+                if actual_rest_seconds is not None:
+                    workout.actual_rest_seconds = actual_rest_seconds
             workout.updated_at = now
             exercise_name = workout.exercise.name
             session.commit()

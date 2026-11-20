@@ -145,6 +145,36 @@ def test_perform_missing_tile_is_a_404(client):
     assert client.post("/api/workouts/9999/perform", json={}).status_code == 404
 
 
+def test_perform_natural_honours_the_snapshot_over_the_current_targets(client):
+    """The player's snapshot is immutable (plan 0018): a tile edited mid-run
+    is still written as it was when Play was pressed — the values sent — not
+    as whatever the tile holds by the time the write lands."""
+    tile = _create_timed_tile(client, date="2024-04-08")
+    # The tile is edited after the run starts.
+    client.put(
+        f"/api/workouts/{tile['doc_id']}",
+        json={
+            "date": "2024-04-08",
+            "exercise": "Farmer Carry",
+            "category": "Legs",
+            "reps": 9,
+            "work_seconds": 99,
+        },
+    )
+
+    performed = client.post(
+        f"/api/workouts/{tile['doc_id']}/perform",
+        json={"completed_reps": 2, "actual_work_seconds": 40, "actual_rest_seconds": 20},
+    ).json()
+
+    assert performed["ended_early"] is False
+    assert performed["completed_reps"] == 2
+    assert performed["actual_work_seconds"] == 40
+    # The targets keep the edit — it is the record of what is planned now;
+    # the actuals are what the run measured then.
+    assert performed["reps"] == 9
+
+
 def test_rest_after_records_a_partial_divider(client):
     tile = _create_timed_tile(client, date="2024-04-04")
     client.post(f"/api/workouts/{tile['doc_id']}/perform", json={})

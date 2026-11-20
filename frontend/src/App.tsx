@@ -1,9 +1,9 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { format } from "date-fns";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Calendar from "./pages/Calendar";
 import WorkoutSession from "./pages/WorkoutSession";
-import IntervalTimer from "./pages/IntervalTimer";
 import Progression from "./pages/Progression";
 import BodyComposition from "./pages/BodyComposition";
 import Upcoming from "./pages/Upcoming";
@@ -50,7 +50,18 @@ function App() {
                     <Routes>
                         <Route path="/" element={<Calendar />} />
                         <Route path="/day/:date" element={<WorkoutSession />} />
-                        <Route path="/timer" element={<IntervalTimer />} />
+                        {/* The standalone timer is gone (plan 0018): the day
+                            player does its work from the day view. The
+                            redirect stays for bookmarks. */}
+                        <Route
+                            path="/timer"
+                            element={
+                                <Navigate
+                                    to={`/day/${format(new Date(), "yyyy-MM-dd")}`}
+                                    replace
+                                />
+                            }
+                        />
                         <Route path="/progression" element={<Progression />} />
                         <Route
                             path="/progression/:exercise"

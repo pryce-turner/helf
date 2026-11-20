@@ -46,12 +46,15 @@ import {
   History,
   Copy,
   Coffee,
+  Play,
   StretchHorizontal,
   Timer,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import RestDivider from "@/components/RestDivider";
 import WorkoutFields from "@/components/WorkoutFields";
+import WorkoutPlayerControls from "@/components/WorkoutPlayerControls";
+import { useWorkoutPlayer } from "@/hooks/useWorkoutPlayer";
 import { defaultsFromExercise, formatSeconds } from "@/lib/setTiles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -373,6 +376,8 @@ interface SortableWorkoutCardProps {
   index: number;
   isEditing: boolean;
   isConfirmingDelete: boolean;
+  /** The player is on this tile: locked against edits and highlighted. */
+  isActiveTile: boolean;
   handleEditWorkout: (workout: Workout) => void;
   handleToggleComplete: (workout: Workout) => void;
   handleToggleMobility: (workout: Workout) => void;
@@ -448,6 +453,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
   workout,
   isEditing,
   isConfirmingDelete,
+  isActiveTile,
   handleEditWorkout,
   handleToggleComplete,
   handleToggleMobility,
@@ -462,7 +468,9 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
   const catColor = getCategoryColor(workout.category);
 
   return (
-    <CardContent className="set-row">
+    <CardContent
+      className={`set-row${isActiveTile ? " set-row--active" : ""}`}
+    >
       {isEditing && (
         <button
           type="button"
@@ -490,11 +498,18 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
           {/* Completion checkbox */}
           <button
             className="action-btn"
+            disabled={isActiveTile}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleComplete(workout);
             }}
-            title={workout.completed_at ? "Mark incomplete" : "Mark complete"}
+            title={
+              isActiveTile
+                ? "The player is on this tile"
+                : workout.completed_at
+                  ? "Mark incomplete"
+                  : "Mark complete"
+            }
             style={{
               color: workout.completed_at
                 ? "var(--accent)"
@@ -522,6 +537,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             role="checkbox"
             aria-checked={!!workout.is_mobility}
             aria-label="Mobility work"
+            disabled={isActiveTile}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleMobility(workout);
@@ -545,13 +561,14 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
           {/* Drag handle */}
           <button
             className="action-btn drag-handle"
+            disabled={isActiveTile}
             style={{
               cursor: isDragging ? "grabbing" : "grab",
               touchAction: "none",
               padding: "4px",
             }}
-            {...dragAttributes}
-            {...dragListeners}
+            {...(isActiveTile ? {} : dragAttributes)}
+            {...(isActiveTile ? {} : dragListeners)}
           >
             <GripVertical className="set-row__icon" />
           </button>
@@ -582,6 +599,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
           ) : (
             <button
               className="action-btn action-btn--danger"
+              disabled={isActiveTile}
               onClick={() => handleDeleteClick(workout.doc_id)}
               style={{ padding: "4px" }}
             >
@@ -591,12 +609,16 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
         </div>
       )}
 
-      {/* Main content - clickable area */}
+      {/* Main content - clickable area. The active tile is locked against
+          edits while the player is on it: the run writes from its snapshot,
+          and an edit underneath it would read as if it counted. */}
       <div
         className="set-row__body log-line"
-        onClick={() => (!isEditing ? handleEditWorkout(workout) : undefined)}
+        onClick={() =>
+          !isEditing && !isActiveTile ? handleEditWorkout(workout) : undefined
+        }
         style={{
-          cursor: !isEditing ? "pointer" : "default",
+          cursor: !isEditing && !isActiveTile ? "pointer" : "default",
         }}
       >
         {/* Exercise name and category - inline */}
@@ -894,6 +916,20 @@ const WorkoutSession = () => {
     () => (workouts ? [...workouts].sort((a, b) => a.order - b.order) : []),
     [workouts],
   );
+
+  // The day player (plan 0018). It runs the incomplete tiles in order from
+  // an immutable snapshot taken at Play; the write for each tile lands
+  // before the run advances.
+  const player = useWorkoutPlayer();
+  const incompleteTiles = useMemo(
+    () => sortedWorkouts.filter((w) => !w.completed_at),
+    [sortedWorkouts],
+  );
+  const playing = player.status !== "idle";
+  const lockActiveTile =
+    player.status === "running" ||
+    player.status === "paused" ||
+    player.status === "saving";
   // Every card's useSortable subscribes to SortableContext, which memo does
   // not block, and the context changes whenever `items` is a new array. So
   // the id list keeps its identity until the order itself changes; otherwise
@@ -1079,18 +1115,20 @@ const WorkoutSession = () => {
                   {allMobility ? "Unmark all" : "Mark all mobility"}
                 </Button>
               )}
-              {/* The timer is a standalone tool, not a property of this day,
-                  so it stays visible whether or not anything is logged. Add
-                  keeps the rightmost slot as the primary action. */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => navigate("/timer")}
-                title="Open the interval timer"
-              >
-                <Timer style={{ width: "16px", height: "16px" }} />
-                Timer
-              </Button>
+              {/* The day player runs the incomplete tiles from the first one
+                  on. Hidden while a run is live — the hero carries the
+                  controls then. */}
+              {!playing && incompleteTiles.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => player.play(incompleteTiles)}
+                  title="Play the day's incomplete sets, from the first one"
+                >
+                  <Play style={{ width: "16px", height: "16px" }} />
+                  Play
+                </Button>
+              )}
               {/* A movement break is inserted as an ordinary planned tile on
                   this date (plan 0018) — editable and deletable like any
                   other, and not work until it is played. Hidden when the
@@ -1590,6 +1628,32 @@ const WorkoutSession = () => {
             </Card>
           )}
 
+          {/* The player hero, while a run is live (or just after one). */}
+          {playing && (
+            <WorkoutPlayerControls
+              status={player.status}
+              phaseKind={player.phase?.kind ?? null}
+              exerciseName={
+                player.activeTileId != null
+                  ? (sortedWorkouts.find((w) => w.doc_id === player.activeTileId)
+                      ?.exercise ??
+                    player.tiles.find((t) => t.doc_id === player.activeTileId)
+                      ?.exercise ??
+                    null)
+                  : null
+              }
+              progressLabel={
+                player.status === "saving" ? "Saving…" : player.progressLabel
+              }
+              remainingMs={player.remainingMs}
+              onPause={player.pause}
+              onResume={player.resume}
+              onStop={player.stop}
+              onCompleteSet={player.completeSet}
+              onRetry={player.retry}
+            />
+          )}
+
           {/* Workout List */}
           {isLoading ? (
             <div
@@ -1631,6 +1695,9 @@ const WorkoutSession = () => {
                         index={index}
                         isEditing={editingId === workout.doc_id}
                         isConfirmingDelete={confirmingDelete === workout.doc_id}
+                        isActiveTile={
+                          lockActiveTile && player.activeTileId === workout.doc_id
+                        }
                         handleEditWorkout={handleEditWorkout}
                         handleToggleComplete={handleToggleComplete}
                         handleToggleMobility={handleToggleMobility}

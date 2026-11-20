@@ -511,3 +511,62 @@ it("shows the shortfall on a stopped tile", async () => {
     expect(await screen.findByText(/2 \/ 5/)).toBeInTheDocument();
     expect(screen.getByText(/ended early/i)).toBeInTheDocument();
 });
+
+// --- The day player (plan 0018) ----------------------------------------------
+
+it("offers Play when the day has incomplete tiles, not when all are done", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ completed_at: `${DATE}T10:00:00` })],
+    } as never);
+    renderDay();
+    await waitFor(() => expect(workouts.getAll).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /^play$/i })).not.toBeInTheDocument();
+});
+
+it("opens the player on the first incomplete tile and locks it", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [
+            set({ doc_id: 1, order: 1, work_seconds: 40, rest_seconds: 20 }),
+            set({ doc_id: 2, order: 2, exercise: "Overhead Press" }),
+        ],
+    } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByRole("button", { name: /^play$/i }));
+
+    // The hero counts down the get-ready against the first incomplete tile —
+    // named in the hero as well as on its card.
+    expect(await screen.findByText("GET READY")).toBeInTheDocument();
+    expect(screen.getAllByText(/Weighted Pigeon Squat/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+
+    // The active tile is locked: no completion, mobility, delete or edit —
+    // its buttons carry the lock title, and are disabled.
+    const locked = screen.getAllByTitle(/the player is on this tile/i);
+    expect(locked.length).toBeGreaterThan(0);
+    locked.forEach((button) => expect(button).toBeDisabled());
+    expect(
+        screen.getAllByRole("checkbox", { name: /mobility work/i })[0],
+    ).toBeDisabled();
+});
+
+it("writes nothing when the run is stopped during get-ready", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ work_seconds: 40 })],
+    } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByRole("button", { name: /^play$/i }));
+    await screen.findByText("GET READY");
+    await userEvent.click(screen.getByRole("button", { name: "Stop" }));
+
+    await waitFor(() =>
+        expect(workouts.perform).not.toHaveBeenCalled(),
+    );
+    expect(workouts.recordRestAfter).not.toHaveBeenCalled();
+    // The run abandoned before any work is no result: back to the day.
+    await waitFor(() =>
+        expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument(),
+    );
+});

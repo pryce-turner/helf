@@ -1525,6 +1525,49 @@
             background var(--duration-fast) ease;
     }
 
+    /* The day player's hero (plan 0018): the timer hero's shape, sized to sit
+       above a day of tiles rather than fill its own page. */
+    .player-wrap {
+        margin-bottom: var(--space-6);
+    }
+
+    .player-hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-6) var(--space-5) var(--space-12);
+        border-radius: var(--radius-xl);
+        color: #fff;
+        text-align: center;
+        background-image: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.18),
+            rgba(0, 0, 0, 0.22)
+        );
+        box-shadow: var(--shadow-lg);
+        transition: background-color 400ms ease;
+    }
+
+    .player-hero .timer-hero__clock {
+        font-size: clamp(56px, 16vw, 84px);
+    }
+
+    .player-wrap .timer-play {
+        width: 72px;
+        height: 72px;
+        border-width: 5px;
+    }
+
+    .player-wrap .timer-play__icon {
+        width: 28px;
+        height: 28px;
+    }
+
+    .player-wrap .timer-controls {
+        margin-top: -36px;
+    }
+
     .timer-settings {
         display: flex;
         flex-direction: column;
@@ -1817,6 +1860,21 @@
     .field-config__unit {
         color: var(--text-muted);
         font-size: 12px;
+    }
+
+    /* The tile the player is on (plan 0018): accent-lit and locked — the run
+       writes from its snapshot, so an edit underneath it would read as if it
+       counted. */
+    .set-row--active {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+        border-radius: var(--radius-md);
+        box-shadow: 0 0 18px var(--accent-glow);
+    }
+
+    .set-row--active .action-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
     }
 
     /* The rest after a set tile (plan 0018): a divider, not a row — dashed,

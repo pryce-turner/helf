@@ -5,6 +5,8 @@ logged session over MCP and writes the next one; this module is the other half
 — it shows the user what is pending and moves it onto a date when they run it.
 """
 
+import random
+
 from app.models.workout import WorkoutCreate
 from app.repositories.exercise_repo import ExerciseRepository
 from app.repositories.mobility_repo import MobilityRepository
@@ -13,7 +15,24 @@ from app.repositories.upcoming_repo import (
     UpcomingWorkoutRepository,
 )
 from app.repositories.workout_repo import WorkoutRepository
-from app.utils.date_helpers import get_current_date, get_current_datetime
+from app.utils.date_helpers import get_current_date
+
+#: How many candidates the shuffle draws before picking one. Three and a
+#: least-recently-used tiebreak, not a uniform draw: uniform hands back the
+#: movement just done one time in twenty-eight, which for something run
+#: several times a day is a repeat most days.
+SHUFFLE_CANDIDATES = 3
+
+
+def _shuffle(pool: list[dict]) -> dict:
+    """Three candidates at random, then the least recently used of them.
+
+    `last_used` reads performed work only (plan 0018) — a suggested tile that
+    was never played cannot make its movement look done. NULLs sort first:
+    never done is the most overdue.
+    """
+    drawn = random.sample(pool, k=min(SHUFFLE_CANDIDATES, len(pool)))
+    return min(drawn, key=lambda movement: movement["last_used"] or "")
 
 
 class MobilityService:
@@ -107,73 +126,49 @@ class MobilityService:
             "message": f"Copied {count} sets from '{plan['label']}' to {date}",
         }
 
-    def log_movement_break(
-        self, exercise: str, sets: int, seconds: int, date: str | None = None
-    ) -> dict | None:
-        """Write one finished movement break run onto a day as mobility sets.
+    def suggest_movement_break(self, date: str | None = None) -> dict | None:
+        """Insert a suggested, incomplete mobility tile on a day.
 
-        None when no such movement exists, so the route can 404 rather than
-        report a run that wrote nothing.
+        Replaces the old finished-run writer (plan 0018): the suggestion is an
+        ordinary planned tile holding the movement's defaults — the shuffle's
+        pick, the exercise's field defaults, `is_mobility` set — which the day
+        player then performs like anything else. It counts as nothing until
+        played: `last_used` and the calendar move at performance, so a
+        suggestion the user ignores costs nothing.
 
-        One row per work interval, which is the grain the rest of the schema
-        works at: `workouts` has no "sets" column, and two 30 second holds are
-        two sets.
+        Appended at the day's end rather than below the last completed set —
+        the suggestion is for *later*, and slotting it above the day's planned
+        work would push it into the middle of a session.
 
-        `reps` is deliberately NULL and the duration goes in `time`. A timed
-        hold is not a rep, and writing `reps = 1` for one would put a rep in the
-        progression series that never happened (ADR-0005).
-
-        `seconds` is what the timer was set to when the run ended, not the
-        movement's default bout — the times are adjustable after a shuffle, and
-        the log records what was done.
-
-        No comment is written. That field is the user's feedback channel and the
-        only one there is (0012 §4); a run that finished has nothing to say
-        about itself.
+        None when the pool is empty, so the route can 404 rather than report a
+        suggestion that does not exist.
         """
-        movement = self.exercise_repo.get_by_name(exercise)
-        if not movement:
+        pool = self.exercise_repo.get_movement_breaks()
+        if not pool:
             return None
 
+        movement = _shuffle(pool)
         day = date or get_current_date()
-        now = get_current_datetime()
-        # `m:ss` — the format `workouts.time` is written in.
-        duration = f"{seconds // 60}:{seconds % 60:02d}"
 
         existing = self.workout_repo.get_by_date(day)
         start_order = max((w.get("order") or 0) for w in existing) if existing else 0
 
-        ids = []
-        for offset in range(1, sets + 1):
-            created = self.workout_repo.create(
-                WorkoutCreate(
-                    date=day,
-                    exercise=exercise,
-                    category=movement["category"],
-                    weight=None,
-                    reps=None,
-                    time=duration,
-                    # Already ticked: it was run, which is the only reason this
-                    # row is being written at all.
-                    completed_at=now,
-                    # Several snacks in one afternoon stack in the order they
-                    # were run, never interleaved with what was already there.
-                    order=start_order + offset,
-                    is_mobility=True,
-                )
+        return self.workout_repo.create(
+            WorkoutCreate(
+                date=day,
+                exercise=movement["name"],
+                category=movement["category"],
+                weight=movement["default_weight_lb"],
+                reps=movement["default_reps"],
+                distance=movement["default_distance"],
+                distance_unit=movement["default_distance_unit"],
+                work_seconds=movement["default_work_seconds"],
+                rest_seconds=movement["default_rest_seconds"],
+                rest_after_seconds=movement["default_rest_after_seconds"],
+                order=start_order + 1,
+                is_mobility=True,
             )
-            ids.append(created["doc_id"])
-
-        return {
-            "date": day,
-            "exercise": exercise,
-            "sets": sets,
-            "time": duration,
-            "ids": ids,
-            "message": (
-                f"Logged {sets} x {duration} of {exercise} to {day} as mobility work"
-            ),
-        }
+        )
 
     def clear_pending(self, session_id: int) -> int:
         """Discard one pending session without running it.

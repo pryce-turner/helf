@@ -24,11 +24,11 @@ from app.models.mobility import (
     MobilityPending,
     MobilityPendingWrite,
     MobilityPendingWriteResponse,
-    MovementBreakLog,
-    MovementBreakLogged,
+    MovementBreakSuggest,
     MobilityTransferRequest,
     MobilityTransferResponse,
 )
+from app.models.workout import Workout
 from app.services.mobility_service import MobilityService
 
 router = APIRouter()
@@ -60,25 +60,24 @@ def transfer_pending_session(request: MobilityTransferRequest):
     return MobilityTransferResponse(**result)
 
 
-@router.post("/movement-break", response_model=MovementBreakLogged)
-def log_movement_break_run(request: MovementBreakLog):
-    """Write a finished movement break run to the day, as mobility sets.
+@router.post("/suggest", response_model=Workout, status_code=201)
+def suggest_movement_break(request: MovementBreakSuggest):
+    """Insert a suggested, incomplete mobility tile on the date.
 
-    One row per timed interval, all `is_mobility`, none with a `reps` — a
-    timed hold is not a rep — and none with a comment, which is the user's
-    field and the only feedback channel there is.
+    The tile is the shuffle's pick with the movement's own defaults applied —
+    editable and deletable like any planned tile, and not logged as performed
+    until it is played. This replaced the old finished-run writer (plan
+    0018): nothing here creates completed rows, so a double tap at worst
+    suggests twice, and the button that calls it disables while pending.
     """
-    result = MobilityService().log_movement_break(
-        request.exercise,
-        request.sets,
-        request.seconds,
-        request.date,
-    )
+    tile = MobilityService().suggest_movement_break(request.date)
 
-    if result is None:
-        raise HTTPException(status_code=404, detail="No such movement")
+    if tile is None:
+        raise HTTPException(
+            status_code=404, detail="No movements in the movement break pool"
+        )
 
-    return MovementBreakLogged(**result)
+    return tile
 
 
 @router.delete("/pending/{session}", status_code=204)

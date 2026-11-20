@@ -47,8 +47,6 @@ import type {
 } from "../types/upcoming";
 import type {
     MobilityPending,
-    MovementBreakLog,
-    MovementBreakLogged,
     MobilityTransferResponse,
 } from "../types/mobility";
 
@@ -226,8 +224,8 @@ export const upcomingApi = {
 
 // Mobility
 //
-// No create: the pending session is written by the agent over MCP. The app
-// shows it and moves it onto a date.
+// No create for the pending session: it is written by the agent over MCP. The
+// app shows it and moves it onto a date.
 export const mobilityApi = {
     getPending: () => api.get<MobilityPending>("/api/mobility/pending"),
 
@@ -240,8 +238,9 @@ export const mobilityApi = {
     clearPending: (session: number) =>
         api.delete(`/api/mobility/pending/${session}`),
 
-    logMovementBreak: (log: MovementBreakLog) =>
-        api.post<MovementBreakLogged>("/api/mobility/movement-break", log),
+    /** Insert a suggested, incomplete mobility tile on a date (plan 0018). */
+    suggestMovementBreak: (date?: string) =>
+        api.post<Workout>("/api/mobility/suggest", date ? { date } : {}),
 };
 
 // Body Composition

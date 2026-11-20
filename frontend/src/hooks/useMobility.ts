@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mobilityApi } from '../lib/api';
-import type { MovementBreakLog } from '../types/mobility';
 
 export function useMobilityPending() {
   return useQuery({
@@ -45,26 +44,26 @@ export function useClearMobilityPending() {
 }
 
 /**
- * Log a finished movement break run to the day.
+ * Insert a suggested, incomplete mobility tile on a date (plan 0018).
  *
- * No optimistic update: the point of the write is that it reaches the log, and
- * showing "logged" before the server has said so would make the one thing the
- * user cares about — whether the run counted — look settled while it is not.
+ * No optimistic update: the tile is created server-side from the shuffle, so
+ * there is nothing honest to paint before the answer lands. The button is
+ * disabled while pending instead, which is the guard against a double tap
+ * inserting two.
+ *
+ * A suggestion is *not* work yet: the calendar (performed tiles only) and the
+ * exercise's `last_used` are untouched by it, so only `workouts` refetches.
  */
-export function useLogMovementBreak() {
+export function useSuggestMovementBreak() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (log: MovementBreakLog) => {
-      const response = await mobilityApi.logMovementBreak(log);
+    mutationFn: async (date?: string) => {
+      const response = await mobilityApi.suggestMovementBreak(date);
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workouts'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar'] });
-      queryClient.invalidateQueries({ queryKey: ['exercises'] });
-      queryClient.invalidateQueries({ queryKey: ['exercises', 'movement-breaks'] });
-      queryClient.invalidateQueries({ queryKey: ['progression'] });
     },
   });
 }

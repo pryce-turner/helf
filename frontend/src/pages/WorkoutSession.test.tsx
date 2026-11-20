@@ -19,6 +19,7 @@ import WorkoutSession from "./WorkoutSession";
 import {
     categoriesApi,
     exercisesApi,
+    mobilityApi,
     progressionApi,
     workoutsApi,
 } from "@/lib/api";
@@ -39,10 +40,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
             moveToDate: vi.fn(),
             copyToDate: vi.fn(),
             setDayMobility: vi.fn(),
+            perform: vi.fn(),
+            recordRestAfter: vi.fn(),
         },
         exercisesApi: {
             getAll: vi.fn(),
             getRecent: vi.fn(),
+            getMovementBreaks: vi.fn(),
             getByName: vi.fn(),
             create: vi.fn(),
             update: vi.fn(),
@@ -60,10 +64,15 @@ vi.mock("@/lib/api", async (importOriginal) => {
             getByExercise: vi.fn(),
             getExerciseList: vi.fn(),
         },
+        mobilityApi: {
+            ...actual.mobilityApi,
+            suggestMovementBreak: vi.fn(),
+        },
     };
 });
 
 const workouts = vi.mocked(workoutsApi);
+const suggest = vi.mocked(mobilityApi.suggestMovementBreak);
 
 const DATE = "2026-08-11";
 
@@ -117,6 +126,9 @@ beforeEach(() => {
     workouts.getAll.mockResolvedValue({ data: [set()] } as never);
     vi.mocked(exercisesApi).getAll.mockResolvedValue({ data: [] } as never);
     vi.mocked(exercisesApi).getRecent.mockResolvedValue({ data: [] } as never);
+    vi.mocked(exercisesApi).getMovementBreaks.mockResolvedValue({
+        data: [{ doc_id: 1, name: "Deep Squat Hold", category: "Legs" }],
+    } as never);
     vi.mocked(categoriesApi).getAll.mockResolvedValue({ data: [] } as never);
     vi.mocked(progressionApi).getByExercise.mockResolvedValue({
         data: { exercise: "", data_points: [] },
@@ -310,4 +322,42 @@ it("rolls the whole day back when the bulk write fails", async () => {
     write.reject(new Error("offline"));
 
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "false"));
+});
+
+it("suggests a movement break onto the displayed date", async () => {
+    suggest.mockResolvedValue({
+        data: set({ doc_id: 9, exercise: "Deep Squat Hold", is_mobility: true }),
+    } as never);
+    renderDay();
+
+    const button = await screen.findByRole("button", { name: /movement break/i });
+    await userEvent.click(button);
+
+    await waitFor(() => expect(suggest).toHaveBeenCalledWith(DATE));
+});
+
+it("cannot suggest twice from a double tap", async () => {
+    const write = deferred<{ data: unknown }>();
+    suggest.mockReturnValue(write.promise as never);
+    renderDay();
+
+    const button = await screen.findByRole("button", { name: /movement break/i });
+    await userEvent.click(button);
+    await userEvent.click(button);
+
+    // Disabled while the write is in flight: a suggestion is created server-
+    // side, and a second tap would insert a second tile.
+    expect(suggest).toHaveBeenCalledTimes(1);
+    expect(button).toBeDisabled();
+    write.resolve({ data: set({ doc_id: 9, exercise: "Deep Squat Hold" }) });
+});
+
+it("does not offer the shuffle when the pool is empty", async () => {
+    vi.mocked(exercisesApi).getMovementBreaks.mockResolvedValue({ data: [] } as never);
+    renderDay();
+
+    await waitFor(() => expect(workouts.getAll).toHaveBeenCalled());
+    expect(
+        screen.queryByRole("button", { name: /movement break/i }),
+    ).not.toBeInTheDocument();
 });

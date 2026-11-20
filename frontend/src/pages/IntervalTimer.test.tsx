@@ -31,12 +31,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
     return {
         ...actual,
         exercisesApi: { ...actual.exercisesApi, getMovementBreaks: vi.fn() },
-        mobilityApi: { ...actual.mobilityApi, logMovementBreak: vi.fn() },
     };
 });
 
 const mockedPool = vi.mocked(exercisesApi.getMovementBreaks);
-const mockedLog = vi.mocked(mobilityApi.logMovementBreak);
 
 const movement = (overrides: Record<string, unknown> = {}) => ({
     doc_id: 1,
@@ -58,25 +56,6 @@ const POOL = [
     movement({ doc_id: 2, name: "Wall Angel", category: "Shoulders", default_work_seconds: 40 }),
     movement({ doc_id: 3, name: "Chin Tuck", category: "Back", default_work_seconds: 30 }),
 ];
-
-const logged = (sets = 2, time = "0:40") => ({
-    data: {
-        date: "2026-11-12",
-        exercise: "Deep Squat Hold",
-        sets,
-        time,
-        ids: [1, 2],
-        message: `Logged ${sets} x ${time}`,
-    },
-});
-
-/** What the endpoint does: answer with the run it wrote. */
-const echoLogged = () =>
-    mockedLog.mockImplementation((async (log: {
-        exercise: string;
-        sets: number;
-        seconds: number;
-    }) => logged(log.sets, `0:${String(log.seconds).padStart(2, "0")}`)) as never);
 
 /** Every frequency the page asked an oscillator to play, in order. */
 const beeps: number[] = [];
@@ -177,11 +156,8 @@ const click = (name: string | RegExp) =>
 beforeEach(() => {
     beeps.length = 0;
     window.localStorage.clear();
-    // Without this the log spy accumulates calls across the file, and "was it
-    // written" turns into "was it ever written by anything".
     vi.clearAllMocks();
     mockedPool.mockResolvedValue({ data: [] } as never);
-    mockedLog.mockResolvedValue(logged() as never);
     vi.useFakeTimers({
         toFake: [
             "setTimeout",
@@ -476,83 +452,6 @@ it("keeps the movement when a time is adjusted afterwards", async () => {
     // The shuffle picked the movement; the rows only ever pick the times.
     expect(screen.getByRole("button", { name: /^Work 00:35$/ })).toBeInTheDocument();
     expect(screen.getByText("Deep Squat Hold")).toBeInTheDocument();
-});
-
-it("logs a finished run once, as it was run", async () => {
-    poolOf();
-    renderTimer();
-    await settle();
-    shuffle();
-    setWorkTo(5);
-
-    start();
-    // 5s work, 20s rest, 5s work. One tick per phase: the loop re-arms on
-    // each phase change, which needs a render in between.
-    tick(5100);
-    tick(20100);
-    tick(5100);
-
-    expect(screen.getByText("DONE")).toBeInTheDocument();
-    await settle();
-    expect(mockedLog).toHaveBeenCalledTimes(1);
-    // Two sets of five seconds, as configured — not the movement's 40s bout.
-    expect(mockedLog).toHaveBeenCalledWith({
-        exercise: "Deep Squat Hold",
-        sets: 2,
-        seconds: 5,
-    });
-});
-
-it("says the run was logged, with what was written", async () => {
-    poolOf();
-    echoLogged();
-    renderTimer();
-    await settle();
-    shuffle();
-    setWorkTo(5);
-
-    start();
-    tick(5100);
-    tick(20100);
-    tick(5100);
-
-    await settle();
-    expect(screen.getByText(/Logged · 2 × 0:05/)).toBeInTheDocument();
-});
-
-it("does not log a run that was reset halfway", async () => {
-    poolOf();
-    renderTimer();
-    await settle();
-    shuffle();
-
-    start();
-    tick(1100);
-    click("Reset");
-
-    expect(screen.getByText("READY")).toBeInTheDocument();
-    await settle();
-    expect(mockedLog).not.toHaveBeenCalled();
-});
-
-it("says so when the write fails, and offers the retry", async () => {
-    poolOf();
-    mockedLog.mockRejectedValue(new Error("offline"));
-    renderTimer();
-    await settle();
-    shuffle();
-    setWorkTo(5);
-
-    start();
-    tick(5100);
-    tick(20100);
-    tick(5100);
-
-    await settle();
-    // A run that silently failed to reach the log is worse than one that
-    // never ran, because the user believes it counted.
-    expect(screen.getByText(/Not logged/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry logging" })).toBeEnabled();
 });
 
 it("opens straight onto a movement when entered from the mobility tab", async () => {

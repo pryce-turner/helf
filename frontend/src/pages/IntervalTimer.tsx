@@ -18,7 +18,6 @@ import type { LucideIcon } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { useMovementBreakPool } from "@/hooks/useExercises";
-import { useLogMovementBreak } from "@/hooks/useMobility";
 import type { Exercise } from "@/types/exercise";
 
 /**
@@ -583,27 +582,6 @@ const IntervalTimer = () => {
   const lastTickSecondRef = useRef(-1);
 
   const { data: pool, isLoading: poolLoading } = useMovementBreakPool();
-  const logMovementBreak = useLogMovementBreak();
-
-  // A run is identified by a counter bumped on Start, and the log records
-  // which run it has written. Without it a re-render after `done` could post
-  // the same session twice, and two identical sets would be indistinguishable
-  // from a run that was done twice.
-  const runIdRef = useRef(0);
-  const loggedRunRef = useRef(-1);
-  // Read inside the rAF tick, which is not a render: the movement has to be
-  // visible there without putting it in the loop's dependencies.
-  const movementRef = useRef<Exercise | null>(null);
-  // The countdown effect's dependencies are the schedule, not the render. A
-  // callback rebuilt every render would cancel and re-request the frame each
-  // time, so it is reached through a ref instead of a dependency.
-  const logRunRef = useRef<() => void>(() => {});
-
-  // A ref, not a dependency of the countdown: the tick needs the movement
-  // without re-requesting its frame whenever one is chosen.
-  useEffect(() => {
-    movementRef.current = movement;
-  }, [movement]);
 
   // Settings persist across visits, on this device only.
   useEffect(() => {
@@ -649,9 +627,6 @@ const IntervalTimer = () => {
         setRemainingMs(0);
         setStatus("done");
         if (audioRef.current) playBeeps(audioRef.current, SESSION_DONE);
-        // Only a run that reached the end is written. Resetting halfway
-        // abandons it, and an abandoned session is not history.
-        logRunRef.current();
         return;
       }
       const prev = phases[phaseIndex];
@@ -726,7 +701,6 @@ const IntervalTimer = () => {
     setOpenSetting(null);
     setPhases(schedule);
     setPhaseIndex(0);
-    runIdRef.current += 1;
     lastTickSecondRef.current = -1;
     endAtRef.current = performance.now() + schedule[0].durationMs;
     setRemainingMs(schedule[0].durationMs);
@@ -793,36 +767,6 @@ const IntervalTimer = () => {
     if (next) loadMovement(next);
   };
 
-  /**
-   * Write the run to the day, as it was actually run.
-   *
-   * Counted off `phases` rather than the settings rows, because `phases` is
-   * the schedule the countdown followed: if a row was edited mid-planning,
-   * the schedule is what happened.
-   *
-   * Called from the tick, at the one point reached exactly once per session —
-   * not from an effect, where a later re-render could fire it again.
-   */
-  const logFinishedRun = () => {
-    const current = movementRef.current;
-    if (!current) return;
-    if (loggedRunRef.current === runIdRef.current) return;
-    loggedRunRef.current = runIdRef.current;
-
-    const work = phases.filter((p) => p.kind === "work");
-    logMovementBreak.mutate({
-      exercise: current.name,
-      sets: work.length,
-      seconds: Math.round(work[0].durationMs / 1000),
-    });
-  };
-
-  // Handed to the tick through a ref rather than a dependency, so the
-  // countdown effect keeps depending on the schedule instead of the render.
-  useEffect(() => {
-    logRunRef.current = logFinishedRun;
-  });
-
   // `/timer?break=1` — the way in from the mobility tab, so the page opens
   // on a movement rather than on a button.
   //
@@ -850,19 +794,6 @@ const IntervalTimer = () => {
     remainingMs +
     phases.slice(phaseIndex + 1).reduce((sum, p) => sum + p.durationMs, 0);
 
-  // Whether a finished run reached the log. Shown rather than swallowed: a
-  // session that silently did not get written is worse than one that did not
-  // run, because the user believes it counted.
-  const logState = !movement
-    ? null
-    : logMovementBreak.isPending
-      ? "Saving…"
-      : logMovementBreak.isSuccess
-        ? `Logged · ${logMovementBreak.data?.sets ?? 0} × ${logMovementBreak.data?.time ?? ""}`
-        : logMovementBreak.isError
-          ? "Not logged — the write failed"
-          : null;
-
   // Idle shows the whole session's length, the way the screenshot's 04:50 is
   // 5 × 20s work + 4 × 10s rest, twice, plus one 10s reset. Running shows the
   // phase, with the session's remainder underneath.
@@ -872,12 +803,7 @@ const IntervalTimer = () => {
           label: "DONE",
           color: HERO_COLOR.done,
           clock: "00:00",
-          detail: [
-            `${settings.rounds} round${settings.rounds !== 1 ? "s" : ""} complete`,
-            logState,
-          ]
-            .filter(Boolean)
-            .join(" · "),
+          detail: `${settings.rounds} round${settings.rounds !== 1 ? "s" : ""} complete`,
         }
       : status === "idle"
         ? {
@@ -1033,20 +959,6 @@ const IntervalTimer = () => {
                   style={PrimaryIcon === Play ? { marginLeft: "4px" } : undefined}
                 />
               </button>
-              {status === "done" && logMovementBreak.isError && (
-                <button
-                  type="button"
-                  className="movement-break-retry"
-                  onClick={() => {
-                    // Unwritten rather than already-written: let the same run
-                    // through the once-per-run guard again.
-                    loggedRunRef.current = -1;
-                    logFinishedRun();
-                  }}
-                >
-                  Retry logging
-                </button>
-              )}
               {status !== "idle" && (
                 <button
                   type="button"

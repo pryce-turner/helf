@@ -10,6 +10,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
+import { format } from "date-fns";
 import { renderPage } from "@/test/renderPage";
 import Mobility from "./Mobility";
 import { exercisesApi, mobilityApi } from "@/lib/api";
@@ -22,6 +23,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
             getPending: vi.fn(),
             transfer: vi.fn(),
             clearPending: vi.fn(),
+            suggestMovementBreak: vi.fn(),
         },
         // The page's movement break card reads the pool. Left unmocked it would
         // attempt a real request from the test and fail it silently.
@@ -292,17 +294,56 @@ it("lists every pending session, each with its own label and controls", async ()
     );
 });
 
-it("offers a movement break whenever the pool has movements, in either state", async () => {
+it("suggests a movement break onto today and goes to the day", async () => {
     pool.mockResolvedValue({ data: POOL } as never);
     mobility.getPending.mockResolvedValue({
         data: { ready: false, sessions: [], last_session: null },
     } as never);
+    mobility.suggestMovementBreak.mockResolvedValue({
+        data: {
+            doc_id: 7,
+            date: format(new Date(), "yyyy-MM-dd"),
+            exercise: "Deep Squat Hold",
+        },
+    } as never);
     renderPage(<Mobility />);
 
-    // A count, not a bare button: the pool is what makes the link worth
-    // following, and an empty one makes it a dead end.
+    // A count, not a bare button: the pool is what makes the shuffle worth
+    // offering, and an empty one makes it a dead end.
     expect(await screen.findByText(/One of 2 movements/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Shuffle/ })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: /Shuffle/ }));
+
+    // The suggestion lands on today and the page hands over to it.
+    await waitFor(() =>
+        expect(mobility.suggestMovementBreak).toHaveBeenCalledWith(
+            format(new Date(), "yyyy-MM-dd"),
+        ),
+    );
+    await waitFor(() =>
+        expect(screen.queryByText("UPCOMING MOBILITY")).not.toBeInTheDocument(),
+    );
+});
+
+it("cannot suggest twice from a double tap", async () => {
+    pool.mockResolvedValue({ data: POOL } as never);
+    mobility.getPending.mockResolvedValue({
+        data: { ready: false, sessions: [], last_session: null },
+    } as never);
+    // A suggestion that has not answered yet: the button must go dead, or a
+    // second tap inserts a second tile.
+    let settle!: (value: unknown) => void;
+    mobility.suggestMovementBreak.mockReturnValue(
+        new Promise((resolve) => {
+            settle = resolve;
+        }) as never,
+    );
+    renderPage(<Mobility />);
+
+    const button = await screen.findByRole("button", { name: /Shuffle/ });
+    await userEvent.click(button);
+    expect(button).toBeDisabled();
+
+    settle({ data: { doc_id: 7, exercise: "Deep Squat Hold" } });
 });
 
 it("says where to fill the pool rather than offering an empty shuffle", async () => {

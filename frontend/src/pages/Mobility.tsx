@@ -22,6 +22,7 @@ import {
   useMobilityPending,
   useTransferMobility,
   useClearMobilityPending,
+  useSuggestMovementBreak,
 } from '@/hooks/useMobility';
 import type { MobilityPendingSession, MobilityLastSession } from '@/types/mobility';
 import type { UpcomingWorkout } from '@/types/upcoming';
@@ -355,9 +356,10 @@ const PendingSessionCard = ({ session }: { session: MobilityPendingSession }) =>
 /**
  * Movement break: one equipment-free movement, timed, for between tasks.
  *
- * A link and not a session. It is not prescribed in advance and is not the
- * agent's to write, so there is nothing here for `mobility_plan` to hold — the
- * timer does the timing and writes the sets when the run finishes.
+ * The shuffle inserts a *suggested* tile on today — an ordinary planned tile
+ * holding the movement's defaults (plan 0018) — and hands over to the day
+ * view, where it is edited or played like anything else. It is not a finished
+ * run: nothing is logged until it is played.
  *
  * The pool size is on the card because an empty pool makes the button a dead
  * end, and the Exercises page is where it gets filled.
@@ -365,7 +367,16 @@ const PendingSessionCard = ({ session }: { session: MobilityPendingSession }) =>
 const MovementBreakCard = () => {
   const navigate = useNavigate();
   const { data: pool } = useMovementBreakPool();
+  const suggest = useSuggestMovementBreak();
   const count = pool?.length ?? 0;
+
+  const handleShuffle = async () => {
+    // Local time, never `toISOString()` — the day an entry lands on is the
+    // string prefix of its timestamp (the food log's timezone bug).
+    const today = format(new Date(), 'yyyy-MM-dd');
+    await suggest.mutateAsync(today);
+    navigate(`/day/${today}`);
+  };
 
   return (
     <Card className="animate-in">
@@ -394,13 +405,13 @@ const MovementBreakCard = () => {
           >
             {count === 0
               ? 'No movements in the pool yet. Add one from the Exercises page.'
-              : `One of ${count} movements, a minute or two between tasks. Logged when the run finishes.`}
+              : `One of ${count} movements, suggested onto today. Played from the day view.`}
           </p>
         </div>
         <Button
           variant="secondary"
-          onClick={() => navigate('/timer?break=1')}
-          disabled={count === 0}
+          onClick={handleShuffle}
+          disabled={count === 0 || suggest.isPending}
           style={{ flexShrink: 0 }}
         >
           <Timer style={{ width: '16px', height: '16px' }} />

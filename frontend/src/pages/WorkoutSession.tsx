@@ -45,6 +45,7 @@ import {
   Calendar as CalendarIcon,
   History,
   Copy,
+  Coffee,
   StretchHorizontal,
   Timer,
 } from "lucide-react";
@@ -73,8 +74,9 @@ import {
   useSetDayMobility,
 } from "@/hooks/useWorkouts";
 import type { Workout } from "@/types/workout";
-import { useCategories, useExercises, useRecentExercises } from "@/hooks/useExercises";
+import { useCategories, useExercises, useMovementBreakPool, useRecentExercises } from "@/hooks/useExercises";
 import { useProgression } from "@/hooks/useProgression";
+import { useSuggestMovementBreak } from "@/hooks/useMobility";
 import type { WorkoutCreate } from "@/types/workout";
 
 // Get weight increment based on current weight value
@@ -808,6 +810,8 @@ const WorkoutSession = () => {
   const { data: categories } = useCategories();
   const { data: exercises } = useExercises();
   const { data: recentExercises } = useRecentExercises(8);
+  const { data: movementBreakPool } = useMovementBreakPool();
+  const suggestMovementBreak = useSuggestMovementBreak();
 
   const createWorkout = useCreateWorkout();
   const updateWorkout = useUpdateWorkout();
@@ -1153,6 +1157,22 @@ const WorkoutSession = () => {
                 <Timer style={{ width: "16px", height: "16px" }} />
                 Timer
               </Button>
+              {/* A movement break is inserted as an ordinary planned tile on
+                  this date (plan 0018) — editable and deletable like any
+                  other, and not work until it is played. Hidden when the
+                  pool is empty; the Mobility page is where it gets filled. */}
+              {(movementBreakPool?.length ?? 0) > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => date && suggestMovementBreak.mutate(date)}
+                  disabled={suggestMovementBreak.isPending}
+                  title="Suggest an equipment-free movement onto this day"
+                >
+                  <Coffee style={{ width: "16px", height: "16px" }} />
+                  Movement break
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={() => {

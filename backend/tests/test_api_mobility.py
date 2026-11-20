@@ -629,16 +629,38 @@ def test_a_failed_write_rolls_the_agent_claim_back(client):
     assert MobilityRepository().get_plans() == []
 
 
-# --- Movement break ----------------------------------------------------------------
+# --- Movement break suggestions (plan 0018) -----------------------------------
+#
+# The old `POST /movement-break` wrote a *finished* run: one completed row per
+# interval. The suggestion replaces it: an ordinary planned tile holding the
+# movement's defaults, which the day player performs like anything else.
 
-def test_a_finished_movement_break_run_is_logged_as_mobility_sets(client):
-    client.post(
-        "/api/exercises/",
-        json={"name": "Deep Squat Hold", "category": "Legs", "movement_break_seconds": 40},
+
+def _enpool(client, name, category="Legs", **overrides):
+    body = {
+        "name": name,
+        "category": category,
+        "movement_break_enabled": True,
+        "time_enabled": True,
+        "default_work_seconds": 40,
+        "default_reps": 2,
+        "default_rest_seconds": 20,
+    }
+    body.update(overrides)
+    response = client.post("/api/exercises/", json=body)
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_a_suggestion_is_an_incomplete_mobility_tile_holding_the_defaults(client):
+    _enpool(
+        client,
+        "Farmer Carry",
+        default_weight_lb=None,
+        default_rest_after_seconds=15,
     )
     # Something already on the day, so "appended" is distinguishable from
-    # "interleaved" — two snacks in one afternoon have to stack in the order
-    # they were run, not sort themselves among the lifting.
+    # "inserted".
     client.post(
         "/api/workouts/",
         json={
@@ -650,82 +672,71 @@ def test_a_finished_movement_break_run_is_logged_as_mobility_sets(client):
         },
     )
 
-    response = client.post(
-        "/api/mobility/movement-break",
-        json={
-            "exercise": "Deep Squat Hold",
-            "sets": 2,
-            "seconds": 40,
-            "date": "2026-11-12",
-        },
-    )
-    assert response.status_code == 200
-    assert response.json()["sets"] == 2
-    assert response.json()["time"] == "0:40"
+    response = client.post("/api/mobility/suggest", json={"date": "2026-11-12"})
+    assert response.status_code == 201
+    tile = response.json()
+
+    assert tile["exercise"] == "Farmer Carry"
+    assert tile["is_mobility"] is True
+    # The exercise's defaults, not a finished run: nothing is performed yet.
+    assert tile["reps"] == 2
+    assert tile["weight"] is None  # filled in on the day, not defaulted
+    assert tile["work_seconds"] == 40
+    assert tile["rest_seconds"] == 20
+    assert tile["rest_after_seconds"] == 15
+    assert tile["completed_at"] is None
+    assert tile["completed_reps"] is None
 
     day = client.get("/api/workouts/?date=2026-11-12").json()
     squat = next(w for w in day if w["exercise"] == "Barbell Squat")
-    breaks = [w for w in day if w["exercise"] == "Deep Squat Hold"]
-
-    assert len(breaks) == 2
-    assert all(w["is_mobility"] for w in breaks)
-    # A timed hold is not a rep, and writing `reps = 1` for one would put a rep
-    # in the progression series that never happened (ADR-0005).
-    assert all(w["reps"] is None for w in breaks)
-    assert all(w["time"] == "0:40" for w in breaks)
-    # It was run, which is the only reason the row exists.
-    assert all(w["completed_at"] for w in breaks)
-    assert [w["order"] for w in breaks] == [squat["order"] + 1, squat["order"] + 2]
+    assert tile["order"] > squat["order"]
 
 
-def test_the_run_is_logged_as_it_was_run_not_as_it_was_suggested(client):
-    """The times are adjustable after a shuffle, so the log takes the timer's
-    setting rather than the movement's default bout."""
-    client.post(
-        "/api/exercises/",
-        json={"name": "Wall Sit", "category": "Legs", "movement_break_seconds": 40},
-    )
+def test_a_suggestion_is_not_work_until_performed(client):
+    """An unused suggestion must not affect the shuffle's `last_used`, the
+    use count, or the calendar (plan 0018)."""
+    _enpool(client, "Deep Squat Hold")
 
-    client.post(
-        "/api/mobility/movement-break",
-        json={"exercise": "Wall Sit", "sets": 3, "seconds": 20, "date": "2026-11-12"},
-    )
+    client.post("/api/mobility/suggest", json={"date": "2026-11-12"})
 
-    day = client.get("/api/workouts/?date=2026-11-12").json()
-    assert [w["time"] for w in day] == ["0:20", "0:20", "0:20"]
+    movement = client.get("/api/exercises/Deep Squat Hold").json()
+    assert movement["last_used"] is None
+    assert movement["use_count"] == 0
+    calendar = client.get("/api/workouts/calendar?year=2026&month=11").json()
+    assert calendar["counts"] == {}
 
 
-def test_a_run_of_an_unknown_movement_is_a_404_not_a_silent_no_op(client):
-    response = client.post(
-        "/api/mobility/movement-break",
-        json={"exercise": "Nothing Like This", "sets": 2, "seconds": 30},
-    )
+def test_the_shuffle_prefers_the_least_recently_used(client):
+    """Three candidates and the least recently used of them; with three in the
+    pool the draw always sees all three, so the pick is deterministic."""
+    _enpool(client, "Deep Squat Hold")
+    _enpool(client, "Wall Angel", category="Shoulders")
+    _enpool(client, "Chin Tuck", category="Back")
+    # Wall Angel was performed most recently; Deep Squat Hold before it. Chin
+    # Tuck has never been done, which outranks both.
+    for name, date in (("Wall Angel", "2026-11-12"), ("Deep Squat Hold", "2026-11-01")):
+        created = client.post(
+            "/api/workouts/",
+            json={"date": date, "exercise": name, "category": "Legs",
+                  "completed_at": "2026-11-12T12:00:00"},
+        ).json()
+        assert created["completed_at"] is not None
+
+    for _ in range(5):
+        response = client.post("/api/mobility/suggest", json={"date": "2026-11-13"})
+        assert response.json()["exercise"] == "Chin Tuck"
+
+
+def test_an_empty_pool_is_a_404_and_writes_nothing(client):
+    response = client.post("/api/mobility/suggest", json={"date": "2026-11-12"})
     assert response.status_code == 404
     assert client.get("/api/workouts/?date=2026-11-12").json() == []
 
 
-def test_a_movement_break_run_carries_no_comment(client):
-    """The set's comment is the user's only feedback channel (0012 §4). A run
-    that finished has nothing to say about itself."""
-    client.post(
-        "/api/exercises/", json={"name": "Chin Tuck", "category": "Back"}
-    )
+def test_a_suggestion_defaults_to_today(client):
+    _enpool(client, "Plank", category="Core")
 
-    client.post(
-        "/api/mobility/movement-break",
-        json={"exercise": "Chin Tuck", "sets": 1, "seconds": 30, "date": "2026-11-12"},
-    )
-
-    day = client.get("/api/workouts/?date=2026-11-12").json()
-    assert day[0]["comment"] is None
-
-
-def test_a_movement_break_run_defaults_to_today(client):
-    client.post("/api/exercises/", json={"name": "Plank", "category": "Core"})
-
-    response = client.post(
-        "/api/mobility/movement-break", json={"exercise": "Plank", "sets": 1, "seconds": 30}
-    )
-    assert response.status_code == 200
+    response = client.post("/api/mobility/suggest", json={})
+    assert response.status_code == 201
     # The app's timezone, never the client's guess at a date.
     assert response.json()["date"] == get_current_date()

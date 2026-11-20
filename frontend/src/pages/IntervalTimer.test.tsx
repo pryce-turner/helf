@@ -45,7 +45,7 @@ const movement = (overrides: Record<string, unknown> = {}) => ({
     form: "Sink all the way down and stay there.",
     application: null,
     rating: null,
-    movement_break_seconds: 40,
+    default_work_seconds: 40,
     last_used: null,
     use_count: 0,
     created_at: "2026-11-12",
@@ -55,8 +55,8 @@ const movement = (overrides: Record<string, unknown> = {}) => ({
 /** A pool of three, so "not the same one again" is a real assertion. */
 const POOL = [
     movement(),
-    movement({ doc_id: 2, name: "Wall Angel", category: "Shoulders", movement_break_seconds: 40 }),
-    movement({ doc_id: 3, name: "Chin Tuck", category: "Back", movement_break_seconds: 30 }),
+    movement({ doc_id: 2, name: "Wall Angel", category: "Shoulders", default_work_seconds: 40 }),
+    movement({ doc_id: 3, name: "Chin Tuck", category: "Back", default_work_seconds: 30 }),
 ];
 
 const logged = (sets = 2, time = "0:40") => ({

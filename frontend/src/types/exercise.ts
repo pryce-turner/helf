@@ -9,12 +9,29 @@ export interface Exercise {
   /** 1-5. `null` is unrated, which is not the same as a bad rating. */
   rating: number | null;
   /**
-   * In the movement break pool, and how long one bout of it lasts. `null` is
-   * "not in the pool" — a fact about the movement's setup, not a judgement
-   * that it is mobility work.
+   * In the movement break pool. A fact about the movement's setup — it needs
+   * no equipment — not a judgement that it is mobility work.
    */
-  movement_break_seconds: number | null;
-  /** Also mobility work. A flag across categories, not a category. */
+  movement_break_enabled: boolean;
+  /**
+   * Field configuration (plan 0018): which groups a new set tile for this
+   * movement offers, and what each offers as a default. Enabled with a null
+   * default means "offer the input, leave it blank"; disabled groups keep
+   * their defaults stored, so re-enabling does not erase them.
+   */
+  reps_enabled: boolean;
+  default_reps: number | null;
+  weight_enabled: boolean;
+  /** Total pounds — for a Farmer Carry, across both hands, not per hand. */
+  default_weight_lb: number | null;
+  distance_enabled: boolean;
+  default_distance: number | null;
+  default_distance_unit: string | null;
+  time_enabled: boolean;
+  default_work_seconds: number | null;
+  default_rest_seconds: number | null;
+  default_rest_after_seconds: number | null;
+  /** Set only by performed work — a suggestion never moves it (plan 0018). */
   last_used: string | null;
   use_count: number;
   created_at: string;
@@ -26,7 +43,18 @@ export interface ExerciseCreate {
   form?: string;
   application?: string;
   rating?: number | null;
-  movement_break_seconds?: number | null;
+  movement_break_enabled?: boolean;
+  reps_enabled?: boolean;
+  default_reps?: number | null;
+  weight_enabled?: boolean;
+  default_weight_lb?: number | null;
+  distance_enabled?: boolean;
+  default_distance?: number | null;
+  default_distance_unit?: string | null;
+  time_enabled?: boolean;
+  default_work_seconds?: number | null;
+  default_rest_seconds?: number | null;
+  default_rest_after_seconds?: number | null;
 }
 
 export interface ExerciseUpdate {
@@ -36,8 +64,19 @@ export interface ExerciseUpdate {
   application?: string;
   /** Sending `null` clears the rating; omitting the key leaves it alone. */
   rating?: number | null;
-  /** Sending `null` removes it from the movement break pool; omitting leaves it. */
-  movement_break_seconds?: number | null;
+  movement_break_enabled?: boolean;
+  reps_enabled?: boolean;
+  /** Sending `null` clears the default; omitting the key leaves it alone. */
+  default_reps?: number | null;
+  weight_enabled?: boolean;
+  default_weight_lb?: number | null;
+  distance_enabled?: boolean;
+  default_distance?: number | null;
+  default_distance_unit?: string | null;
+  time_enabled?: boolean;
+  default_work_seconds?: number | null;
+  default_rest_seconds?: number | null;
+  default_rest_after_seconds?: number | null;
 }
 
 export interface Category {

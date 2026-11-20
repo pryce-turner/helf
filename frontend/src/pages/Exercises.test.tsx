@@ -46,6 +46,18 @@ const exercise = (overrides: Record<string, unknown> = {}) => ({
     form: null,
     application: null,
     rating: null,
+    movement_break_enabled: false,
+    reps_enabled: true,
+    default_reps: null,
+    weight_enabled: true,
+    default_weight_lb: null,
+    distance_enabled: false,
+    default_distance: null,
+    default_distance_unit: null,
+    time_enabled: false,
+    default_work_seconds: null,
+    default_rest_seconds: null,
+    default_rest_after_seconds: null,
     last_used: "2026-07-08",
     use_count: 12,
     created_at: "2026-01-01",
@@ -234,17 +246,55 @@ describe("Exercises: the movement break pool", () => {
             }),
         );
 
+        // A pool member is timed by definition, so joining seeds the default
+        // bout the old one-column pool carried.
         await waitFor(() =>
             expect(mockedExercises.update).toHaveBeenCalledWith(1, {
-                movement_break_seconds: 30,
+                movement_break_enabled: true,
+                time_enabled: true,
+                default_work_seconds: 30,
             }),
         );
     });
 
-    it("takes a movement out of the pool with an explicit null", async () => {
+    it("keeps a movement's own bout when it joins the pool", async () => {
         const user = userEvent.setup();
         mockedExercises.getAll.mockResolvedValue({
-            data: [exercise({ movement_break_seconds: 40 })],
+            data: [
+                exercise({
+                    time_enabled: true,
+                    default_work_seconds: 45,
+                }),
+            ],
+        } as never);
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+
+        await user.click(
+            await screen.findByRole("button", {
+                name: "Add Plate Rollup to movement breaks",
+            }),
+        );
+
+        await waitFor(() =>
+            expect(mockedExercises.update).toHaveBeenCalledWith(1, {
+                movement_break_enabled: true,
+                time_enabled: true,
+                default_work_seconds: 45,
+            }),
+        );
+    });
+
+    it("takes a movement out of the pool", async () => {
+        const user = userEvent.setup();
+        mockedExercises.getAll.mockResolvedValue({
+            data: [
+                exercise({
+                    movement_break_enabled: true,
+                    time_enabled: true,
+                    default_work_seconds: 40,
+                }),
+            ],
         } as never);
         renderPage(<ExercisesPage />, "/exercises");
         await openCategory(user);
@@ -258,12 +308,91 @@ describe("Exercises: the movement break pool", () => {
 
         await user.click(toggle);
 
-        // An explicit null, not an omitted key: leaving the pool is a real
-        // edit, and omission means "leave it alone".
         await waitFor(() =>
             expect(mockedExercises.update).toHaveBeenCalledWith(1, {
-                movement_break_seconds: null,
+                movement_break_enabled: false,
             }),
+        );
+    });
+});
+
+describe("Exercises: set tile field configuration", () => {
+    it("shows the four groups with their current configuration", async () => {
+        const user = userEvent.setup();
+        // Farmer Carry: Reps, Weight and Time on, the load filled in on the
+        // day rather than defaulted.
+        mockedExercises.getAll.mockResolvedValue({
+            data: [
+                exercise({
+                    name: "Farmer Carry",
+                    time_enabled: true,
+                    default_work_seconds: 40,
+                    default_rest_seconds: 20,
+                    default_rest_after_seconds: 15,
+                    movement_break_enabled: true,
+                }),
+            ],
+        } as never);
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+        await user.click(await screen.findByRole("button", { name: /edit/i }));
+
+        expect(screen.getByRole("checkbox", { name: "Reps" })).toBeChecked();
+        expect(screen.getByRole("checkbox", { name: "Weight" })).toBeChecked();
+        expect(screen.getByRole("checkbox", { name: "Distance" })).not.toBeChecked();
+        expect(screen.getByRole("checkbox", { name: "Time" })).toBeChecked();
+        // Weight is enabled but defaulted blank — filled in on the day tile.
+        expect(screen.getByLabelText("Default weight")).toHaveValue(null);
+        expect(screen.getByLabelText("Work seconds")).toHaveValue(40);
+        expect(screen.getByLabelText("Rest seconds")).toHaveValue(20);
+        expect(screen.getByLabelText("Rest after set seconds")).toHaveValue(15);
+    });
+
+    it("hides a group's defaults while it is disabled, without losing them", async () => {
+        const user = userEvent.setup();
+        mockedExercises.getAll.mockResolvedValue({
+            data: [
+                exercise({
+                    time_enabled: true,
+                    default_work_seconds: 40,
+                }),
+            ],
+        } as never);
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+        await user.click(await screen.findByRole("button", { name: /edit/i }));
+
+        await user.click(screen.getByRole("checkbox", { name: "Time" }));
+        expect(screen.queryByLabelText("Work seconds")).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("checkbox", { name: "Time" }));
+        expect(screen.getByLabelText("Work seconds")).toHaveValue(40);
+    });
+
+    it("saves the whole configuration, blanks becoming explicit nulls", async () => {
+        const user = userEvent.setup();
+        renderPage(<ExercisesPage />, "/exercises");
+        await openCategory(user);
+        await user.click(await screen.findByRole("button", { name: /edit/i }));
+
+        await user.click(screen.getByRole("checkbox", { name: "Time" }));
+        await user.type(screen.getByLabelText("Work seconds"), "40");
+        await user.type(screen.getByLabelText("Rest seconds"), "20");
+        await user.click(screen.getByRole("button", { name: /save/i }));
+
+        await waitFor(() =>
+            expect(mockedExercises.update).toHaveBeenCalledWith(
+                1,
+                expect.objectContaining({
+                    time_enabled: true,
+                    default_work_seconds: 40,
+                    default_rest_seconds: 20,
+                    default_rest_after_seconds: null,
+                    reps_enabled: true,
+                    weight_enabled: true,
+                    distance_enabled: false,
+                }),
+            ),
         );
     });
 });

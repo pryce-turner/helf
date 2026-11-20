@@ -1751,6 +1751,74 @@
         cursor: not-allowed;
     }
 
+    /* The field-configuration editor (plan 0018): one row per group, the
+       defaults beside the toggle that offers them. */
+    .field-config {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+    }
+
+    .field-config__title {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .field-config__group {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+    }
+
+    .field-config__toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-width: 90px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-primary);
+        cursor: pointer;
+    }
+
+    .field-config__toggle input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent);
+    }
+
+    .field-config__defaults {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .field-config__defaults .input,
+    .field-config__defaults input {
+        width: 84px;
+    }
+
+    .field-config__defaults select.input {
+        width: auto;
+    }
+
+    .field-config__unit {
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+
     /* Colour only on press, never geometry — see "Mobile touch feedback". */
     @media (pointer: coarse) {
         .timer-play:active {

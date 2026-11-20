@@ -778,7 +778,7 @@ const IntervalTimer = () => {
    * touch them, and every row stays editable afterwards.
    */
   const loadMovement = (next: Exercise) => {
-    const workSeconds = next.movement_break_seconds ?? settings.workSeconds;
+    const workSeconds = next.default_work_seconds ?? settings.workSeconds;
     setMovement(next);
     handleSettingsChange({
       workSeconds,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Sparkles, ChevronDown, Coffee, Timer } from 'lucide-react';
+import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Sparkles, ChevronDown, Coffee } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import ExerciseSectionTabs from '@/components/ExerciseSectionTabs';
 import CategoryField from '@/components/CategoryField';
@@ -20,6 +20,53 @@ import type { Exercise } from '@/types/exercise';
 
 /** What the toggle gives a movement it is adding to the pool. */
 const DEFAULT_BREAK_SECONDS = 30;
+
+/**
+ * The edit form's draft of the four field groups. Text inputs hold strings;
+ * parsing happens at save, where a blank becomes an explicit null — clearing
+ * a default is a real edit, not an omitted key.
+ */
+interface FieldConfigDraft {
+  reps_enabled: boolean;
+  default_reps: string;
+  weight_enabled: boolean;
+  default_weight_lb: string;
+  distance_enabled: boolean;
+  default_distance: string;
+  default_distance_unit: string;
+  time_enabled: boolean;
+  default_work_seconds: string;
+  default_rest_seconds: string;
+  default_rest_after_seconds: string;
+}
+
+const draftFromExercise = (exercise: Exercise): FieldConfigDraft => ({
+  reps_enabled: exercise.reps_enabled,
+  default_reps: exercise.default_reps?.toString() ?? '',
+  weight_enabled: exercise.weight_enabled,
+  default_weight_lb: exercise.default_weight_lb?.toString() ?? '',
+  distance_enabled: exercise.distance_enabled,
+  default_distance: exercise.default_distance?.toString() ?? '',
+  default_distance_unit: exercise.default_distance_unit ?? '',
+  time_enabled: exercise.time_enabled,
+  default_work_seconds: exercise.default_work_seconds?.toString() ?? '',
+  default_rest_seconds: exercise.default_rest_seconds?.toString() ?? '',
+  default_rest_after_seconds: exercise.default_rest_after_seconds?.toString() ?? '',
+});
+
+const parseSeconds = (raw: string): number | null => {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseNumber = (raw: string): number | null => {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 // Predefined colors for common categories (matching WorkoutSession/Upcoming)
 const getCategoryColor = (category: string) => {
@@ -71,7 +118,7 @@ const Exercises = () => {
   const [editCategory, setEditCategory] = useState('');
   const [editForm, setEditForm] = useState('');
   const [editApplication, setEditApplication] = useState('');
-  const [editBreakSeconds, setEditBreakSeconds] = useState('');
+  const [editConfig, setEditConfig] = useState<FieldConfigDraft | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -143,20 +190,28 @@ const Exercises = () => {
     setEditCategory(exercise.category);
     setEditForm(exercise.form || '');
     setEditApplication(exercise.application || '');
-    setEditBreakSeconds(exercise.movement_break_seconds != null ? String(exercise.movement_break_seconds) : '');
+    setEditConfig(draftFromExercise(exercise));
   };
 
   /**
-   * In or out of the movement break pool. Entering it takes a default 30s bout, which
-   * is then editable in the edit form; leaving it sends an explicit null, the
-   * way clearing a rating does.
+   * In or out of the movement break pool. Joining also turns the Time group
+   * on and seeds the default bout — a pool member is a timed movement by
+   * definition — but keeps a bout the movement already has.
    */
   const toggleMovementBreak = (exercise: Exercise) => {
+    if (exercise.movement_break_enabled) {
+      updateExercise.mutate({
+        id: exercise.doc_id,
+        data: { movement_break_enabled: false },
+      });
+      return;
+    }
     updateExercise.mutate({
       id: exercise.doc_id,
       data: {
-        movement_break_seconds:
-          exercise.movement_break_seconds != null ? null : DEFAULT_BREAK_SECONDS,
+        movement_break_enabled: true,
+        time_enabled: true,
+        default_work_seconds: exercise.default_work_seconds ?? DEFAULT_BREAK_SECONDS,
       },
     });
   };
@@ -167,11 +222,11 @@ const Exercises = () => {
     setEditCategory('');
     setEditForm('');
     setEditApplication('');
-    setEditBreakSeconds('');
+    setEditConfig(null);
   };
 
   const saveEditing = async () => {
-    if (editingId === null || !editName.trim() || !editCategory.trim()) return;
+    if (editingId === null || !editName.trim() || !editCategory.trim() || !editConfig) return;
     await updateExercise.mutateAsync({
       id: editingId,
       data: {
@@ -179,11 +234,20 @@ const Exercises = () => {
         category: editCategory.trim(),
         form: editForm.trim() || '',
         application: editApplication.trim() || '',
-        // Blank is "not in the pool", which is a different edit from "leave
-        // the membership alone" — so it is always sent, never omitted.
-        movement_break_seconds: editBreakSeconds.trim()
-          ? Math.min(600, Math.max(5, parseInt(editBreakSeconds, 10) || 0))
-          : null,
+        // The whole configuration is sent every save: blanks go as explicit
+        // nulls, which is how a default gets cleared — an omitted key would
+        // leave it alone.
+        reps_enabled: editConfig.reps_enabled,
+        default_reps: parseSeconds(editConfig.default_reps),
+        weight_enabled: editConfig.weight_enabled,
+        default_weight_lb: parseNumber(editConfig.default_weight_lb),
+        distance_enabled: editConfig.distance_enabled,
+        default_distance: parseNumber(editConfig.default_distance),
+        default_distance_unit: editConfig.default_distance_unit || null,
+        time_enabled: editConfig.time_enabled,
+        default_work_seconds: parseSeconds(editConfig.default_work_seconds),
+        default_rest_seconds: parseSeconds(editConfig.default_rest_seconds),
+        default_rest_after_seconds: parseSeconds(editConfig.default_rest_after_seconds),
       },
     });
     cancelEditing();
@@ -483,28 +547,160 @@ const Exercises = () => {
                                   rows={2}
                                   style={{ resize: 'vertical', minHeight: '60px' }}
                                 />
-                                {/* Seconds, not a unitless number: the column
-                                    name carries the unit (ADR-0003) and the
-                                    field should say the same. Blank takes the
-                                    movement out of the pool. */}
-                                <div className="flex items-center" style={{ gap: 'var(--space-3)' }}>
-                                  <Timer style={{ width: '16px', height: '16px', color: 'var(--warning)' }} />
-                                  <Label htmlFor="edit-break-seconds" style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
-                                    Movement break seconds <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(blank = not in the pool)</span>
-                                  </Label>
-                                  <Input
-                                    id="edit-break-seconds"
-                                    type="number"
-                                    inputMode="numeric"
-                                    className="input--mono"
-                                    value={editBreakSeconds}
-                                    onChange={(e) => setEditBreakSeconds(e.target.value)}
-                                    placeholder="—"
-                                    min={5}
-                                    max={600}
-                                    style={{ width: '90px' }}
-                                  />
-                                </div>
+                                {/* The four field groups (plan 0018): what a
+                                    new set tile for this movement offers, and
+                                    with what defaults. Disabled groups hide
+                                    their inputs but keep their values, so
+                                    re-enabling restores the configuration. */}
+                                {editConfig && (
+                                  <div className="field-config">
+                                    <p className="field-config__title">Set tile fields</p>
+
+                                    <div className="field-config__group">
+                                      <label className="field-config__toggle">
+                                        <input
+                                          type="checkbox"
+                                          checked={editConfig.reps_enabled}
+                                          onChange={(e) => setEditConfig({ ...editConfig, reps_enabled: e.target.checked })}
+                                        />
+                                        Reps
+                                      </label>
+                                      {editConfig.reps_enabled && (
+                                        <span className="field-config__defaults">
+                                          <Label htmlFor="edit-default-reps">Default reps</Label>
+                                          <Input
+                                            id="edit-default-reps"
+                                            type="number"
+                                            inputMode="numeric"
+                                            className="input--mono"
+                                            value={editConfig.default_reps}
+                                            onChange={(e) => setEditConfig({ ...editConfig, default_reps: e.target.value })}
+                                            placeholder="blank"
+                                            min={1}
+                                            max={500}
+                                          />
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="field-config__group">
+                                      <label className="field-config__toggle">
+                                        <input
+                                          type="checkbox"
+                                          checked={editConfig.weight_enabled}
+                                          onChange={(e) => setEditConfig({ ...editConfig, weight_enabled: e.target.checked })}
+                                        />
+                                        Weight
+                                      </label>
+                                      {editConfig.weight_enabled && (
+                                        <span className="field-config__defaults">
+                                          <Label htmlFor="edit-default-weight">Default weight</Label>
+                                          <Input
+                                            id="edit-default-weight"
+                                            type="number"
+                                            inputMode="decimal"
+                                            className="input--mono"
+                                            value={editConfig.default_weight_lb}
+                                            onChange={(e) => setEditConfig({ ...editConfig, default_weight_lb: e.target.value })}
+                                            placeholder="blank"
+                                            min={0}
+                                            max={2000}
+                                          />
+                                          <span className="field-config__unit">lb total</span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="field-config__group">
+                                      <label className="field-config__toggle">
+                                        <input
+                                          type="checkbox"
+                                          checked={editConfig.distance_enabled}
+                                          onChange={(e) => setEditConfig({ ...editConfig, distance_enabled: e.target.checked })}
+                                        />
+                                        Distance
+                                      </label>
+                                      {editConfig.distance_enabled && (
+                                        <span className="field-config__defaults">
+                                          <Label htmlFor="edit-default-distance">Default distance</Label>
+                                          <Input
+                                            id="edit-default-distance"
+                                            type="number"
+                                            inputMode="decimal"
+                                            className="input--mono"
+                                            value={editConfig.default_distance}
+                                            onChange={(e) => setEditConfig({ ...editConfig, default_distance: e.target.value })}
+                                            placeholder="blank"
+                                            min={0}
+                                          />
+                                          <select
+                                            aria-label="Distance unit"
+                                            className="input"
+                                            value={editConfig.default_distance_unit}
+                                            onChange={(e) => setEditConfig({ ...editConfig, default_distance_unit: e.target.value })}
+                                          >
+                                            <option value="">unit</option>
+                                            <option value="m">m</option>
+                                            <option value="km">km</option>
+                                            <option value="mi">mi</option>
+                                            <option value="yd">yd</option>
+                                          </select>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="field-config__group">
+                                      <label className="field-config__toggle">
+                                        <input
+                                          type="checkbox"
+                                          checked={editConfig.time_enabled}
+                                          onChange={(e) => setEditConfig({ ...editConfig, time_enabled: e.target.checked })}
+                                        />
+                                        Time
+                                      </label>
+                                      {editConfig.time_enabled && (
+                                        <span className="field-config__defaults">
+                                          <Label htmlFor="edit-default-work">Work seconds</Label>
+                                          <Input
+                                            id="edit-default-work"
+                                            type="number"
+                                            inputMode="numeric"
+                                            className="input--mono"
+                                            value={editConfig.default_work_seconds}
+                                            onChange={(e) => setEditConfig({ ...editConfig, default_work_seconds: e.target.value })}
+                                            placeholder="blank"
+                                            min={1}
+                                            max={3600}
+                                          />
+                                          <Label htmlFor="edit-default-rest">Rest seconds</Label>
+                                          <Input
+                                            id="edit-default-rest"
+                                            type="number"
+                                            inputMode="numeric"
+                                            className="input--mono"
+                                            value={editConfig.default_rest_seconds}
+                                            onChange={(e) => setEditConfig({ ...editConfig, default_rest_seconds: e.target.value })}
+                                            placeholder="blank"
+                                            min={0}
+                                            max={3600}
+                                          />
+                                          <Label htmlFor="edit-default-rest-after">Rest after set seconds</Label>
+                                          <Input
+                                            id="edit-default-rest-after"
+                                            type="number"
+                                            inputMode="numeric"
+                                            className="input--mono"
+                                            value={editConfig.default_rest_after_seconds}
+                                            onChange={(e) => setEditConfig({ ...editConfig, default_rest_after_seconds: e.target.value })}
+                                            placeholder="blank"
+                                            min={0}
+                                            max={3600}
+                                          />
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                                 <div className="flex" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                                   <Button
                                     variant="secondary"
@@ -617,8 +813,8 @@ const Exercises = () => {
                                 </div>
                                 <div className="exercise-row__actions flex items-center flex-wrap" style={{ gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
                                   {/* Whether a movement is in the movement break
-                                      pool, and for how long one bout of it
-                                      lasts. Not a mobility flag — that
+                                      pool, with its default bout when it has
+                                      one. Not a mobility flag — that
                                       judgement depends on the objective that
                                       day and is set per set on the day view
                                       (d7e4f2a91b83). This only says the
@@ -626,10 +822,10 @@ const Exercises = () => {
                                       done for a timed interval. */}
                                   <button
                                     type="button"
-                                    className={`movement-break-toggle${exercise.movement_break_seconds != null ? ' movement-break-toggle--on' : ''}`}
-                                    aria-pressed={exercise.movement_break_seconds != null}
+                                    className={`movement-break-toggle${exercise.movement_break_enabled ? ' movement-break-toggle--on' : ''}`}
+                                    aria-pressed={exercise.movement_break_enabled}
                                     aria-label={
-                                      exercise.movement_break_seconds != null
+                                      exercise.movement_break_enabled
                                         ? `Remove ${exercise.name} from movement breaks`
                                         : `Add ${exercise.name} to movement breaks`
                                     }
@@ -637,8 +833,10 @@ const Exercises = () => {
                                     onClick={() => toggleMovementBreak(exercise)}
                                   >
                                     <Coffee style={{ width: '14px', height: '14px' }} />
-                                    {exercise.movement_break_seconds != null
-                                      ? `${exercise.movement_break_seconds}s`
+                                    {exercise.movement_break_enabled
+                                      ? exercise.default_work_seconds != null
+                                        ? `${exercise.default_work_seconds}s`
+                                        : 'Break'
                                       : 'Break'}
                                   </button>
                                   {/* The rating saves on the spot: one

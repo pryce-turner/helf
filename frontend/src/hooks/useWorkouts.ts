@@ -69,6 +69,14 @@ export function useCreateWorkout() {
                 order: newWorkout.order ?? 0,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
+                work_seconds: newWorkout.work_seconds ?? null,
+                rest_seconds: newWorkout.rest_seconds ?? null,
+                rest_after_seconds: newWorkout.rest_after_seconds ?? null,
+                completed_reps: null,
+                actual_work_seconds: null,
+                actual_rest_seconds: null,
+                actual_rest_after_seconds: null,
+                ended_early: false,
             };
 
             queryClient.setQueriesData<Workout[]>(
@@ -93,18 +101,22 @@ export function useCreateWorkout() {
                 }
             );
 
-            queryClient.setQueriesData<CalendarResponse>(
-                { queryKey: ["calendar"] },
-                (old) => {
-                    if (!old) return old;
-                    const day = newWorkout.date.split("-")[2];
-                    const dayNum = String(parseInt(day, 10));
-                    return {
-                        ...old,
-                        counts: { ...old.counts, [dayNum]: (old.counts[dayNum] || 0) + 1 },
-                    };
-                }
-            );
+            // The calendar counts performed tiles (plan 0018), so a planned
+            // one — the ordinary case for Add — changes nothing there.
+            if (newWorkout.completed_at) {
+                queryClient.setQueriesData<CalendarResponse>(
+                    { queryKey: ["calendar"] },
+                    (old) => {
+                        if (!old) return old;
+                        const day = newWorkout.date.split("-")[2];
+                        const dayNum = String(parseInt(day, 10));
+                        return {
+                            ...old,
+                            counts: { ...old.counts, [dayNum]: (old.counts[dayNum] || 0) + 1 },
+                        };
+                    }
+                );
+            }
 
             return { previousWorkouts, previousCalendar };
         },
@@ -155,6 +167,9 @@ export function useUpdateWorkout() {
                             distance_unit: workout.distance_unit ?? null,
                             time: workout.time ?? null,
                             comment: workout.comment ?? null,
+                            work_seconds: workout.work_seconds ?? null,
+                            rest_seconds: workout.rest_seconds ?? null,
+                            rest_after_seconds: workout.rest_after_seconds ?? null,
                             updated_at: new Date().toISOString(),
                         }
                         : w
@@ -202,7 +217,9 @@ export function useDeleteWorkout() {
                 (old) => old?.filter((w) => w.doc_id !== id)
             );
 
-            if (deletedWorkout) {
+            // Only a performed tile was ever counted (plan 0018); deleting a
+            // suggestion changes nothing on the calendar.
+            if (deletedWorkout?.completed_at) {
                 queryClient.setQueriesData<CalendarResponse>(
                     { queryKey: ["calendar"] },
                     (old) => {
@@ -290,27 +307,65 @@ export function useToggleComplete() {
         },
         onMutate: async ({ id, completed }) => {
             await queryClient.cancelQueries({ queryKey: ["workouts"] });
+            await queryClient.cancelQueries({ queryKey: ["calendar"] });
 
             const previousWorkouts = queryClient.getQueriesData<Workout[]>({ queryKey: ["workouts"] });
+            const previousCalendar = queryClient.getQueriesData<CalendarResponse>({ queryKey: ["calendar"] });
 
+            // Mirror the server: completion derives the actuals from the
+            // targets, uncompleting clears them (plan 0018).
             queryClient.setQueriesData<Workout[]>(
                 { queryKey: ["workouts"] },
                 (old) => old?.map((w) =>
                     w.doc_id === id
-                        ? { ...w, completed_at: completed ? new Date().toISOString() : null }
+                        ? {
+                            ...w,
+                            completed_at: completed ? new Date().toISOString() : null,
+                            completed_reps: completed ? w.reps : null,
+                            actual_work_seconds: completed ? w.work_seconds : null,
+                            actual_rest_seconds: completed ? w.rest_seconds : null,
+                            ended_early: false,
+                        }
                         : w
                 )
             );
 
-            return { previousWorkouts };
+            // The calendar counts performed tiles only, so the tick moves the
+            // day's count with it.
+            let date: string | undefined;
+            for (const [, data] of previousWorkouts) {
+                date = data?.find((w) => w.doc_id === id)?.date;
+                if (date) break;
+            }
+            if (date) {
+                const dayNum = String(parseInt(date.split("-")[2], 10));
+                queryClient.setQueriesData<CalendarResponse>(
+                    { queryKey: ["calendar"] },
+                    (old) => {
+                        if (!old) return old;
+                        const current = old.counts[dayNum] || 0;
+                        const next = completed ? current + 1 : current - 1;
+                        const counts = { ...old.counts };
+                        if (next <= 0) delete counts[dayNum];
+                        else counts[dayNum] = next;
+                        return { ...old, counts };
+                    }
+                );
+            }
+
+            return { previousWorkouts, previousCalendar };
         },
         onError: (_err, _vars, context) => {
             context?.previousWorkouts.forEach(([queryKey, data]) => {
                 queryClient.setQueryData(queryKey, data);
             });
+            context?.previousCalendar?.forEach(([queryKey, data]) => {
+                queryClient.setQueryData(queryKey, data);
+            });
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ["workouts"] });
+            queryClient.invalidateQueries({ queryKey: ["calendar"] });
         },
     });
 }
@@ -376,7 +431,8 @@ export function useMoveToDate() {
             const previousWorkouts = queryClient.getQueriesData<Workout[]>({ queryKey: ["workouts"] });
             const previousCalendar = queryClient.getQueriesData<CalendarResponse>({ queryKey: ["calendar"] });
 
-            // Count workouts being moved from the source date cache
+            // Count performed tiles being moved — the calendar counts those
+            // only, so planned tiles change nothing there (plan 0018).
             let movedCount = 0;
 
             queryClient.setQueriesData<Workout[]>(
@@ -384,7 +440,9 @@ export function useMoveToDate() {
                 (old) => {
                     if (!old) return old;
                     const remaining = old.filter((w) => w.date !== sourceDate);
-                    movedCount = old.length - remaining.length;
+                    movedCount = old.filter(
+                        (w) => w.date === sourceDate && w.completed_at,
+                    ).length;
                     return remaining;
                 }
             );

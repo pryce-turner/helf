@@ -84,6 +84,14 @@ const set = (overrides: Record<string, unknown> = {}) => ({
     is_mobility: false,
     created_at: `${DATE}T09:00:00`,
     updated_at: `${DATE}T09:00:00`,
+    work_seconds: null,
+    rest_seconds: null,
+    rest_after_seconds: null,
+    completed_reps: null,
+    actual_work_seconds: null,
+    actual_rest_seconds: null,
+    actual_rest_after_seconds: null,
+    ended_early: false,
     ...overrides,
 });
 

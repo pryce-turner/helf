@@ -2,6 +2,7 @@ import axios from "axios";
 import type {
     Workout,
     WorkoutCreate,
+    WorkoutPerform,
     CalendarResponse,
 } from "../types/workout";
 import type {
@@ -87,6 +88,16 @@ export const workoutsApi = {
 
     toggleComplete: (id: number, completed: boolean) =>
         api.patch<Workout>(`/api/workouts/${id}/complete`, { completed }),
+
+    /** Write one tile's performance as measured by the day player. */
+    perform: (id: number, performance: WorkoutPerform) =>
+        api.post<Workout>(`/api/workouts/${id}/perform`, performance),
+
+    /** Record the rest divider that ran after a tile, on that tile. */
+    recordRestAfter: (id: number, seconds: number) =>
+        api.patch<Workout>(`/api/workouts/${id}/rest-after`, {
+            actual_rest_after_seconds: seconds,
+        }),
 
     // Bulk-writes the same per-set flag the day view's toggle writes. Not a
     // day-level marker: nothing is stored about the day (plan 0013 §6), and a

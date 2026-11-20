@@ -1045,6 +1045,11 @@ const WorkoutSession = () => {
           completed_at: workout.completed_at,
           order: workout.order,
           is_mobility: !workout.is_mobility,
+          // Targets round-trip too: a PUT is a full replace for them, and a
+          // toggle that dropped the timing would erase the tile's plan.
+          work_seconds: workout.work_seconds,
+          rest_seconds: workout.rest_seconds,
+          rest_after_seconds: workout.rest_after_seconds,
         },
       });
     },

@@ -21,6 +21,7 @@ from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 from app.repositories.workout_repo import WorkoutRepository
 from app.services.liftoscript_service import LiftoscriptParseError, LiftoscriptParser
 from app.services.wendler_service import WendlerService
+from app.utils.durations import parse_duration_seconds
 
 # Available presets with metadata
 PRESETS = {
@@ -107,7 +108,9 @@ def transfer_session(session: int, request: SessionTransferRequest):
             reps=upcoming_workout.get("reps"),
             distance=upcoming_workout.get("distance"),
             distance_unit=upcoming_workout.get("distance_unit"),
-            time=upcoming_workout.get("time"),
+            # Legacy `time` is read-only now (plan 0018); its duration moves
+            # onto the tile as `work_seconds` rather than dropping.
+            work_seconds=parse_duration_seconds(upcoming_workout.get("time")),
             comment=upcoming_workout.get("comment"),
             order=i + 1,
         )

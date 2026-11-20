@@ -16,6 +16,7 @@ from app.repositories.upcoming_repo import (
 )
 from app.repositories.workout_repo import WorkoutRepository
 from app.utils.date_helpers import get_current_date
+from app.utils.durations import parse_duration_seconds
 
 #: How many candidates the shuffle draws before picking one. Three and a
 #: least-recently-used tiebreak, not a uniform draw: uniform hands back the
@@ -105,7 +106,9 @@ class MobilityService:
                     reps=item.get("reps"),
                     distance=item.get("distance"),
                     distance_unit=item.get("distance_unit"),
-                    time=item.get("time"),
+                    # Legacy `time` is read-only (plan 0018); a prescribed hold
+                    # keeps its duration as `work_seconds` on the tile.
+                    work_seconds=parse_duration_seconds(item.get("time")),
                     # The cue travels with the set. It is also the field the
                     # user overwrites with feedback afterwards, which is the
                     # whole read-back channel (Plan 0012 §4) - so a prescription

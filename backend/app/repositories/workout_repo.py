@@ -597,7 +597,9 @@ class WorkoutRepository:
                     reps=source_workout.reps,
                     distance=source_workout.distance,
                     distance_unit=source_workout.distance_unit,
-                    time=source_workout.time,
+                    # No legacy `time` forward: read-only legacy stays on the
+                    # row it was written on; copies are new tiles.
+                    time=None,
                     comment=source_workout.comment,
                     order=starting_order + i,
                     created_at=now,

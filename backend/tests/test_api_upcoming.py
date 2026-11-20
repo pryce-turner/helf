@@ -25,6 +25,29 @@ def test_upcoming_create_and_session_transfer(client):
     assert len(workouts.json()) == 1
 
 
+def test_a_timed_upcoming_set_keeps_its_duration_on_transfer(client):
+    """Legacy `time` on a planned set parses into `work_seconds` at transfer
+    (plan 0018) — the duration moves onto the tile rather than dropping with
+    the legacy column."""
+    client.post(
+        "/api/exercises/",
+        json={"name": "Plank", "category": "Core", "time_enabled": True},
+    )
+    client.post(
+        "/api/upcoming/",
+        json={"session": 1, "exercise": "Plank", "category": "Core", "time": "0:01:00"},
+    )
+
+    transfer = client.post(
+        "/api/upcoming/session/1/transfer", json={"date": "2024-01-10"}
+    )
+    assert transfer.status_code == 200
+
+    (tile,) = client.get("/api/workouts/?date=2024-01-10").json()
+    assert tile["work_seconds"] == 60
+    assert tile["time"] is None
+
+
 def test_upcoming_bulk_create_and_delete(client):
     response = client.post(
         "/api/upcoming/bulk",

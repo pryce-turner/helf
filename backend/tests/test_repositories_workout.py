@@ -421,6 +421,21 @@ def test_copy_to_date_resets_performance_but_keeps_targets():
     assert copied["ended_early"] is False
 
 
+def test_copy_to_date_does_not_write_legacy_time():
+    """`time` is read-only legacy: a copy of a legacy-timed row carries no
+    legacy string forward — new rows hold the numeric targets instead."""
+    repo = WorkoutRepository()
+    created = _create_workout(repo, "2024-03-19", "Plank", "Core")
+    with database.SessionLocal() as session:
+        row = session.get(Workout, created["doc_id"])
+        row.time = "0:30"
+        session.commit()
+
+    assert repo.copy_to_date("2024-03-19", "2024-03-20") == 1
+    (copied,) = repo.get_by_date("2024-03-20")
+    assert copied["time"] is None
+
+
 def test_update_preserves_performance_and_replaces_targets():
     """Editing a performed tile's targets or comment is not a performance
     write — actuals are the player's and the tick's, not the edit form's."""

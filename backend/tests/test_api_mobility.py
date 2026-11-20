@@ -168,6 +168,45 @@ def test_last_session_carries_the_comments_forward(client):
     assert "right side failed at 4" in comments
 
 
+def test_a_timed_pending_session_keeps_its_duration_on_transfer(client):
+    """A prescribed hold transferred as a legacy `time` string stays timed
+    (plan 0018): the duration parses into `work_seconds` rather than dropping
+    with the legacy column."""
+    client.post(
+        "/api/exercises/",
+        json={"name": "Dead Bug", "category": "Core", "time_enabled": True},
+    )
+    with database.SessionLocal() as session:
+        session.execute(
+            text(
+                "INSERT INTO mobility_plan (session, label, rationale, created_at) "
+                "VALUES (1, 'Core', 'timed holds', '2026-08-10')"
+            )
+        )
+        session.execute(
+            text(
+                "INSERT INTO categories (name, created_at) "
+                "SELECT 'Core2', '2026-08-10' WHERE NOT EXISTS (SELECT 1 FROM categories)"
+            )
+        )
+        session.execute(
+            text(
+                "INSERT INTO upcoming_workouts (session, kind, exercise_id, category_id, "
+                "time, created_at) VALUES (1, 'mobility', 1, 1, '0:01:00', '2026-08-10')"
+            )
+        )
+        session.commit()
+
+    response = client.post(
+        "/api/mobility/transfer", json={"date": "2026-08-11", "session": 1}
+    )
+    assert response.status_code == 200
+
+    day = client.get("/api/workouts/?date=2026-08-11").json()
+    assert day[0]["work_seconds"] == 60
+    assert day[0]["time"] is None
+
+
 def test_last_session_carries_targets_and_actuals(client):
     """The next prescription is written from what was done, not only what was
     planned — so the read-back carries both, target beside actual (0018)."""

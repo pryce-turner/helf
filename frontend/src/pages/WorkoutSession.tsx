@@ -142,7 +142,13 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
   const handleDuplicate = async () => {
     if (!formData.exercise || !formData.category) return;
 
-    await createWorkout.mutateAsync(formData);
+    // A duplicate of a mobility tile is mobility work too — the intent
+    // travels, the performance does not (the new tile is planned, so
+    // completion and actuals reset server-side).
+    await createWorkout.mutateAsync({
+      ...formData,
+      is_mobility: workout.is_mobility,
+    });
     onClose();
   };
 

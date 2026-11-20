@@ -324,6 +324,26 @@ it("rolls the whole day back when the bulk write fails", async () => {
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-checked", "false"));
 });
 
+it("duplicates a mobility tile with the flag, as a planned tile", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ is_mobility: true, work_seconds: 40 })],
+    } as never);
+    workouts.create.mockResolvedValue({ data: set() } as never);
+    renderDay();
+
+    // The tile body opens its editor.
+    await userEvent.click(await screen.findByText("Weighted Pigeon Squat"));
+    await userEvent.click(await screen.findByRole("button", { name: /duplicate/i }));
+
+    // The intent travels; the performance does not (the new tile is planned,
+    // so completion and actuals reset server-side).
+    await waitFor(() =>
+        expect(workouts.create).toHaveBeenCalledWith(
+            expect.objectContaining({ is_mobility: true, work_seconds: 40 }),
+        ),
+    );
+});
+
 it("suggests a movement break onto the displayed date", async () => {
     suggest.mockResolvedValue({
         data: set({ doc_id: 9, exercise: "Deep Squat Hold", is_mobility: true }),

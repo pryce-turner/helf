@@ -267,6 +267,13 @@ def upgrade() -> None:
         "CONSTRAINT ck_workouts_ended_early CHECK (ended_early IN (0, 1))"
     )
 
+    # The triggers come down BEFORE the backfill, not after: every UPDATE on
+    # this audited table fires them, and a no-op backfill write is exactly
+    # the audit noise the log exists to exclude. The first production run of
+    # this revision (before the order was fixed) wrote 9,487 such rows; they
+    # stay, because `audit_log` is append-only and history is not edited.
+    _drop_triggers()
+
     # The backfill is data-shaped, so it is Python rather than SQL: a plain
     # m:ss parses, everything else is left alone (see TIME_RE).
     bind = op.get_bind()
@@ -291,7 +298,6 @@ def upgrade() -> None:
                 {**sets, "id": row_id},
             )
 
-    _drop_triggers()
     _create_triggers(TRIGGER_AFTER)
 
     op.execute("DROP VIEW v_daily_summary")

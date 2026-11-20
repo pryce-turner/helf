@@ -168,6 +168,56 @@ def test_last_session_carries_the_comments_forward(client):
     assert "right side failed at 4" in comments
 
 
+def test_last_session_carries_targets_and_actuals(client):
+    """The next prescription is written from what was done, not only what was
+    planned — so the read-back carries both, target beside actual (0018)."""
+    client.post(
+        "/api/exercises/",
+        json={
+            "name": "Farmer Carry",
+            "category": "Legs",
+            "time_enabled": True,
+            "movement_break_enabled": True,
+        },
+    )
+    tile = client.post(
+        "/api/workouts/",
+        json={
+            "date": "2026-08-11",
+            "exercise": "Farmer Carry",
+            "category": "Legs",
+            "reps": 2,
+            "work_seconds": 40,
+            "rest_seconds": 20,
+            "rest_after_seconds": 15,
+            "is_mobility": True,
+        },
+    ).json()
+    # Stopped one rep in, with a partial second bout measured.
+    client.post(
+        f"/api/workouts/{tile['doc_id']}/perform",
+        json={
+            "ended_early": True,
+            "completed_reps": 1,
+            "actual_work_seconds": 52.5,
+            "actual_rest_seconds": 20,
+        },
+    )
+
+    last = client.get("/api/mobility/pending").json()["last_session"]
+    (performed,) = last["sets"]
+    # Targets beside what was actually done.
+    assert performed["reps"] == 2
+    assert performed["completed_reps"] == 1
+    assert performed["work_seconds"] == 40
+    assert performed["rest_seconds"] == 20
+    assert performed["rest_after_seconds"] == 15
+    assert performed["actual_work_seconds"] == 52.5
+    assert performed["actual_rest_seconds"] == 20
+    assert performed["ended_early"] is True
+    assert "weight" in performed
+
+
 def test_editing_a_comment_does_not_unflag_the_set(client):
     """The feedback edit is the one that must not cost the flag.
 

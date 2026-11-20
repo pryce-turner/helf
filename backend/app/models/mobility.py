@@ -12,7 +12,12 @@ from app.models.upcoming import UpcomingWorkout
 
 
 class MobilityLoggedSet(BaseModel):
-    """One set as it was actually logged, with whatever was said about it."""
+    """One set tile as it was logged: targets beside what was performed.
+
+    The actuals are NULL until the tile is performed (plan 0018). A planned
+    tile is not work yet; a stopped one keeps `ended_early` set so the next
+    prescription reads the shortfall rather than the target as the result.
+    """
 
     exercise: str
     weight: float | None = None
@@ -21,6 +26,14 @@ class MobilityLoggedSet(BaseModel):
     comment: str | None = None
     order: int
     completed: bool = False
+    work_seconds: int | None = None
+    rest_seconds: int | None = None
+    rest_after_seconds: int | None = None
+    completed_reps: int | None = None
+    actual_work_seconds: float | None = None
+    actual_rest_seconds: float | None = None
+    actual_rest_after_seconds: float | None = None
+    ended_early: bool = False
 
 
 class MobilityLastSession(BaseModel):

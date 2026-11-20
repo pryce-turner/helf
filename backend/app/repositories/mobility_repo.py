@@ -382,6 +382,17 @@ class MobilityRepository:
                         "comment": workout.comment,
                         "order": workout.order,
                         "completed": workout.completed_at is not None,
+                        # The tile's targets beside what was actually
+                        # performed (plan 0018): the next prescription is
+                        # adjusted from the shortfall, not just the plan.
+                        "work_seconds": workout.work_seconds,
+                        "rest_seconds": workout.rest_seconds,
+                        "rest_after_seconds": workout.rest_after_seconds,
+                        "completed_reps": workout.completed_reps,
+                        "actual_work_seconds": workout.actual_work_seconds,
+                        "actual_rest_seconds": workout.actual_rest_seconds,
+                        "actual_rest_after_seconds": workout.actual_rest_after_seconds,
+                        "ended_early": bool(workout.ended_early),
                     }
                     for workout, name in rows
                 ],

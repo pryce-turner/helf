@@ -427,6 +427,34 @@ def test_read_latest_returns_the_sets_and_their_comments(mcp):
     assert result["sets"][0]["comment"] == "8 then 10, up to 35 next"
 
 
+def test_read_latest_returns_targets_and_actuals(mcp):
+    """The tile's targets beside what was actually performed (plan 0018): the
+    prescription is adjusted from the shortfall, not just the plan."""
+    _run_session(mcp, "2026-08-11")
+    with database.SessionLocal() as session:
+        session.execute(
+            text(
+                "UPDATE workouts SET work_seconds = 40, rest_seconds = 20, "
+                "rest_after_seconds = 15, completed_reps = 1, "
+                "actual_work_seconds = 52.5, actual_rest_seconds = 20, "
+                "ended_early = 1, weight = 40, completed_at = '2026-08-11' "
+                "WHERE id = 1"
+            )
+        )
+        session.commit()
+
+    result = mcp.read_latest_mobility_session()
+
+    (performed,) = result["sets"]
+    assert performed["reps"] == 8
+    assert performed["completed_reps"] == 1
+    assert performed["weight"] == 40
+    assert performed["work_seconds"] == 40
+    assert performed["actual_work_seconds"] == 52.5
+    assert performed["rest_after_seconds"] == 15
+    assert performed["ended_early"] == 1
+
+
 def test_read_latest_ignores_the_same_movement_used_as_lifting(mcp):
     """The same movement, two objectives — and only the set says which.
 

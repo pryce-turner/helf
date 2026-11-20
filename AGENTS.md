@@ -199,10 +199,23 @@ written down anywhere — they go stale and are then believed. What follows is t
 
 ### Two grains
 
-**Training is flat.** A `workouts` row is one logged set; a session is the rows
+**Training is flat.** A `workouts` row is one set tile; a session is the rows
 sharing a `date`, ordered by `order`. Plan 0004 would make sessions a real
 entity and is **deferred** — the MCP write path adapts a session-shaped tool
 onto flat rows instead.
+
+**A tile is planned or performed, and holds targets beside actuals** (plan
+0018). Targets: `reps`, `weight`, `distance`, `work_seconds`,
+`rest_seconds`, `rest_after_seconds`. Actuals: `completed_reps`,
+`actual_work_seconds`, `actual_rest_seconds`, `actual_rest_after_seconds`,
+`ended_early` — NULL until performed (`completed_at IS NOT NULL`). A planned
+tile is **not work**: the calendar, progression history and `v_daily_summary`
+count performed tiles only, and `exercises.last_used` moves at performance.
+The rest after a set is a value **on that set**, rendered as a divider after
+its tile — there are deliberately no rest rows. The day player executes
+incomplete tiles from an immutable snapshot, writing each tile's performance
+(from the snapshot, as totals) before advancing; a stopped tile completes
+with `ended_early` and the shortfall readable beside its targets.
 
 **Planned training is flat too, and holds two programs.**
 `upcoming_workouts.kind` is `lifting` or `mobility`: same shape — an ordered
@@ -553,11 +566,12 @@ docker-compose up -d
 - `GET /categories/{name}` - Get category by name
 - `GET /categories/{name}/exercises` - Exercises in category
 - `POST /categories/` - Create category
-- `GET /movement-breaks` - **The movement break pool**: movements with a `movement_break_seconds`,
-  and their default bout. Registered above `/{exercise_name}`, which would
-  otherwise match "movement-breaks" and 404. A dedicated read rather than a filter over
-  `GET /` because the catalog carries every movement's `form` and
-  `application`, and the shuffle runs on a phone in an office (plan 0017 §2)
+- `GET /movement-breaks` - **The movement break pool**: movements with
+  `movement_break_enabled`, and their timing defaults. Registered above
+  `/{exercise_name}`, which would otherwise match "movement-breaks" and 404.
+  A dedicated read rather than a filter over `GET /` because the catalog
+  carries every movement's `form` and `application`, and the shuffle runs on
+  a phone in an office (plan 0017 §2)
 
 ### Progression (`/api/progression`)
 - `GET /` - Main lifts progression (Bench, Squat, Deadlift)
@@ -623,13 +637,13 @@ docker-compose up -d
   mobility work. Transferring one leaves the others pending
 - `DELETE /pending/{session}` - Discard one pending session without running it,
   taking both its rows and the plan row that names them
-- `POST /movement-break` - Write a **finished movement break run** to a day: `{exercise,
-  sets, seconds, date?}`. One row per timed interval, all `is_mobility`, all
-  with `reps` NULL and `time` as `m:ss` — a timed hold is not a rep (ADR-0005)
-  — and none with a comment, which is the user's field. `seconds` is what the
-  timer was set to when the run ended, not the movement's default. 404 on an
-  unknown movement. Called automatically when the timer's run finishes (plan
-  0017 §4)
+- `POST /suggest` - Insert a **suggested, incomplete movement break tile** on a
+  date: `{date?}`, today when omitted. The server shuffles from
+  `movement_break_enabled` (three candidates, least recently used), applies the
+  movement's own defaults, and appends an ordinary planned tile with
+  `is_mobility` set — editable and deletable like any other, and not logged as
+  performed until played. Replaced the old finished-run writer (plan 0018);
+  404 when the pool is empty
 - `POST /pending` - Write one pending session under `label`, creating it or
   replacing *that* session: `{label, rationale, items: [{exercise, sets=1,
   reps?, weight_lb?, category?}]}`. The same contract as the MCP tool
@@ -673,10 +687,10 @@ work is a field on the set, written through the normal workout routes
 | Path | Page | Description |
 |---|---|---|
 | `/` | Calendar | Month view with workout count indicators + streak |
-| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag sets as mobility work individually or a whole day at once |
+| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag sets as mobility work, suggest a movement break, and **Play** the day's incomplete tiles through the day player |
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts — tab 2 of the Exercises section |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
-| `/timer` | IntervalTimer | Work/rest circuit timer (exercises × rounds, round reset), settings in localStorage — opened from the Timer button in the day view |
+| `/timer` | — | Redirects to today's day view; the standalone timer is retired (plan 0018) |
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — the Body nav item |
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Nutrition section |
 | `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 1 of the Nutrition section (the default) |
@@ -776,35 +790,38 @@ model section above.*
 ### Movement break — equipment-free, timed, between tasks
 
 One movement, held or repeated for a timed interval, done in the office with no
-equipment. 30 seconds on, a short rest, 30 seconds on — a minute or two. It is
-the interval timer doing the timing and a shuffle deciding what to do.
+equipment. Since plan 0018 it is a **suggestion, not a finished run**: the
+shuffle inserts an ordinary planned set tile onto the day holding the
+movement's defaults, and the day player performs it like anything else.
 
 Plan 0017 built this under the codename **popcorn**; `c8e1f4a7b293` renamed the
-column (`popcorn_seconds` → `movement_break_seconds`), its CHECK and the API
-routes to match the UI. Audit rows written before that revision still carry
-the old key — `audit_log` is append-only, so read the two as one field.
+column (`popcorn_seconds` → `movement_break_seconds`), and `a3f9c21d7e48`
+replaced it with `movement_break_enabled` plus the ordinary time defaults —
+membership and the bout are no longer one nullable number. Audit rows written
+before those revisions still carry the old keys — `audit_log` is append-only,
+so read them as one field.
 
-- **The pool is `exercises.movement_break_seconds`**, NULL meaning "not in the pool"
-  and a number being that movement's default bout. It is a fact about the
-  movement's setup, in the same family as `form`, and **not** the mobility flag
-  plan 0013 removed: a pushup is in the pool and is still a lift. The agent
-  keeps prescribing from `form` and `application` exactly as before — the pool
-  exists because a shuffle button has no judgement to make.
+- **The pool is `exercises.movement_break_enabled`**. It is a fact about the
+  movement's setup — it needs no equipment — in the same family as `form`, and
+  **not** the mobility flag plan 0013 removed: a pushup is in the pool and is
+  still a lift. The agent keeps prescribing from `form` and `application`
+  exactly as before — the pool exists because a shuffle button has no
+  judgement to make.
 - **The shuffle draws three candidates and takes the least recently used**,
-  which is why `exercises.last_used` matters; it had no writer for eleven
-  months and is now maintained in `WorkoutRepository.create` (plan 0017 §5).
-- **A run that reaches the end writes itself to the day**: one `workouts` row
-  per work interval, all `is_mobility`, `reps` NULL, `time` as `m:ss`, already
-  completed. Abandoning a run with Reset writes nothing. What is logged is the
-  schedule the countdown followed, not the movement's default — the times are
-  adjustable after a shuffle.
-- Entered from the **Movement break card on `/mobility`**, which goes to
-  `/timer?break=1` and shuffles on arrival. The day view's Timer button is
-  still there. `/timer` is not a Training tab: that section's nav item is
-  labelled "Upcoming", and a Timer tab would sit under the wrong heading.
+  server-side, in `POST /api/mobility/suggest`. `exercises.last_used` moves at
+  **performance** (plan 0018), so an unplayed suggestion cannot make a
+  movement look done.
+- **The suggestion counts as nothing until played**: not the calendar, not
+  `v_daily_summary`, not the use count. The old writer created one completed
+  row per interval; those rows remain as historical sets and cannot be
+  faithfully regrouped (they lack rest and round structure — plan 0018 §2).
+- Entered from the **Movement break card on `/mobility`** (suggests onto today
+  and navigates to the day) or the **Movement break button on the day view**
+  (suggests onto the displayed date). Both disable while the write is in
+  flight — a double tap must not insert two tiles.
 - The movements themselves are seeded by
   `backend/migrations/seed_movement_break_pool.py`, **run by hand, not by the
-  migration** — the migration carries only the column, the CHECK and the
+  migration** — the migration carries only the columns, the CHECKs and the
   rebuilt audit triggers.
 - `rating` on those movements is **enjoyment**, not value. It protects
   adherence; how much a movement is worth lives in `application`, and the
@@ -876,14 +893,22 @@ the old key — `audit_log` is append-only, so read the two as one field.
   is mobility work depends on the objective that day, so it lives on the set;
   `rating` stays here precisely because it is an opinion about the movement and
   not about one performance of it.
-- **`movement_break_seconds`** is the one thing here that looks like that flag and is
-  not one (plan 0017). NULL is "not in the movement break pool"; a number means the
-  movement needs no equipment and that is how long one bout of it lasts. A
-  property of the movement's setup, in the same family as `form` — *not* a
+- **Field configuration** (plan 0018): four independently enabled groups —
+  Reps, Weight, Distance, Time — each with nullable defaults, plus
+  `movement_break_enabled` for the pool. Enabled with a NULL default offers
+  the input blank on new tiles; disabled offers nothing. The defaults are
+  *snapshots*: they apply at tile creation and editing the exercise never
+  rewrites a tile or history, and a disabled group keeps its defaults so
+  re-enabling restores them. Weight is **total pounds** — for a Farmer Carry,
+  across both hands. Time is one group because work, per-rep rest and
+  rest-after-set are all timing configuration.
+- **`movement_break_enabled`** is the one thing here that looks like a mobility
+  flag and is not one (plan 0017). It says only that the movement needs no
+  equipment — a property of its setup, in the same family as `form` — *not* a
   judgement that it suits an objective, which is still made from `form` and
-  `application`. A pushup is in the pool and is still a lift. Toggled inline on
-  `/exercises`; the seconds are edited in the same page's edit form. The pool
-  exists because a shuffle button has no judgement to make.
+  `application`. A pushup is in the pool and is still a lift. Toggled inline
+  on `/exercises`. The pool exists because a shuffle button has no judgement
+  to make.
 
 ### PWA Features
 - Offline support with service worker (Workbox)

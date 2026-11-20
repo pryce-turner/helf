@@ -43,10 +43,18 @@ points of body fat above the DEXA scan taken hours later. Averaging across them,
 or differencing them to compute a change, reports the gap between two machines
 as a change in a body. Filter to one source, or keep them as separate series.
 
-**A `workouts` row is one logged set, not a session.** A session is the set of
-rows sharing a `date`, ordered by `order`. `reps` is an integer — compare and
-aggregate it normally, and note there is no AMRAP notation anywhere in the data
-model; that intent lives in `comment` as prose.
+**A `workouts` row is one set tile, planned or performed.** A session is the
+set of rows sharing a `date`, ordered by `order`. Each tile carries *targets*
+(`reps`, `weight`, `distance`, `work_seconds`, `rest_seconds`,
+`rest_after_seconds`) beside *actuals* (`completed_reps`,
+`actual_work_seconds`, `actual_rest_seconds`, `actual_rest_after_seconds`,
+`ended_early`). The actuals are NULL until the tile is performed —
+`completed_at IS NOT NULL` is "performed", and a planned tile is **not work**:
+read targets on it, never results, and never count it in volume. `reps` is an
+integer — compare and aggregate it normally, and note there is no AMRAP
+notation anywhere in the data model; that intent lives in `comment` as prose.
+The rest after a set is a value **on that set**, rendered as a divider after
+its tile — there are no rest rows; do not look for them and do not write any.
 
 **`kcal_target` is measured, not assumed.** It is the last DEXA scan's
 Katch-McArdle resting rate times an activity multiplier of 1.4, carried forward
@@ -112,14 +120,16 @@ say what the session is *for* — "Low back", "Shoulder" — not what is in it.
    membership you can look up — which is the point: prescribing a good morning
    as a loaded stretch does not make it stop being a lifting movement.
 
-   `exercises.movement_break_seconds` is **not** that flag, and do not read it as one.
-   NULL is "not in the movement break pool"; a number means the movement needs no
-   equipment and that is how long one bout of it lasts. It is a fact about the
-   movement's setup, in the same family as `form`, and it carries no judgement
-   about what the movement is *for* — a pushup is in the pool and is still a
-   lift. The pool exists because the timer's shuffle button has no judgement to
-   make and needs something to draw from; you do not, and you should keep
-   prescribing from `form` and `application` as before.
+   `exercises.movement_break_enabled` is **not** that flag, and do not read it
+   as one. It means only that the movement needs no equipment — a fact about
+   its setup, in the same family as `form`, carrying no judgement about what
+   the movement is *for*; a pushup is in the pool and is still a lift. The
+   `*_enabled` / `default_*` columns around it are the field configuration the
+   day view offers new tiles from — current exercise metadata, while a tile's
+   values are snapshots of it; changing the exercise never rewrites a tile.
+   The pool exists because the shuffle button has no judgement to make and
+   needs something to draw from; you do not, and you should keep prescribing
+   from `form` and `application` as before.
 4. `write_next_mobility_session(label, items, rationale)` — a new label adds
    a session to the tab, an existing one replaces that session and cannot
    touch the others. **Prescribed sets carry no comment**; everything you have

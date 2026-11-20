@@ -597,6 +597,17 @@ def read_latest_mobility_session(date: str | None = None) -> dict:
     remark left on a lifting set is not here, so `query` the day if a session
     reads as though feedback is missing.
 
+    Each set comes back as a **set tile**: target values (`reps`, `weight`,
+    `work_seconds`, `rest_seconds`) beside what was actually performed
+    (`completed_reps`, `actual_work_seconds`, `actual_rest_seconds`,
+    `actual_rest_after_seconds`, `ended_early`). A tile with NULL actuals was
+    planned but not performed — planned tiles are not work, so read targets
+    on them, never results, and a tile with `ended_early` reads as the
+    shortfall, target beside actual. The rest after a set is
+    `rest_after_seconds` **on that set**: it renders as a divider after the
+    tile, not a row of its own, so do not look for rest rows and never write
+    any.
+
     `rationale` is what the previous session was written to achieve, so you can
     tell an instruction that worked from one that was never tried. It is null
     for a session the user assembled by hand, because nothing prescribed it.
@@ -638,7 +649,11 @@ def read_latest_mobility_session(date: str | None = None) -> dict:
         date = day["date"]
         sets = conn.execute(
             """SELECT e.name AS exercise, w.weight, w.reps, w.time, w.comment,
-                      w."order", w.completed_at IS NOT NULL AS completed
+                      w."order", w.completed_at IS NOT NULL AS completed,
+                      w.work_seconds, w.rest_seconds, w.rest_after_seconds,
+                      w.completed_reps, w.actual_work_seconds,
+                      w.actual_rest_seconds, w.actual_rest_after_seconds,
+                      w.ended_early
                FROM workouts w JOIN exercises e ON e.id = w.exercise_id
                WHERE w.date = ? AND w.is_mobility = 1
                ORDER BY w."order", w.id""",
@@ -1095,6 +1110,17 @@ movements max") and are attached to whichever set was on screen at the
 time. That last case is the cost of returning the subset — a program-level
 remark left on a lifting set is not here, so `query` the day if a session
 reads as though feedback is missing.
+
+Each set comes back as a **set tile**: target values (`reps`, `weight`,
+`work_seconds`, `rest_seconds`) beside what was actually performed
+(`completed_reps`, `actual_work_seconds`, `actual_rest_seconds`,
+`actual_rest_after_seconds`, `ended_early`). A tile with NULL actuals was
+planned but not performed — planned tiles are not work, so read targets
+on them, never results, and a tile with `ended_early` reads as the
+shortfall, target beside actual. The rest after a set is
+`rest_after_seconds` **on that set**: it renders as a divider after the
+tile, not a row of its own, so do not look for rest rows and never write
+any.
 
 `rationale` is what the previous session was written to achieve, so you can
 tell an instruction that worked from one that was never tried. It is null

@@ -109,7 +109,7 @@ interface FailedOp {
     afterwards: () => void;
 }
 
-export function useWorkoutPlayer() {
+export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
     const queryClient = useQueryClient();
 
     const [status, setStatus] = useState<PlayerStatus>("idle");
@@ -408,6 +408,42 @@ export function useWorkoutPlayer() {
         saveThen(failedOp.write, failedOp.afterwards);
     }, [status, failedOp, saveThen]);
 
+    /**
+     * Back to a plain day: run state cleared, nothing written. This is the
+     * way out of a permanently failed write — the tile stays planned, so it
+     * is editable and deletable again, and a later Play starts fresh rather
+     * than resuming a run the server never heard about.
+     */
+    const reset = useCallback(() => {
+        setStatus("idle");
+        setTiles([]);
+        setPhases([]);
+        setPhaseIndex(0);
+        setRemainingMs(0);
+        setFailedOp(null);
+    }, []);
+
+    const cancel = useCallback(() => {
+        if (status !== "error") return;
+        reset();
+    }, [status, reset]);
+
+    // Re-arm after a finished run: a run that is done must not be terminal.
+    // When new incomplete tiles arrive from outside the run (a suggestion, a
+    // manual add), the player goes back to idle so Play returns. Adjusted
+    // during render rather than in an effect — this is React's "adjust state
+    // when a value changes" case, and the guard settles before paint. The
+    // `error` state is deliberately excluded — it holds the failed write's
+    // snapshot for Retry, and losing that is how work goes unrecorded.
+    const incompleteIds = incomplete.map((tile) => tile.doc_id);
+    const [seenIncompleteIds, setSeenIncompleteIds] = useState<number[]>([]);
+    if (incompleteIds.some((id) => !seenIncompleteIds.includes(id))) {
+        setSeenIncompleteIds(incompleteIds);
+        if (status === "done") {
+            reset();
+        }
+    }
+
     const progressLabel = !phase
         ? ""
         : phase.kind === "getReady"
@@ -431,5 +467,7 @@ export function useWorkoutPlayer() {
         stop,
         completeSet,
         retry,
+        cancel,
+        reset,
     };
 }

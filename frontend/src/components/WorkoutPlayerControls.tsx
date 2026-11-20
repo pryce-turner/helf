@@ -22,6 +22,7 @@ interface WorkoutPlayerControlsProps {
     onStop: () => void;
     onCompleteSet: () => void;
     onRetry: () => void;
+    onCancel: () => void;
 }
 
 const PHASE_LABEL: Record<string, string> = {
@@ -51,6 +52,7 @@ const WorkoutPlayerControls = ({
     onStop,
     onCompleteSet,
     onRetry,
+    onCancel,
 }: WorkoutPlayerControlsProps) => {
 
     if (status === "error") {
@@ -69,7 +71,8 @@ const WorkoutPlayerControls = ({
                     </div>
                     <div className="timer-hero__detail">
                         The write for the set you just finished failed. Nothing
-                        has moved on — retry to log it and continue.
+                        has moved on — retry to log it and continue, or discard
+                        the run and leave the set planned.
                     </div>
                 </div>
                 <div className="timer-controls">
@@ -81,6 +84,15 @@ const WorkoutPlayerControls = ({
                         aria-label="Retry saving"
                     >
                         <Play className="timer-play__icon" fill="currentColor" style={{ marginLeft: "4px" }} />
+                    </button>
+                    <button
+                        type="button"
+                        className="timer-reset"
+                        onClick={onCancel}
+                        aria-label="Discard the run"
+                        title="Discard — leave the set planned and return to the day"
+                    >
+                        <Square style={{ width: "18px", height: "18px" }} />
                     </button>
                 </div>
             </div>

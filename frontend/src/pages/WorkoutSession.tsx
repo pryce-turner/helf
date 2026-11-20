@@ -382,7 +382,9 @@ interface SortableWorkoutCardProps {
   index: number;
   isEditing: boolean;
   isConfirmingDelete: boolean;
-  /** The player is on this tile: locked against edits and highlighted. */
+  /** In the active run's snapshot: locked against edits underneath it. */
+  isLocked: boolean;
+  /** The tile the player is on right now: highlighted. */
   isActiveTile: boolean;
   handleEditWorkout: (workout: Workout) => void;
   handleToggleComplete: (workout: Workout) => void;
@@ -459,6 +461,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
   workout,
   isEditing,
   isConfirmingDelete,
+  isLocked,
   isActiveTile,
   handleEditWorkout,
   handleToggleComplete,
@@ -504,14 +507,14 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
           {/* Completion checkbox */}
           <button
             className="action-btn"
-            disabled={isActiveTile}
+            disabled={isLocked}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleComplete(workout);
             }}
             title={
-              isActiveTile
-                ? "The player is on this tile"
+              isLocked
+                ? "Locked while a run includes it"
                 : workout.completed_at
                   ? "Mark incomplete"
                   : "Mark complete"
@@ -543,7 +546,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             role="checkbox"
             aria-checked={!!workout.is_mobility}
             aria-label="Mobility work"
-            disabled={isActiveTile}
+            disabled={isLocked}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleMobility(workout);
@@ -567,14 +570,14 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
           {/* Drag handle */}
           <button
             className="action-btn drag-handle"
-            disabled={isActiveTile}
+            disabled={isLocked}
             style={{
               cursor: isDragging ? "grabbing" : "grab",
               touchAction: "none",
               padding: "4px",
             }}
-            {...(isActiveTile ? {} : dragAttributes)}
-            {...(isActiveTile ? {} : dragListeners)}
+            {...(isLocked ? {} : dragAttributes)}
+            {...(isLocked ? {} : dragListeners)}
           >
             <GripVertical className="set-row__icon" />
           </button>
@@ -605,7 +608,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
           ) : (
             <button
               className="action-btn action-btn--danger"
-              disabled={isActiveTile}
+              disabled={isLocked}
               onClick={() => handleDeleteClick(workout.doc_id)}
               style={{ padding: "4px" }}
             >
@@ -621,10 +624,10 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
       <div
         className="set-row__body log-line"
         onClick={() =>
-          !isEditing && !isActiveTile ? handleEditWorkout(workout) : undefined
+          !isEditing && !isLocked ? handleEditWorkout(workout) : undefined
         }
         style={{
-          cursor: !isEditing && !isActiveTile ? "pointer" : "default",
+          cursor: !isEditing && !isLocked ? "pointer" : "default",
         }}
       >
         {/* Exercise name and category - inline */}
@@ -923,19 +926,33 @@ const WorkoutSession = () => {
     [workouts],
   );
 
-  // The day player (plan 0018). It runs the incomplete tiles in order from
-  // an immutable snapshot taken at Play; the write for each tile lands
-  // before the run advances.
-  const player = useWorkoutPlayer();
   const incompleteTiles = useMemo(
     () => sortedWorkouts.filter((w) => !w.completed_at),
     [sortedWorkouts],
   );
+
+  // The day player (plan 0018). It runs the incomplete tiles in order from
+  // an immutable snapshot taken at Play; the write for each tile lands
+  // before the run advances. It watches the incomplete list so a suggestion
+  // landing after a finished run re-arms it.
+  const player = useWorkoutPlayer(incompleteTiles);
   const playing = player.status !== "idle";
-  const lockActiveTile =
+  // A finished run is not terminal: Play re-arms whenever incomplete tiles
+  // remain, and starts at the first of them.
+  const canPlay =
+    (player.status === "idle" || player.status === "done") &&
+    incompleteTiles.length > 0;
+  const runLive =
     player.status === "running" ||
     player.status === "paused" ||
     player.status === "saving";
+  // Every tile in the snapshot is locked while the run is live, not just the
+  // one playing: a queued tile deleted or ticked underneath the run is a 404
+  // Retry loop or a double count.
+  const lockedTileIds = useMemo(
+    () => new Set(runLive ? player.tiles.map((t) => t.doc_id) : []),
+    [runLive, player.tiles],
+  );
   // Every card's useSortable subscribes to SortableContext, which memo does
   // not block, and the context changes whenever `items` is a new array. So
   // the id list keeps its identity until the order itself changes; otherwise
@@ -1047,6 +1064,10 @@ const WorkoutSession = () => {
   const categoryExercises =
     exercises?.filter((e) => e.category === selectedCategory) || [];
   const formattedDate = date ? format(parseISO(date), "MMMM d, yyyy") : "";
+  // Performed tiles are logged work; planned ones — a suggestion included —
+  // are named as such rather than counted into the log (plan 0018).
+  const performedCount = (workouts ?? []).filter((w) => w.completed_at).length;
+  const plannedCount = (workouts?.length ?? 0) - performedCount;
 
   return (
     <>
@@ -1075,8 +1096,12 @@ const WorkoutSession = () => {
                   {formattedDate.toUpperCase()}
                 </h1>
                 <p className="page__subtitle">
-                  {workouts?.length || 0} exercise
-                  {workouts?.length !== 1 ? "s" : ""} logged
+                  {/* Performed tiles only: a planned tile — a suggestion —
+                      is not logged work (plan 0018), and the count must not
+                      call it one. */}
+                  {performedCount} exercise
+                  {performedCount !== 1 ? "s" : ""} logged
+                  {plannedCount > 0 ? ` · ${plannedCount} planned` : ""}
                 </p>
               </div>
             </div>
@@ -1122,9 +1147,9 @@ const WorkoutSession = () => {
                 </Button>
               )}
               {/* The day player runs the incomplete tiles from the first one
-                  on. Hidden while a run is live — the hero carries the
-                  controls then. */}
-              {!playing && incompleteTiles.length > 0 && (
+                  on. A finished run is not terminal: Play re-arms whenever
+                  incomplete tiles remain. */}
+              {canPlay && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1657,6 +1682,7 @@ const WorkoutSession = () => {
               onStop={player.stop}
               onCompleteSet={player.completeSet}
               onRetry={player.retry}
+              onCancel={player.cancel}
             />
           )}
 
@@ -1701,8 +1727,9 @@ const WorkoutSession = () => {
                         index={index}
                         isEditing={editingId === workout.doc_id}
                         isConfirmingDelete={confirmingDelete === workout.doc_id}
+                        isLocked={lockedTileIds.has(workout.doc_id)}
                         isActiveTile={
-                          lockActiveTile && player.activeTileId === workout.doc_id
+                          runLive && player.activeTileId === workout.doc_id
                         }
                         handleEditWorkout={handleEditWorkout}
                         handleToggleComplete={handleToggleComplete}
@@ -1721,6 +1748,7 @@ const WorkoutSession = () => {
                           <RestDivider
                             seconds={workout.rest_after_seconds}
                             onEdit={() => handleEditWorkout(workout)}
+                            disabled={lockedTileIds.has(workout.doc_id)}
                           />
                         )}
                     </Fragment>

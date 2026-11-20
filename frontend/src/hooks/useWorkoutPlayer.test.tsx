@@ -53,7 +53,11 @@ const wrapper = ({ children }: { children: ReactNode }) => (
     </QueryClientProvider>
 );
 
-const mount = () => renderHook(() => useWorkoutPlayer(), { wrapper });
+const mount = (initialIncomplete: PlayerTile[] = []) =>
+    renderHook((props: PlayerTile[]) => useWorkoutPlayer(props), {
+        wrapper,
+        initialProps: initialIncomplete,
+    });
 
 type HookResult = ReturnType<typeof mount>["result"];
 
@@ -325,4 +329,65 @@ it("halts on a failed write and retries the same snapshot, exactly once", async 
         actual_rest_seconds: 20,
     });
     expect(result.current.status).toBe("done");
+});
+
+it("re-arms when new incomplete tiles arrive after a run is done", async () => {
+    const { result, rerender } = mount([tile()]);
+    play(result, [tile()]);
+
+    tick(40_100);
+    tick(20_100);
+    tick(40_100);
+    await settle();
+    expect(result.current.status).toBe("done");
+
+    // A movement-break suggestion lands from outside the run. The plan: a
+    // later Play starts at the next incomplete tile, so the player must not
+    // sit in `done` waiting for a reload.
+    rerender([tile({ doc_id: 2 })]);
+    expect(result.current.status).toBe("idle");
+});
+
+it("does not re-arm from a failed write — the Retry snapshot is preserved", async () => {
+    perform
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValue({ data: {} } as never);
+    const { result, rerender } = mount([tile()]);
+    play(result, [tile()]);
+
+    tick(40_100);
+    tick(20_100);
+    tick(40_100);
+    await settle();
+    expect(result.current.status).toBe("error");
+
+    // A suggestion arriving mid-incident must not clear the error state:
+    // that is where the failed write's snapshot lives for Retry.
+    rerender([tile(), tile({ doc_id: 2 })]);
+    expect(result.current.status).toBe("error");
+
+    act(() => result.current.retry());
+    await settle();
+    expect(perform).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe("done");
+});
+
+it("cancels a permanently failed write back to idle, with no phantom retry", async () => {
+    perform.mockRejectedValue(new Error("offline"));
+    const { result } = mount();
+    play(result, [tile()]);
+
+    tick(40_100);
+    tick(20_100);
+    tick(40_100);
+    await settle();
+    expect(result.current.status).toBe("error");
+
+    act(() => result.current.cancel());
+
+    // The user walks away from the write: back to a plain day, the row
+    // editable and deletable again, and nothing written twice later.
+    expect(result.current.status).toBe("idle");
+    expect(result.current.tiles).toHaveLength(0);
+    expect(perform).toHaveBeenCalledTimes(1);
 });

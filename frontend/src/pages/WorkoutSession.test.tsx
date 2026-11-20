@@ -11,11 +11,12 @@
  * The rule easiest to lose in a refactor is the one asserted last: a PUT that
  * only meant to change something else must not clear the flag on its way past.
  */
-import { screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
 import WorkoutSession from "./WorkoutSession";
+import type { Workout } from "@/types/workout";
 import {
     categoriesApi,
     exercisesApi,
@@ -534,6 +535,26 @@ it("shows the shortfall on a stopped tile", async () => {
 
 // --- The day player (plan 0018) ----------------------------------------------
 
+it("counts only performed tiles as logged", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [
+            set({ doc_id: 1, completed_at: `${DATE}T10:00:00`, order: 1 }),
+            set({ doc_id: 2, exercise: "Farmer Carry", order: 2 }),
+        ],
+    } as never);
+    renderDay();
+
+    // Planned work is not logged work (plan 0018) — it reads as planned.
+    expect(await screen.findByText(/1 exercise logged · 1 planned/)).toBeInTheDocument();
+});
+
+it("does not call a suggested tile logged", async () => {
+    workouts.getAll.mockResolvedValue({ data: [set()] } as never);
+    renderDay();
+
+    expect(await screen.findByText(/0 exercises logged · 1 planned/)).toBeInTheDocument();
+});
+
 it("offers Play when the day has incomplete tiles, not when all are done", async () => {
     workouts.getAll.mockResolvedValue({
         data: [set({ completed_at: `${DATE}T10:00:00` })],
@@ -561,9 +582,9 @@ it("opens the player on the first incomplete tile and locks it", async () => {
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
 
-    // The active tile is locked: no completion, mobility, delete or edit —
-    // its buttons carry the lock title, and are disabled.
-    const locked = screen.getAllByTitle(/the player is on this tile/i);
+    // Every tile in the run is locked: no completion, mobility, delete or
+    // edit — the buttons carry the lock title, and are disabled.
+    const locked = screen.getAllByTitle(/locked while a run includes it/i);
     expect(locked.length).toBeGreaterThan(0);
     locked.forEach((button) => expect(button).toBeDisabled());
     expect(
@@ -589,4 +610,147 @@ it("writes nothing when the run is stopped during get-ready", async () => {
     await waitFor(() =>
         expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument(),
     );
+});
+
+// --- Fake-timer player scenarios ---------------------------------------------
+//
+// The player runs on rAF deadlines, so these own the clock explicitly the
+// way the hook's suite does, and clicks go through fireEvent: user-event's
+// async internals wait on the very clock being faked.
+
+const fakeClock = () => {
+    vi.useFakeTimers({
+        toFake: [
+            "setTimeout",
+            "clearTimeout",
+            "setInterval",
+            "clearInterval",
+            "Date",
+            "performance",
+            "requestAnimationFrame",
+            "cancelAnimationFrame",
+        ],
+    });
+    return () => vi.useRealTimers();
+};
+
+const tick = (ms: number) => {
+    act(() => {
+        vi.advanceTimersByTime(ms);
+    });
+};
+
+/** Drain the promises a save or a refetch resolves on, through the fake clock. */
+const settle = async () => {
+    for (let i = 0; i < 6; i++) {
+        await act(async () => {
+            vi.advanceTimersByTime(0);
+            await Promise.resolve();
+        });
+    }
+};
+
+it("re-arms Play when a suggestion lands after a finished run", async () => {
+    const restore = fakeClock();
+    try {
+        let stored: Workout[] = [
+            set({ doc_id: 1, work_seconds: 5, reps: 1, rest_seconds: 0, rest_after_seconds: 0 }) as Workout,
+        ];
+        workouts.getAll.mockImplementation(
+            (async () => ({ data: stored })) as never,
+        );
+        workouts.perform.mockImplementation((async (id: number) => {
+            stored = stored.map((w) =>
+                w.doc_id === id ? { ...w, completed_at: `${DATE}T11:00:00` } : w,
+            );
+            return { data: {} };
+        }) as never);
+        suggest.mockResolvedValue({ data: set({ doc_id: 9 }) } as never);
+
+        renderDay();
+        await settle();
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        tick(5020); // get-ready
+        tick(5100); // the single work rep
+        await settle();
+
+        expect(screen.getByText("DONE")).toBeInTheDocument();
+        // Nothing incomplete: no Play, and no reset yet.
+        expect(screen.queryByRole("button", { name: /^play$/i })).not.toBeInTheDocument();
+
+        // The suggestion lands: the player re-arms and Play returns.
+        stored = [
+            ...stored,
+            set({ doc_id: 9, exercise: "Deep Squat Hold", is_mobility: true, order: 2 }),
+        ];
+        fireEvent.click(screen.getByRole("button", { name: /movement break/i }));
+        await settle();
+
+        expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
+        expect(screen.queryByText("DONE")).not.toBeInTheDocument();
+    } finally {
+        restore();
+    }
+});
+
+it("locks every tile in the run, and the divider after a locked tile", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.getAll.mockResolvedValue({
+            data: [
+                set({ doc_id: 1, order: 1, work_seconds: 40, rest_seconds: 20, rest_after_seconds: 15 }),
+                set({ doc_id: 2, order: 2, exercise: "Overhead Press", work_seconds: 30, reps: 1 }),
+            ],
+        } as never);
+        renderDay();
+        await settle();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        tick(5020);
+        await settle();
+        expect(screen.getByText("WORK")).toBeInTheDocument();
+
+        // Every tile in the snapshot is locked, not only the one playing: a
+        // queued tile deleted or ticked underneath the run is a 404 Retry
+        // loop or a double count.
+        const locks = screen.getAllByTitle(/locked while a run includes it/i);
+        expect(locks.length).toBeGreaterThan(0);
+        locks.forEach((button) => expect(button).toBeDisabled());
+
+        // The divider after a locked tile has nowhere to go either.
+        expect(screen.getByRole("button", { name: /rest 0:15/i })).toBeDisabled();
+    } finally {
+        restore();
+    }
+});
+
+it("offers a way out of a permanently failed write", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.perform.mockRejectedValue(new Error("offline"));
+        workouts.getAll.mockResolvedValue({
+            data: [set({ doc_id: 1, work_seconds: 5, reps: 1, rest_seconds: 0, rest_after_seconds: 0 })],
+        } as never);
+        renderDay();
+        await settle();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        tick(5020);
+        tick(5100);
+        await settle();
+
+        // The write failed: the run halts and says so, rather than claiming
+        // the set reached the log.
+        expect(screen.getByRole("alert")).toHaveTextContent(/not saved/i);
+
+        fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+        await settle();
+
+        // Back to a plain day: Play returns, and the tile's own actions are
+        // no longer locked behind the failed run.
+        expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+        restore();
+    }
 });

@@ -10,15 +10,22 @@ import { formatSeconds } from "@/lib/setTiles";
 interface RestDividerProps {
   seconds: number;
   onEdit: () => void;
+  /** Locked while a run includes the tile it belongs to. */
+  disabled?: boolean;
 }
 
-const RestDivider = ({ seconds, onEdit }: RestDividerProps) => (
+const RestDivider = ({ seconds, onEdit, disabled }: RestDividerProps) => (
   <button
     type="button"
     className="rest-divider"
     onClick={onEdit}
+    disabled={disabled}
     aria-label={`Rest ${formatSeconds(seconds)} — edit`}
-    title="Rest after the set above — tap to edit it there"
+    title={
+      disabled
+        ? "Locked while a run includes it"
+        : "Rest after the set above — tap to edit it there"
+    }
   >
     <span className="rest-divider__line" />
     <span className="rest-divider__label">Rest {formatSeconds(seconds)}</span>

@@ -51,12 +51,21 @@ class WorkoutRepository:
 
         Shared by the manual tick and by a row created already completed:
         ordinary completion without a timer means "the target is what
-        happened". The rest-after divider is deliberately not derived — it is
-        recorded separately, by the player, when it actually runs.
+        happened". The actuals are **totals** — two 40s reps are 80s of work,
+        and the per-rep rest runs only between reps, never after the last.
+        The rest-after divider is deliberately not derived — it is recorded
+        separately, by the player, when it actually runs.
         """
+        reps = workout.reps or 1
         workout.completed_reps = workout.reps
-        workout.actual_work_seconds = workout.work_seconds
-        workout.actual_rest_seconds = workout.rest_seconds
+        workout.actual_work_seconds = (
+            workout.work_seconds * reps if workout.work_seconds is not None else None
+        )
+        workout.actual_rest_seconds = (
+            workout.rest_seconds * (reps - 1)
+            if workout.rest_seconds is not None
+            else None
+        )
         workout.ended_early = False
 
     @staticmethod

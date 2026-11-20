@@ -303,7 +303,9 @@ def test_manual_completion_derives_actuals_from_targets():
     done = repo.toggle_complete(created["doc_id"], True)
     assert done["completed_at"] is not None
     assert done["completed_reps"] == 2
-    assert done["actual_work_seconds"] == 40
+    # Totals, not per-rep targets: two 40s reps is 80s of work, and the rest
+    # runs only between them, so once.
+    assert done["actual_work_seconds"] == 80
     assert done["actual_rest_seconds"] == 20
     # The rest-after is the divider's own performance, recorded separately.
     assert done["actual_rest_after_seconds"] is None
@@ -336,7 +338,7 @@ def test_perform_natural_completion_derives_and_moves_to_today():
     assert performed["date"] == today
     assert performed["completed_at"] is not None
     assert performed["completed_reps"] == 2
-    assert performed["actual_work_seconds"] == 40
+    assert performed["actual_work_seconds"] == 80
     assert performed["actual_rest_seconds"] == 20
     assert performed["ended_early"] is False
     # The targets survive playback: what was planned and what was done stay

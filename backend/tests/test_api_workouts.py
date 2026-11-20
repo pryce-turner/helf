@@ -111,7 +111,8 @@ def test_perform_natural_completion_derives_actuals(client):
     body = performed.json()
     assert body["completed_at"] is not None
     assert body["completed_reps"] == 2
-    assert body["actual_work_seconds"] == 40
+    # Totals: 2 reps of 40s work, one 20s rest between them.
+    assert body["actual_work_seconds"] == 80
     assert body["actual_rest_seconds"] == 20
     assert body["ended_early"] is False
     # Played tiles are logged on the day they are performed, not planned for.
@@ -211,7 +212,7 @@ def test_manual_tick_derives_actuals_without_a_timer(client):
         f"/api/workouts/{tile['doc_id']}/complete", json={"completed": True}
     ).json()
     assert completed["completed_reps"] == 2
-    assert completed["actual_work_seconds"] == 40
+    assert completed["actual_work_seconds"] == 80
     # And the tile keeps the date the user logged it under — the move-to-today
     # rule is the player's, not the checkbox's.
     assert completed["date"] == "2024-04-06"

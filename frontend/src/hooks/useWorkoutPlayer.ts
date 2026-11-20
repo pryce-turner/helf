@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { workoutsApi } from "@/lib/api";
+import { derivedActuals } from "@/lib/setTiles";
 import {
     buildPlayerPhases,
     computeStopActuals,
@@ -32,17 +33,15 @@ export type PlayerStatus =
     | "error"
     | "done";
 
-/** The totals a naturally completed tile records, from the snapshot. */
-const snapshotTotals = (tile: PlayerTile) => ({
-    ended_early: false,
-    ...(tile.reps != null ? { completed_reps: tile.reps } : {}),
-    ...(tile.work_seconds != null
-        ? { actual_work_seconds: tile.work_seconds * (tile.reps ?? 1) }
-        : {}),
-    ...(tile.rest_seconds != null
-        ? { actual_rest_seconds: tile.rest_seconds * ((tile.reps ?? 1) - 1) }
-        : {}),
-});
+/**
+ * The totals a naturally completed tile records, from the snapshot: the
+ * shared `derivedActuals` rule (the same one the server's `_derive_actuals`
+ * follows), with absent fields omitted so the API never sees them.
+ */
+const snapshotTotals = (tile: PlayerTile) =>
+    Object.fromEntries(
+        Object.entries(derivedActuals(tile)).filter(([, value]) => value != null),
+    );
 
 interface BeepSpec {
     frequency: number;
@@ -425,8 +424,12 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
 
     const cancel = useCallback(() => {
         if (status !== "error") return;
+        // Invalidate as if the write *had* landed: the failure may be only
+        // the lost response, and the tile must not show as planned in that
+        // case. Refetching is the only honest answer either way.
+        invalidatePerformance();
         reset();
-    }, [status, reset]);
+    }, [status, reset, invalidatePerformance]);
 
     // Re-arm after a finished run: a run that is done must not be terminal.
     // When new incomplete tiles arrive from outside the run (a suggestion, a

@@ -42,7 +42,9 @@ export const derivedActuals = (tile: {
   work_seconds: number | null;
   rest_seconds: number | null;
 }) => {
-  const reps = tile.reps ?? 1;
+  // `|| 1`, mirroring the server's `workout.reps or 1`: an uncounted or zero
+  // target is one bout, never zero seconds of work.
+  const reps = tile.reps || 1;
   return {
     completed_reps: tile.reps,
     actual_work_seconds:

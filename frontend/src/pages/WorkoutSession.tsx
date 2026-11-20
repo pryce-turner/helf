@@ -592,6 +592,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
                 className="action-btn action-btn--danger"
                 onClick={() => handleDeleteConfirm(workout.doc_id)}
                 title="Confirm delete"
+                disabled={isLocked}
                 style={{ padding: "4px" }}
               >
                 <Check className="set-row__icon" />
@@ -600,6 +601,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
                 className="action-btn"
                 onClick={handleDeleteCancel}
                 title="Cancel"
+                disabled={isLocked}
                 style={{ padding: "4px" }}
               >
                 <X className="set-row__icon" />
@@ -942,10 +944,13 @@ const WorkoutSession = () => {
   const canPlay =
     (player.status === "idle" || player.status === "done") &&
     incompleteTiles.length > 0;
+  // A failed write is not a released snapshot either: the tiles stay locked
+  // in `error` until Retry lands or the run is discarded.
   const runLive =
     player.status === "running" ||
     player.status === "paused" ||
-    player.status === "saving";
+    player.status === "saving" ||
+    player.status === "error";
   // Every tile in the snapshot is locked while the run is live, not just the
   // one playing: a queued tile deleted or ticked underneath the run is a 404
   // Retry loop or a double count.
@@ -1153,7 +1158,13 @@ const WorkoutSession = () => {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => player.play(incompleteTiles)}
+                  onClick={() => {
+                    // Play owns the snapshot: anything pre-opened — an edit
+                    // form, a delete confirm — must not act under it.
+                    setConfirmingDelete(null);
+                    setEditingId(null);
+                    player.play(incompleteTiles);
+                  }}
                   title="Play the day's incomplete sets, from the first one"
                 >
                   <Play style={{ width: "16px", height: "16px" }} />

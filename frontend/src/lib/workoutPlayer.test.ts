@@ -47,6 +47,17 @@ describe("derivedActuals", () => {
             ended_early: false,
         });
     });
+
+    it("treats a zero rep target as one bout, like the server's `or 1`", () => {
+        expect(
+            derivedActuals({ reps: 0, work_seconds: 40, rest_seconds: 20 }),
+        ).toEqual({
+            completed_reps: 0,
+            actual_work_seconds: 40,
+            actual_rest_seconds: 0,
+            ended_early: false,
+        });
+    });
 });
 
 const tile = (overrides: Partial<PlayerTile> = {}): PlayerTile => ({

@@ -391,3 +391,53 @@ it("cancels a permanently failed write back to idle, with no phantom retry", asy
     expect(result.current.tiles).toHaveLength(0);
     expect(perform).toHaveBeenCalledTimes(1);
 });
+
+it("refetches on cancel — the write may have landed with its response lost", async () => {
+    perform.mockRejectedValue(new Error("offline"));
+    const queryClient = new QueryClient({
+        defaultOptions: {
+            // Live queries: the point is the invalidation reaching them.
+            queries: { retry: false },
+            mutations: { retry: false },
+        },
+    });
+    queryClient.setQueryData(["workouts"], []);
+    queryClient.setQueryData(["calendar"], {});
+    const wrapperWithSeeds = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useWorkoutPlayer(), {
+        wrapper: wrapperWithSeeds,
+    });
+
+    play(result, [tile()]);
+    tick(40_100);
+    tick(20_100);
+    tick(40_100);
+    await settle();
+    expect(result.current.status).toBe("error");
+    expect(queryClient.getQueryState(["workouts"])?.isInvalidated).toBe(false);
+
+    act(() => result.current.cancel());
+
+    // Cancel is not "nothing happened": the UI must not show the tile
+    // planned if the server in fact wrote it.
+    expect(queryClient.getQueryState(["workouts"])?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(["calendar"])?.isInvalidated).toBe(true);
+});
+
+it("derives a natural completion through the shared totals helper", async () => {
+    const { result } = mount();
+    // A one-bout timed tile: no reps, no rest — the payload must match
+    // `derivedActuals` exactly, with absent fields omitted rather than nulled.
+    play(result, [tile({ reps: null, rest_seconds: null, rest_after_seconds: 0 })]);
+
+    tick(40_100);
+    await settle();
+
+    expect(perform).toHaveBeenCalledWith(1, {
+        ended_early: false,
+        actual_work_seconds: 40,
+    });
+    expect(result.current.status).toBe("done");
+});

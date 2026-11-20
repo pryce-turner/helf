@@ -724,6 +724,86 @@ it("locks every tile in the run, and the divider after a locked tile", async () 
     }
 });
 
+it("keeps the failed run's tiles locked in the error state", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.perform.mockRejectedValue(new Error("offline"));
+        workouts.getAll.mockResolvedValue({
+            data: [
+                set({ doc_id: 1, order: 1, work_seconds: 5, reps: 1, rest_seconds: 0, rest_after_seconds: 15 }),
+                set({ doc_id: 2, order: 2, exercise: "Overhead Press", work_seconds: 30, reps: 1 }),
+            ],
+        } as never);
+        renderDay();
+        await settle();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        tick(5020);
+        tick(5100);
+        await settle();
+
+        expect(screen.getByRole("alert")).toBeInTheDocument();
+        // A failed write is not a released snapshot: the tiles and the
+        // divider stay locked until Retry lands or the run is discarded.
+        const locks = screen.getAllByTitle(/locked while a run includes it/i);
+        expect(locks.length).toBeGreaterThan(0);
+        locks.forEach((button) => expect(button).toBeDisabled());
+        expect(screen.getByRole("button", { name: /rest 0:15/i })).toBeDisabled();
+    } finally {
+        restore();
+    }
+});
+
+it("closes an open delete confirm and edit form when Play starts", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.getAll.mockResolvedValue({
+            data: [set({ doc_id: 1, work_seconds: 5, reps: 1 })],
+        } as never);
+        renderDay();
+        await settle();
+
+        // Open the two-step delete on the tile.
+        const deleteButton = document.querySelector(".action-btn--danger");
+        expect(deleteButton).not.toBeNull();
+        fireEvent.click(deleteButton as Element);
+        await settle();
+        // The confirm step is visible.
+        expect(screen.getByTitle(/confirm delete/i)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        await settle();
+
+        // Play owns the snapshot now: nothing pre-opened may act under it.
+        expect(screen.queryByTitle(/confirm delete/i)).not.toBeInTheDocument();
+    } finally {
+        restore();
+    }
+});
+
+it("closes an open edit form when Play starts", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.getAll.mockResolvedValue({
+            data: [set({ doc_id: 1, work_seconds: 40 })],
+        } as never);
+        renderDay();
+        await settle();
+
+        // Open the tile's editor.
+        fireEvent.click(screen.getByText("Weighted Pigeon Squat"));
+        await settle();
+        expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        await settle();
+
+        expect(screen.queryByRole("button", { name: /^save$/i })).not.toBeInTheDocument();
+    } finally {
+        restore();
+    }
+});
+
 it("offers a way out of a permanently failed write", async () => {
     const restore = fakeClock();
     try {

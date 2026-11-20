@@ -11,6 +11,43 @@ import {
     computeStopActuals,
     type PlayerTile,
 } from "./workoutPlayer";
+import { derivedActuals } from "./setTiles";
+
+describe("derivedActuals", () => {
+    it("derives totals, not per-rep values, mirroring the server", () => {
+        // Two 40s reps is 80s of work; the rest runs only between them.
+        expect(
+            derivedActuals({ reps: 2, work_seconds: 40, rest_seconds: 20 }),
+        ).toEqual({
+            completed_reps: 2,
+            actual_work_seconds: 80,
+            actual_rest_seconds: 20,
+            ended_early: false,
+        });
+    });
+
+    it("treats an uncounted timed set as one bout with no per-rep rest", () => {
+        expect(
+            derivedActuals({ reps: null, work_seconds: 30, rest_seconds: 20 }),
+        ).toEqual({
+            completed_reps: null,
+            actual_work_seconds: 30,
+            actual_rest_seconds: 0,
+            ended_early: false,
+        });
+    });
+
+    it("keeps absent fields absent rather than inventing zeroes", () => {
+        expect(
+            derivedActuals({ reps: 5, work_seconds: null, rest_seconds: null }),
+        ).toEqual({
+            completed_reps: 5,
+            actual_work_seconds: null,
+            actual_rest_seconds: null,
+            ended_early: false,
+        });
+    });
+});
 
 const tile = (overrides: Partial<PlayerTile> = {}): PlayerTile => ({
     doc_id: 1,

@@ -544,6 +544,18 @@ docker-compose up -d
 - `PATCH /{id}/complete` - Toggle workout completion
 - `POST /date/{source_date}/move` - Move all workouts to different date
 - `POST /date/{source_date}/copy` - Copy all workouts to different date
+- `POST /{id}/perform` - Write one tile's performance, as measured by the day
+  player (plan 0018). Empty body = natural completion: the server derives the
+  full actuals from the targets *as totals* (`work_seconds × reps`; the
+  per-rep rest runs `reps − 1` times). Explicit values win per field — the
+  player's snapshot is immutable, so a tile edited mid-run is written as it
+  was at Play. `ended_early: true` + measured values = a Stop. The server
+  assigns `completed_at` **and the date** (work is logged the day it is
+  performed), bumps the exercise's usage, and is **idempotent**: a performed
+  tile answers unchanged, so a lost response's retry double-counts nothing
+- `PATCH /{id}/rest-after` - Record the rest divider that ran after a tile,
+  on that tile (whole or partial). 409 when the tile was not performed — a
+  Stop during the divider must not complete the next tile
 - `PATCH /date/{date}/mobility` - Flag every set on a day as mobility work, or
   clear every one. A bulk edit of the per-set flag, **not** a day-level marker
   (plan 0013 §6): nothing is stored about the day, and a day whose sets

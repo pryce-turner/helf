@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { workoutsApi } from "@/lib/api";
+import { derivedActuals } from "@/lib/setTiles";
 import type { Workout, WorkoutCreate, CalendarResponse } from "@/types/workout";
 
 export function useWorkouts(params?: {
@@ -313,7 +314,8 @@ export function useToggleComplete() {
             const previousCalendar = queryClient.getQueriesData<CalendarResponse>({ queryKey: ["calendar"] });
 
             // Mirror the server: completion derives the actuals from the
-            // targets, uncompleting clears them (plan 0018).
+            // targets *as totals* (two 40s reps are 80s of work), and
+            // uncompleting clears them (plan 0018).
             queryClient.setQueriesData<Workout[]>(
                 { queryKey: ["workouts"] },
                 (old) => old?.map((w) =>
@@ -321,10 +323,15 @@ export function useToggleComplete() {
                         ? {
                             ...w,
                             completed_at: completed ? new Date().toISOString() : null,
-                            completed_reps: completed ? w.reps : null,
-                            actual_work_seconds: completed ? w.work_seconds : null,
-                            actual_rest_seconds: completed ? w.rest_seconds : null,
-                            ended_early: false,
+                            ...(completed
+                                ? derivedActuals(w)
+                                : {
+                                    completed_reps: null,
+                                    actual_work_seconds: null,
+                                    actual_rest_seconds: null,
+                                    actual_rest_after_seconds: null,
+                                    ended_early: false,
+                                }),
                         }
                         : w
                 )

@@ -30,3 +30,25 @@ export const defaultsFromExercise = (exercise: Exercise) => ({
     ? exercise.default_rest_after_seconds
     : null,
 });
+
+/**
+ * The actuals a natural completion claims, derived from the tile's targets
+ * as **totals** — two 40s reps are 80s of work, and the per-rep rest runs
+ * only between reps, never after the last. Mirrors the server's
+ * `_derive_actuals`, so the optimistic tick shows what the write will say.
+ */
+export const derivedActuals = (tile: {
+  reps: number | null;
+  work_seconds: number | null;
+  rest_seconds: number | null;
+}) => {
+  const reps = tile.reps ?? 1;
+  return {
+    completed_reps: tile.reps,
+    actual_work_seconds:
+      tile.work_seconds != null ? tile.work_seconds * reps : null,
+    actual_rest_seconds:
+      tile.rest_seconds != null ? tile.rest_seconds * (reps - 1) : null,
+    ended_early: false,
+  };
+};

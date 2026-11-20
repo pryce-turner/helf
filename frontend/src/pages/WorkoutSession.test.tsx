@@ -781,6 +781,38 @@ it("closes an open delete confirm and edit form when Play starts", async () => {
     }
 });
 
+it("cannot reach or fire the delete confirm on a locked tile", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.getAll.mockResolvedValue({
+            data: [set({ doc_id: 1, work_seconds: 40 })],
+        } as never);
+        renderDay();
+        await settle();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        tick(5020);
+        await settle();
+        expect(screen.getByText("WORK")).toBeInTheDocument();
+
+        // The tile is in the run's snapshot, so it is locked: its delete is
+        // disabled, which is what keeps `confirmingDelete` unset — the only
+        // path to a Confirm is closed, and `delete` never fires.
+        const deleteButton = document.querySelector(".action-btn--danger");
+        expect(deleteButton).not.toBeNull();
+        expect(deleteButton).toBeDisabled();
+        fireEvent.click(deleteButton as Element);
+        await settle();
+
+        expect(screen.queryByTitle(/confirm delete/i)).not.toBeInTheDocument();
+        expect(workouts.delete).not.toHaveBeenCalled();
+        // And the tile is still there, planned, after the run.
+        expect(screen.getByText("Weighted Pigeon Squat")).toBeInTheDocument();
+    } finally {
+        restore();
+    }
+});
+
 it("closes an open edit form when Play starts", async () => {
     const restore = fakeClock();
     try {

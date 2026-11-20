@@ -434,6 +434,25 @@ def test_copy_to_date_does_not_write_legacy_time():
     assert repo.copy_to_date("2024-03-19", "2024-03-20") == 1
     (copied,) = repo.get_by_date("2024-03-20")
     assert copied["time"] is None
+    # But the duration is not lost with the string: it parses into the
+    # numeric target, which is the writable field now.
+    assert copied["work_seconds"] == 30
+
+
+def test_copy_keeps_an_existing_work_seconds_over_the_legacy_string():
+    """A tile that already has the numeric target does not get it re-derived
+    from the legacy string — the field of record wins."""
+    repo = WorkoutRepository()
+    created = _create_timed(repo, "2024-03-21")
+    with database.SessionLocal() as session:
+        row = session.get(Workout, created["doc_id"])
+        row.time = "9:59"
+        session.commit()
+
+    assert repo.copy_to_date("2024-03-21", "2024-03-22") == 1
+    (copied,) = repo.get_by_date("2024-03-22")
+    assert copied["work_seconds"] == 40
+    assert copied["time"] is None
 
 
 def test_update_preserves_performance_and_replaces_targets():

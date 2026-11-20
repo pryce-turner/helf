@@ -229,46 +229,50 @@ END
 """)
 
 
+#: (name, type-and-constraint DDL) — one list so the idempotent add and the
+#: ORM's constraints cannot drift apart in one direction only.
+NEW_COLUMNS = [
+    ("work_seconds", "INTEGER CONSTRAINT ck_workouts_work_seconds "
+     "CHECK (work_seconds IS NULL OR work_seconds BETWEEN 1 AND 3600)"),
+    ("rest_seconds", "INTEGER CONSTRAINT ck_workouts_rest_seconds "
+     "CHECK (rest_seconds IS NULL OR rest_seconds BETWEEN 0 AND 3600)"),
+    ("rest_after_seconds", "INTEGER CONSTRAINT ck_workouts_rest_after_seconds "
+     "CHECK (rest_after_seconds IS NULL OR rest_after_seconds BETWEEN 0 AND 3600)"),
+    ("completed_reps", "INTEGER CONSTRAINT ck_workouts_completed_reps "
+     "CHECK (completed_reps IS NULL OR completed_reps >= 0)"),
+    ("actual_work_seconds", "FLOAT CONSTRAINT ck_workouts_actual_work_seconds "
+     "CHECK (actual_work_seconds IS NULL OR actual_work_seconds >= 0)"),
+    ("actual_rest_seconds", "FLOAT CONSTRAINT ck_workouts_actual_rest_seconds "
+     "CHECK (actual_rest_seconds IS NULL OR actual_rest_seconds >= 0)"),
+    ("actual_rest_after_seconds", "FLOAT CONSTRAINT ck_workouts_actual_rest_after_seconds "
+     "CHECK (actual_rest_after_seconds IS NULL OR actual_rest_after_seconds >= 0)"),
+    ("ended_early", "BOOLEAN NOT NULL DEFAULT 0 "
+     "CONSTRAINT ck_workouts_ended_early CHECK (ended_early IN (0, 1))"),
+]
+
+
+def _add_column_if_missing(name: str, ddl: str) -> None:
+    """ADD COLUMN, but survivable on a re-run.
+
+    Alembic treats SQLite DDL as non-transactional: a failure after these
+    statements commits them while `alembic_version` stays behind, and the
+    naive re-run dies on `duplicate column name` (the forced-failure test
+    proves it). Skipping what exists is what makes the re-run converge.
+    """
+    existing = {
+        row[1]
+        for row in op.get_bind().execute(
+            sa.text("PRAGMA table_info(workouts)")
+        ).fetchall()
+    }
+    if name in existing:
+        return
+    op.execute(f"ALTER TABLE workouts ADD COLUMN {name} {ddl}")
+
+
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN work_seconds INTEGER "
-        "CONSTRAINT ck_workouts_work_seconds "
-        "CHECK (work_seconds IS NULL OR work_seconds BETWEEN 1 AND 3600)"
-    )
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN rest_seconds INTEGER "
-        "CONSTRAINT ck_workouts_rest_seconds "
-        "CHECK (rest_seconds IS NULL OR rest_seconds BETWEEN 0 AND 3600)"
-    )
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN rest_after_seconds INTEGER "
-        "CONSTRAINT ck_workouts_rest_after_seconds "
-        "CHECK (rest_after_seconds IS NULL OR rest_after_seconds BETWEEN 0 AND 3600)"
-    )
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN completed_reps INTEGER "
-        "CONSTRAINT ck_workouts_completed_reps "
-        "CHECK (completed_reps IS NULL OR completed_reps >= 0)"
-    )
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN actual_work_seconds FLOAT "
-        "CONSTRAINT ck_workouts_actual_work_seconds "
-        "CHECK (actual_work_seconds IS NULL OR actual_work_seconds >= 0)"
-    )
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN actual_rest_seconds FLOAT "
-        "CONSTRAINT ck_workouts_actual_rest_seconds "
-        "CHECK (actual_rest_seconds IS NULL OR actual_rest_seconds >= 0)"
-    )
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN actual_rest_after_seconds FLOAT "
-        "CONSTRAINT ck_workouts_actual_rest_after_seconds "
-        "CHECK (actual_rest_after_seconds IS NULL OR actual_rest_after_seconds >= 0)"
-    )
-    op.execute(
-        "ALTER TABLE workouts ADD COLUMN ended_early BOOLEAN NOT NULL DEFAULT 0 "
-        "CONSTRAINT ck_workouts_ended_early CHECK (ended_early IN (0, 1))"
-    )
+    for name, ddl in NEW_COLUMNS:
+        _add_column_if_missing(name, ddl)
 
     # The triggers come down BEFORE the backfill, not after: every UPDATE on
     # this audited table fires them, and a no-op backfill write is exactly
@@ -319,7 +323,9 @@ def upgrade() -> None:
     finally:
         _create_triggers(TRIGGER_AFTER)
 
-    op.execute("DROP VIEW v_daily_summary")
+    # IF EXISTS, for the same re-run reason as the columns: a failure between
+    # the drop and the create must not make the next attempt unstartable.
+    op.execute("DROP VIEW IF EXISTS v_daily_summary")
     op.execute(V_DAILY_SUMMARY_AFTER)
 
 

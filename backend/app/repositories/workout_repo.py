@@ -9,6 +9,7 @@ from app.db.models import Category, Exercise, Workout
 from app.repositories.exercise_repo import ExerciseRepository
 from app.models.workout import WorkoutCreate, WorkoutUpdate
 from app.utils.date_helpers import get_current_datetime
+from app.utils.durations import parse_duration_seconds
 from app.utils.units import CANONICAL_WEIGHT_UNIT
 
 
@@ -606,8 +607,14 @@ class WorkoutRepository:
                     updated_at=now,
                     # A copy of a performed tile is a *planned* tile: targets
                     # survive, completion and every actual reset (plan 0018).
+                    # A legacy-timed row with no numeric target yet keeps its
+                    # duration through the parser rather than losing it.
                     completed_at=None,
-                    work_seconds=source_workout.work_seconds,
+                    work_seconds=(
+                        source_workout.work_seconds
+                        if source_workout.work_seconds is not None
+                        else parse_duration_seconds(source_workout.time)
+                    ),
                     rest_seconds=source_workout.rest_seconds,
                     rest_after_seconds=source_workout.rest_after_seconds,
                     # Copied sets keep their intent: a mobility session

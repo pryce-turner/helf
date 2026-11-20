@@ -147,6 +147,34 @@ def test_a_failed_backfill_still_restores_the_triggers(tmp_path, monkeypatch):
     # fixing the row.
     assert version == BEFORE
 
+    # The re-run is the whole point: the columns ADDed by the failed attempt
+    # are skipped, the backfill completes, and the chain reaches head.
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("UPDATE workouts SET reps = 3 WHERE id = 1")
+    conn.commit()
+    conn.close()
+    command.upgrade(cfg, "head")
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    row = dict(conn.execute("SELECT * FROM workouts WHERE id = 1").fetchone())
+    triggers = sorted(
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+            "AND name LIKE 'audit_workouts_%'"
+        )
+    )
+    version = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+    conn.close()
+
+    assert version == "c4a1e8b93d07"
+    assert triggers == ["audit_workouts_delete", "audit_workouts_update"]
+    assert row["completed_reps"] == 3
+    assert row["work_seconds"] == 30
+    # The total, matching `_derive_actuals`: 3 x 30s.
+    assert row["actual_work_seconds"] == 90
+
 
 def test_the_round_trip_leaves_the_table_as_it_was(tmp_path, monkeypatch):
     db_path = tmp_path / "roundtrip.db"

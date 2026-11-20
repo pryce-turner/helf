@@ -15,8 +15,12 @@ path depends on the pool having members.
 
 **A movement is created only if nothing of that name exists**, and one that
 exists is never given `form` text it already has. The enpool sets
-`movement_break_seconds` only where it is still NULL, so running this twice — or
-running it after the user has curated the pool — changes nothing.
+`movement_break_enabled` and the timing defaults only where they are not
+already set, so running this twice — or running it after the user has curated
+the pool — changes nothing. Since a3f9c21d7e48 the bout is
+`default_work_seconds` and membership is its own flag; the defaults seeded
+here match that revision's backfill (2 reps, rest = min(30, max(10,
+round(work / 2)))).
 
 `application` and `rating` are left NULL for the new movements, which is the
 honest value: nothing has been learned about these yet, and a guess in
@@ -225,6 +229,25 @@ EXISTING: list[tuple[str, int]] = [
 ]
 
 
+def break_rest(work_seconds: int) -> int:
+    """The rest a bout gets: half the work, inside 10 and 30 seconds."""
+    return min(30, max(10, round(work_seconds / 2)))
+
+
+def _enpool(exercise: Exercise, seconds: int) -> None:
+    """Join the pool and take the default timing, keeping any already set."""
+    exercise.movement_break_enabled = True
+    exercise.time_enabled = True
+    if exercise.default_work_seconds is None:
+        exercise.default_work_seconds = seconds
+    if exercise.default_reps is None:
+        exercise.default_reps = 2
+    if exercise.default_rest_seconds is None:
+        exercise.default_rest_seconds = break_rest(
+            exercise.default_work_seconds or seconds
+        )
+
+
 def seed(apply: bool) -> int:
     created = 0
     enpooled = 0
@@ -242,8 +265,8 @@ def seed(apply: bool) -> int:
                 else:
                     existing.form = form
                     skipped.append(f"{name} (exists, form filled in)")
-                if existing.movement_break_seconds is None:
-                    existing.movement_break_seconds = seconds
+                if not existing.movement_break_enabled:
+                    _enpool(existing, seconds)
                     enpooled += 1
                 continue
 
@@ -258,17 +281,16 @@ def seed(apply: bool) -> int:
                 session.flush()
                 print(f"  + category {category_name}")
 
-            session.add(
-                Exercise(
-                    name=name,
-                    category_id=category.id,
-                    form=form,
-                    movement_break_seconds=seconds,
-                    last_used=None,
-                    use_count=0,
-                    created_at=get_current_datetime(),
-                )
+            exercise = Exercise(
+                name=name,
+                category_id=category.id,
+                form=form,
+                last_used=None,
+                use_count=0,
+                created_at=get_current_datetime(),
             )
+            _enpool(exercise, seconds)
+            session.add(exercise)
             created += 1
 
         for name, seconds in EXISTING:
@@ -278,16 +300,16 @@ def seed(apply: bool) -> int:
             if not exercise:
                 skipped.append(f"{name} (not in this catalog, skipped)")
                 continue
-            if exercise.movement_break_seconds is not None:
+            if exercise.movement_break_enabled:
                 continue
-            exercise.movement_break_seconds = seconds
+            _enpool(exercise, seconds)
             enpooled += 1
 
         # `SessionLocal` is `autoflush=False`, so the count has to ask for a
         # flush or it reports the pool as it was before this script ran.
         session.flush()
         total = session.execute(
-            select(Exercise).where(Exercise.movement_break_seconds.is_not(None))
+            select(Exercise).where(Exercise.movement_break_enabled.is_(True))
         ).scalars().all()
         print(f"  created {created}, enpooled {enpooled}, pool now {len(total)}")
         for line in skipped:

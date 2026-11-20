@@ -55,8 +55,39 @@ class Exercise(Base):
             "rating IS NULL OR rating BETWEEN 1 AND 5", name="ck_exercises_rating"
         ),
         CheckConstraint(
-            "movement_break_seconds IS NULL OR movement_break_seconds BETWEEN 5 AND 600",
-            name="ck_exercises_movement_break_seconds",
+            "movement_break_enabled IN (0, 1)", name="ck_exercises_movement_break_enabled"
+        ),
+        CheckConstraint("reps_enabled IN (0, 1)", name="ck_exercises_reps_enabled"),
+        CheckConstraint(
+            "default_reps IS NULL OR default_reps BETWEEN 1 AND 500",
+            name="ck_exercises_default_reps",
+        ),
+        CheckConstraint(
+            "weight_enabled IN (0, 1)", name="ck_exercises_weight_enabled"
+        ),
+        CheckConstraint(
+            "default_weight_lb IS NULL OR default_weight_lb BETWEEN 0 AND 2000",
+            name="ck_exercises_default_weight_lb",
+        ),
+        CheckConstraint(
+            "distance_enabled IN (0, 1)", name="ck_exercises_distance_enabled"
+        ),
+        CheckConstraint(
+            "default_distance IS NULL OR default_distance BETWEEN 0 AND 1000",
+            name="ck_exercises_default_distance",
+        ),
+        CheckConstraint("time_enabled IN (0, 1)", name="ck_exercises_time_enabled"),
+        CheckConstraint(
+            "default_work_seconds IS NULL OR default_work_seconds BETWEEN 1 AND 3600",
+            name="ck_exercises_default_work_seconds",
+        ),
+        CheckConstraint(
+            "default_rest_seconds IS NULL OR default_rest_seconds BETWEEN 0 AND 3600",
+            name="ck_exercises_default_rest_seconds",
+        ),
+        CheckConstraint(
+            "default_rest_after_seconds IS NULL OR default_rest_after_seconds BETWEEN 0 AND 3600",
+            name="ck_exercises_default_rest_after_seconds",
         ),
     )
 
@@ -84,22 +115,51 @@ class Exercise(Base):
     # value is a candidate to cut, and a 1-rated movement of high value needs
     # its friction diagnosed rather than its place defended.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Membership of the movement break pool *and* the movement's default bout, in one
-    # column: NULL is "not in the pool", a number is how long one go lasts.
-    # The two are never wanted apart, and a boolean plus a duration would be
-    # two columns free to disagree with each other.
+    # Membership of the movement break pool. Until a3f9c21d7e48 this was one
+    # nullable column (`movement_break_seconds`) carrying membership *and* the
+    # default bout; the flag and the bout are separate now, the bout living in
+    # the ordinary time defaults below.
     #
     # This is **not** the `is_mobility` that d7e4f2a91b83 dropped from this
     # table. That flag claimed a movement *was* mobility work, which is a fact
     # about a performance; a good morning is a loaded hinge in one session and
     # a loaded stretch in the next. This claims only that the movement can be
-    # done **with no equipment, for a timed bout** — a property of its setup,
-    # in the same family as `form`. A pushup is in the pool and is still a
-    # lift, and nothing stops it being logged as one.
-    #
-    # Seconds, because ADR-0003 puts the unit in the name and no row carries a
-    # unit column.
-    movement_break_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # done **with no equipment** — a property of its setup, in the same family
+    # as `form`. A pushup is in the pool and is still a lift, and nothing
+    # stops it being logged as one.
+    movement_break_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
+    )
+    # Field configuration (plan 0018): which of the four field groups a new
+    # set tile for this movement offers, and what each offers as a default.
+    # `reps_enabled`/`weight_enabled` default on because that is what the day
+    # view's editor has always offered. Enabled with a NULL default means
+    # "offer the input, leave it blank". Disabled means new tiles do not offer
+    # the field at all — it never rewrites existing tiles, which are
+    # snapshots.
+    reps_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="1"
+    )
+    default_reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weight_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="1"
+    )
+    # Total pounds (ADR-0003) — for a Farmer Carry, what is carried across
+    # both hands, not per hand.
+    default_weight_lb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    distance_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
+    )
+    default_distance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    default_distance_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Time is one group because work, per-rep rest and rest-after-set are all
+    # timing configuration; any of the three defaults may be blank on its own.
+    time_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
+    )
+    default_work_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_rest_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_used: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

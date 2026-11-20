@@ -100,3 +100,99 @@ def test_exercise_update_without_rating_leaves_it_alone():
     renamed = repo.update(created["doc_id"], ExerciseUpdate(name="Squat Hold"))
     assert renamed["name"] == "Squat Hold"
     assert renamed["rating"] == 4
+
+
+# --- Field configuration (plan 0018) ---------------------------------------
+
+
+def test_a_new_exercise_keeps_the_current_editor():
+    """Reps and Weight are what the day view offers today, so they start
+    enabled; Distance and Time start off and out of the way. Every default
+    starts NULL - enabled with no default means "offer the input, leave it
+    blank"."""
+    repo = ExerciseRepository()
+    created = repo.create(ExerciseCreate(name="Squat", category="Legs"))
+
+    assert created["reps_enabled"] is True
+    assert created["weight_enabled"] is True
+    assert created["distance_enabled"] is False
+    assert created["time_enabled"] is False
+    assert created["movement_break_enabled"] is False
+    for field in (
+        "default_reps",
+        "default_weight_lb",
+        "default_distance",
+        "default_distance_unit",
+        "default_work_seconds",
+        "default_rest_seconds",
+        "default_rest_after_seconds",
+    ):
+        assert created[field] is None
+
+
+def test_field_groups_are_independent():
+    """Each group's toggle is its own fact: Time on does not turn Distance on."""
+    repo = ExerciseRepository()
+    created = repo.create(ExerciseCreate(name="Farmer Carry", category="Legs"))
+
+    updated = repo.update(
+        created["doc_id"],
+        ExerciseUpdate(
+            time_enabled=True,
+            default_work_seconds=40,
+            default_rest_seconds=20,
+            default_rest_after_seconds=15,
+        ),
+    )
+
+    assert updated["time_enabled"] is True
+    assert updated["default_work_seconds"] == 40
+    assert updated["default_rest_seconds"] == 20
+    assert updated["default_rest_after_seconds"] == 15
+    assert updated["distance_enabled"] is False
+    assert updated["reps_enabled"] is True
+
+
+def test_a_default_is_cleared_by_an_explicit_null_and_kept_by_an_omission():
+    """Same distinction as `rating`: blanking a default is a real edit, so an
+    omitted key and a null are told apart by `model_fields_set`."""
+    repo = ExerciseRepository()
+    created = repo.create(
+        ExerciseCreate(
+            name="Sled Push",
+            category="Legs",
+            time_enabled=True,
+            default_work_seconds=30,
+        )
+    )
+    assert created["default_work_seconds"] == 30
+
+    # An unrelated edit leaves the default where it was.
+    renamed = repo.update(created["doc_id"], ExerciseUpdate(form="drive low"))
+    assert renamed["default_work_seconds"] == 30
+
+    cleared = repo.update(created["doc_id"], ExerciseUpdate(default_work_seconds=None))
+    assert cleared["default_work_seconds"] is None
+    # Disabling the group does not erase its configuration either (plan 0018:
+    # re-enabling must not force the user to set it up again).
+    disabled = repo.update(created["doc_id"], ExerciseUpdate(time_enabled=False))
+    assert disabled["time_enabled"] is False
+
+
+def test_the_movement_break_pool_reads_the_flag_not_a_bout():
+    repo = ExerciseRepository()
+    repo.create(ExerciseCreate(name="Barbell Squat", category="Legs"))
+    repo.create(
+        ExerciseCreate(
+            name="Deep Squat Hold",
+            category="Legs",
+            movement_break_enabled=True,
+            time_enabled=True,
+            default_work_seconds=40,
+        )
+    )
+
+    pool = repo.get_movement_breaks()
+    assert [exercise["name"] for exercise in pool] == ["Deep Squat Hold"]
+    assert pool[0]["movement_break_enabled"] is True
+    assert pool[0]["default_work_seconds"] == 40

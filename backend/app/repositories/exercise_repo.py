@@ -10,6 +10,32 @@ from app.models.exercise import CategoryCreate, ExerciseCreate, ExerciseUpdate
 from app.utils.date_helpers import get_current_datetime
 
 
+# The twelve field-configuration columns (plan 0018). One list, iterated by
+# `_serialize`, `create` and `update`, so a fourteenth field cannot be added
+# to the schema and forgotten here.
+FIELD_CONFIG = (
+    "movement_break_enabled",
+    "reps_enabled",
+    "default_reps",
+    "weight_enabled",
+    "default_weight_lb",
+    "distance_enabled",
+    "default_distance",
+    "default_distance_unit",
+    "time_enabled",
+    "default_work_seconds",
+    "default_rest_seconds",
+    "default_rest_after_seconds",
+)
+
+#: Nullable defaults: cleared by an explicit null, told apart from an omitted
+#: key by `model_fields_set` the way `rating` is. The boolean flags use the
+#: plain `is not None` guard instead — a flag has no third state to clear to.
+NULLABLE_DEFAULTS = tuple(
+    field for field in FIELD_CONFIG if field.startswith("default_")
+)
+
+
 class ExerciseRepository:
     """Repository for exercise data operations."""
 
@@ -21,7 +47,7 @@ class ExerciseRepository:
             "form": exercise.form,
             "application": exercise.application,
             "rating": exercise.rating,
-            "movement_break_seconds": exercise.movement_break_seconds,
+            **{field: getattr(exercise, field) for field in FIELD_CONFIG},
             "last_used": exercise.last_used,
             "use_count": exercise.use_count,
             "created_at": exercise.created_at,
@@ -92,10 +118,10 @@ class ExerciseRepository:
                 form=exercise.form,
                 application=exercise.application,
                 rating=exercise.rating,
-                movement_break_seconds=exercise.movement_break_seconds,
                 last_used=None,
                 use_count=0,
                 created_at=now,
+                **{field: getattr(exercise, field) for field in FIELD_CONFIG},
             )
             session.add(new_exercise)
             session.commit()
@@ -117,7 +143,8 @@ class ExerciseRepository:
             return True
 
     def get_movement_breaks(self) -> list[dict]:
-        """The movement break pool: movements that need no equipment, with their bout.
+        """The movement break pool: movements that need no equipment, with their
+        timing defaults.
 
         A dedicated read rather than a filter over `get_all()`, which carries
         every movement's full `form` and `application` across the wire to a
@@ -127,7 +154,7 @@ class ExerciseRepository:
             exercises = session.execute(
                 select(Exercise)
                 .options(selectinload(Exercise.category))
-                .where(Exercise.movement_break_seconds.is_not(None))
+                .where(Exercise.movement_break_enabled.is_(True))
                 .order_by(Exercise.name)
             ).scalars().all()
             return [self._serialize(exercise) for exercise in exercises]
@@ -172,10 +199,19 @@ class ExerciseRepository:
             # what the client actually sent.
             if "rating" in data.model_fields_set:
                 exercise.rating = data.rating
-            # The pool has the same problem `rating` has: removing a movement
-            # from it is a real edit, and a null is otherwise a no-op.
-            if "movement_break_seconds" in data.model_fields_set:
-                exercise.movement_break_seconds = data.movement_break_seconds
+            # The field configuration (plan 0018). The flags are plain
+            # optionals; the nullable defaults share `rating`'s problem —
+            # clearing one back to blank is a real edit. Disabling a group
+            # deliberately does **not** clear its defaults: re-enabling must
+            # restore the configuration, not a blank one.
+            for field in FIELD_CONFIG:
+                if field in NULLABLE_DEFAULTS:
+                    if field in data.model_fields_set:
+                        setattr(exercise, field, getattr(data, field))
+                else:
+                    value = getattr(data, field)
+                    if value is not None:
+                        setattr(exercise, field, value)
 
             session.commit()
             session.refresh(exercise)

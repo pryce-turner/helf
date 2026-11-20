@@ -288,30 +288,37 @@ def test_exercise_rating_is_bounded_for_the_raw_writer_too():
     conn.close()
 
 
-def test_movement_break_seconds_is_audited():
+def test_exercise_field_config_is_audited():
     """A column added to an audited table is invisible to the log until the
     triggers are rebuilt, because they enumerate their columns into
-    `json_object`. 5d1a7c3e8f02 rebuilt them; this is what fails if a later
-    one forgets."""
+    `json_object`. The field-configuration columns (plan 0018) replaced
+    `movement_break_seconds`; this is what fails if the rebuild forgot one."""
     conn = _raw()
     conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-11-12')")
     conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
                  "VALUES ('Wall Sit', 1, 0, '2026-11-12')")
     conn.commit()
-    conn.execute("UPDATE exercises SET movement_break_seconds = 40 WHERE name = 'Wall Sit'")
+    conn.execute(
+        "UPDATE exercises SET movement_break_enabled = 1, time_enabled = 1, "
+        "default_work_seconds = 40 WHERE name = 'Wall Sit'"
+    )
     conn.commit()
     conn.close()
 
     entry = _log("table_name = 'exercises' AND op = 'UPDATE'")[0]
     before = json.loads(entry["old_values"])
     after = json.loads(entry["new_values"])
-    assert before["movement_break_seconds"] is None and after["movement_break_seconds"] == 40
+    assert before["movement_break_enabled"] == 0 and after["movement_break_enabled"] == 1
+    assert before["default_work_seconds"] is None and after["default_work_seconds"] == 40
+    # The replaced column is gone from the payload, not merely always-null.
+    assert "movement_break_seconds" not in before
+    assert "movement_break_seconds" not in after
 
 
-def test_movement_break_seconds_is_bounded_for_the_raw_writer_too():
+def test_field_defaults_are_bounded_for_the_raw_writer_too():
     """The Pydantic bound never sees the agent's SQL (ADR-0002); the CHECK is
-    the rule both writers obey. It is named in the ADD COLUMN so `alembic
-    check` can match it against the ORM."""
+    the rule both writers obey. It is named in the DDL so `alembic check` can
+    match it against the ORM."""
     conn = _raw()
     conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-11-12')")
     conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
@@ -319,6 +326,8 @@ def test_movement_break_seconds_is_bounded_for_the_raw_writer_too():
     conn.commit()
 
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute("UPDATE exercises SET movement_break_seconds = 900 WHERE name = 'Wall Angel'")
+        conn.execute(
+            "UPDATE exercises SET default_work_seconds = 9000 WHERE name = 'Wall Angel'"
+        )
         conn.commit()
     conn.close()

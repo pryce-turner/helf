@@ -97,31 +97,39 @@ END
 
 
 def upgrade() -> None:
+    # Triggers down before any DML, and back up no matter how it ends. The
+    # backfill UPDATEs are one transaction; a row-level failure must roll it
+    # back *before* the triggers are recreated — recreated inside it, they
+    # would roll back with it (see b7e2d4f81a05 for the full reasoning).
     _drop_triggers()
-
-    bind = op.get_bind()
-    rows = bind.execute(
-        sa.text(
-            "SELECT id, time, completed_at FROM workouts "
-            "WHERE time IS NOT NULL AND work_seconds IS NULL"
-        )
-    ).fetchall()
-    for row_id, time_value, completed_at in rows:
-        seconds = _parse_seconds(time_value)
-        if seconds is None:
-            continue
-        sets: dict[str, object] = {"work_seconds": seconds}
-        # A completed row's duration was also its performed work — the same
-        # claim b7e2 made for the rows it could read.
-        if completed_at is not None:
-            sets["actual_work_seconds"] = seconds
-        assignments = ", ".join(f"{name} = :{name}" for name in sets)
-        bind.execute(
-            sa.text(f"UPDATE workouts SET {assignments} WHERE id = :id"),
-            {**sets, "id": row_id},
-        )
-
-    _create_triggers()
+    try:
+        bind = op.get_bind()
+        rows = bind.execute(
+            sa.text(
+                "SELECT id, reps, time, completed_at FROM workouts "
+                "WHERE time IS NOT NULL AND work_seconds IS NULL"
+            )
+        ).fetchall()
+        for row_id, reps, time_value, completed_at in rows:
+            seconds = _parse_seconds(time_value)
+            if seconds is None:
+                continue
+            sets: dict[str, object] = {"work_seconds": seconds}
+            # A completed row's duration was also its performed work — the
+            # same claim b7e2 made for the rows it could read, as a TOTAL:
+            # `seconds * (reps or 1)`, matching `_derive_actuals`.
+            if completed_at is not None:
+                sets["actual_work_seconds"] = seconds * (reps or 1)
+            assignments = ", ".join(f"{name} = :{name}" for name in sets)
+            bind.execute(
+                sa.text(f"UPDATE workouts SET {assignments} WHERE id = :id"),
+                {**sets, "id": row_id},
+            )
+    except Exception:
+        op.get_bind().rollback()
+        raise
+    finally:
+        _create_triggers()
 
 
 def downgrade() -> None:

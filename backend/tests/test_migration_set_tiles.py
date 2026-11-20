@@ -104,6 +104,50 @@ def test_an_unparseable_time_is_left_alone(migrated):
     assert odd["completed_reps"] == 3
 
 
+def test_a_failed_backfill_still_restores_the_triggers(tmp_path, monkeypatch):
+    """Non-transactional DDL means a failure mid-migration must not leave the
+    audited table un-watched: the triggers go back up in `finally`, and the
+    revision marker honestly stays behind for the re-run."""
+    db_path = tmp_path / "roundtrip.db"
+    monkeypatch.setattr(database.settings, "db_path", db_path)
+    cfg = Config(str(database.ALEMBIC_INI))
+    command.upgrade(cfg, BEFORE)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-11-01')")
+    conn.execute(
+        "INSERT INTO exercises (name, category_id, use_count, created_at) "
+        "VALUES ('Squat', 1, 0, '2026-11-01')"
+    )
+    # reps = -1: backfilled into completed_reps, the CHECK refuses it — a
+    # failure after the triggers came down.
+    conn.execute(
+        'INSERT INTO workouts (date, exercise_id, category_id, reps, time, '
+        'completed_at, "order", created_at, updated_at) VALUES '
+        "('2026-11-02', 1, 1, -1, '0:30', '2026-11-02 07:00:00', 1, "
+        "'2026-11-02', '2026-11-02')"
+    )
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(Exception):
+        command.upgrade(cfg, "head")
+
+    conn = sqlite3.connect(str(db_path))
+    triggers = sorted(
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+            "AND name LIKE 'audit_workouts_%'"
+        )
+    )
+    version = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+    conn.close()
+    assert triggers == ["audit_workouts_delete", "audit_workouts_update"]
+    # The failure is reported, not half-applied: the operator re-runs after
+    # fixing the row.
+    assert version == BEFORE
+
+
 def test_the_round_trip_leaves_the_table_as_it_was(tmp_path, monkeypatch):
     db_path = tmp_path / "roundtrip.db"
     monkeypatch.setattr(database.settings, "db_path", db_path)

@@ -79,9 +79,12 @@ NEW_CHECKS = [
     "ck_workouts_ended_early",
 ]
 
-#: Unambiguous means a plain m:ss — '0:30', '12:05'. Anything else ('5+',
-#: 'hold', '1:2:3') is prose and stays only in `time`.
+#: Unambiguous means a plain m:ss inside the column's own bounds — '0:30',
+#: '12:05', but not '70:00' (4200 violates ck_workouts_work_seconds). Anything
+#: else is prose and stays only in `time`.
 TIME_RE = re.compile(r"^(\d{1,4}):([0-5]\d)$")
+
+MAX_SECONDS = 3600  # ck_workouts_work_seconds upper bound
 
 #: The view as `a3f9c21d7e48` leaves it — `12fed2487b4e`'s original plus
 #: 0016's `supplements_taken` and meals-only macro counting — restated
@@ -272,33 +275,49 @@ def upgrade() -> None:
     # the audit noise the log exists to exclude. The first production run of
     # this revision (before the order was fixed) wrote 9,487 such rows; they
     # stay, because `audit_log` is append-only and history is not edited.
+    #
+    # And they go back up no matter how the backfill ends: alembic on SQLite
+    # treats DDL as non-transactional, so the ADD COLUMNs and the DROPs are
+    # already committed while the backfill's UPDATEs run in one transaction.
+    # A row-level failure must roll that transaction back *before* the
+    # triggers are recreated — recreated inside it, they would roll back
+    # with it, and the audited table would be left unwatched.
     _drop_triggers()
-
-    # The backfill is data-shaped, so it is Python rather than SQL: a plain
-    # m:ss parses, everything else is left alone (see TIME_RE).
-    bind = op.get_bind()
-    rows = bind.execute(
-        sa.text("SELECT id, reps, time, completed_at FROM workouts")
-    ).fetchall()
-    for row_id, reps, time_value, completed_at in rows:
-        sets: dict[str, object] = {}
-        if completed_at is not None and reps is not None:
-            sets["completed_reps"] = reps
-        if time_value:
-            match = TIME_RE.match(time_value.strip())
-            if match:
-                seconds = int(match.group(1)) * 60 + int(match.group(2))
-                sets["work_seconds"] = seconds
-                if completed_at is not None:
-                    sets["actual_work_seconds"] = seconds
-        if sets:
-            assignments = ", ".join(f"{name} = :{name}" for name in sets)
-            bind.execute(
-                sa.text(f"UPDATE workouts SET {assignments} WHERE id = :id"),
-                {**sets, "id": row_id},
-            )
-
-    _create_triggers(TRIGGER_AFTER)
+    try:
+        # The backfill is data-shaped, so it is Python rather than SQL: a
+        # plain m:ss inside the bounds parses, everything else is left alone
+        # (see TIME_RE).
+        bind = op.get_bind()
+        rows = bind.execute(
+            sa.text("SELECT id, reps, time, completed_at FROM workouts")
+        ).fetchall()
+        for row_id, reps, time_value, completed_at in rows:
+            sets: dict[str, object] = {}
+            if completed_at is not None and reps is not None:
+                sets["completed_reps"] = reps
+            if time_value:
+                match = TIME_RE.match(time_value.strip())
+                if match:
+                    seconds = int(match.group(1)) * 60 + int(match.group(2))
+                    if 1 <= seconds <= MAX_SECONDS:
+                        sets["work_seconds"] = seconds
+                        if completed_at is not None:
+                            # A TOTAL, matching `_derive_actuals`: three 45s
+                            # reps were 135 seconds of work, not 45.
+                            sets["actual_work_seconds"] = seconds * (reps or 1)
+            if sets:
+                assignments = ", ".join(f"{name} = :{name}" for name in sets)
+                bind.execute(
+                    sa.text(f"UPDATE workouts SET {assignments} WHERE id = :id"),
+                    {**sets, "id": row_id},
+                )
+    except Exception:
+        # Clear the doomed transaction first (see above), then let the
+        # failure propagate so alembic reports it and the version stays put.
+        op.get_bind().rollback()
+        raise
+    finally:
+        _create_triggers(TRIGGER_AFTER)
 
     op.execute("DROP VIEW v_daily_summary")
     op.execute(V_DAILY_SUMMARY_AFTER)

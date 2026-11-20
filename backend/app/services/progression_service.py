@@ -38,7 +38,11 @@ class ProgressionService:
         for workout in historical_workouts:
             date = workout.get('date', '')
             weight = workout.get('weight')
-            reps = workout.get('reps')
+            # COALESCE(completed_reps, reps), as in `v_daily_summary`: a
+            # stopped tile estimates off the reps actually done, and a row
+            # completed before the actuals existed falls back to its target.
+            completed = workout.get('completed_reps')
+            reps = completed if completed is not None else workout.get('reps')
 
             if not weight or not reps:
                 continue

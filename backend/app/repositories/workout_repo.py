@@ -205,7 +205,10 @@ class WorkoutRepository:
                 reps=workout_dict.get("reps"),
                 distance=workout_dict.get("distance"),
                 distance_unit=workout_dict.get("distance_unit"),
-                time=workout_dict.get("time"),
+                # `time` is read-only legacy (plan 0018): accepted on the way
+                # in for compatibility, never written. New tiles carry the
+                # numeric targets below.
+                time=None,
                 comment=workout_dict.get("comment"),
                 order=order_value,
                 created_at=now,
@@ -285,7 +288,9 @@ class WorkoutRepository:
             existing.reps = workout_dict.get("reps")
             existing.distance = workout_dict.get("distance")
             existing.distance_unit = workout_dict.get("distance_unit")
-            existing.time = workout_dict.get("time")
+            # `time` is never written (read-only legacy, plan 0018) — a
+            # legacy value on the row survives every edit, and no new one is
+            # ever stored.
             existing.comment = workout_dict.get("comment")
             if workout_dict.get("order") is not None:
                 existing.order = workout_dict.get("order")
@@ -296,13 +301,14 @@ class WorkoutRepository:
             # send `completed_at` at all.
             if "completed_at" in workout.model_fields_set:
                 existing.completed_at = workout_dict.get("completed_at")
-            # The target timing is edit-form business and a full replace,
-            # like weight and reps. The *actuals* are not here at all: they
-            # are written by the performance paths alone, so no edit can
-            # rewrite what happened.
-            existing.work_seconds = workout_dict.get("work_seconds")
-            existing.rest_seconds = workout_dict.get("rest_seconds")
-            existing.rest_after_seconds = workout_dict.get("rest_after_seconds")
+            # The target timing is edit-form business, sticky the same way:
+            # a client that does not know these fields must not wipe them by
+            # omitting them, and an explicit null is how one clears. The
+            # *actuals* are not writable here at all — they belong to the
+            # performance paths alone, so no edit can rewrite what happened.
+            for field in ("work_seconds", "rest_seconds", "rest_after_seconds"):
+                if field in workout.model_fields_set:
+                    setattr(existing, field, workout_dict.get(field))
             # Sticky unless explicitly sent, distinguished by `model_fields_set`
             # the way `ExerciseUpdate.rating` is. Every other field here is a
             # full replace, but this one defaults to False, so a PUT that only
@@ -335,11 +341,20 @@ class WorkoutRepository:
         derives the actuals from the targets ("the target is what happened"),
         and uncompleting clears them, so a tile only ever carries performance
         while it is performed. Usage moves with it — a suggestion never does.
+
+        Both directions are idempotent: ticking an already-ticked tile is a
+        no-op rather than an overwrite of the player's measured actuals (or a
+        second use count), and unticking a planned tile writes nothing.
         """
         with SessionLocal() as session:
             workout = session.get(Workout, doc_id)
             if not workout:
                 return None
+
+            if completed and workout.completed_at is not None:
+                return self._serialize(workout)
+            if not completed and workout.completed_at is None:
+                return self._serialize(workout)
 
             now = get_current_datetime()
             if completed:
@@ -381,6 +396,13 @@ class WorkoutRepository:
             workout = session.get(Workout, doc_id)
             if not workout:
                 return None
+
+            # A tile already performed answers as it is: a lost response
+            # makes the player's Retry repeat the write, and the repeat must
+            # not move the completion, the date or the order, nor count the
+            # movement a second time.
+            if workout.completed_at is not None:
+                return self._serialize(workout)
 
             now = get_current_datetime()
             today = now.date().isoformat()

@@ -114,3 +114,28 @@ def test_historical_day_carries_every_set_best_first():
     assert day["weight"] == 185
     assert [s["weight"] for s in day["sets"]] == [135, 185, 155]
     assert day["estimated_1rm"] == max(s["estimated_1rm"] for s in day["sets"])
+
+
+def test_a_stopped_tile_counts_the_reps_actually_done():
+    """Progression reads `COALESCE(completed_reps, reps)`, like
+    `v_daily_summary`: a tile stopped at 2 of 5 planned reps is a set of 2,
+    and estimating off the 5 would inflate the 1RM (plan 0018)."""
+    from app.utils.calculations import calculate_estimated_1rm
+
+    workout_repo = WorkoutRepository()
+    created = workout_repo.create(
+        WorkoutCreate(
+            date="2024-01-05",
+            exercise="Bench",
+            category="Push",
+            weight=100,
+            reps=5,
+        )
+    )
+    workout_repo.perform(created["doc_id"], ended_early=True, completed_reps=2)
+
+    data = ProgressionService().get_progression_data("Bench", include_upcoming=False)
+    day = data["historical"][0]
+
+    assert day["reps"] == 2
+    assert day["estimated_1rm"] == calculate_estimated_1rm(100, 2)

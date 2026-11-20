@@ -242,3 +242,74 @@ def test_editing_a_performed_tile_does_not_uncomplete_it(client):
     assert edited["completed_at"] is not None
     assert edited["completed_reps"] == 2
     assert edited["comment"] == "forearms gone by 30s"
+
+
+def test_perform_is_idempotent_over_http(client):
+    """A retried write — the client's response was lost — returns the tile as
+    it already is rather than completing it a second time."""
+    tile = _create_timed_tile(client, date="2024-04-09")
+
+    first = client.post(f"/api/workouts/{tile['doc_id']}/perform", json={})
+    assert first.status_code == 200
+    second = client.post(f"/api/workouts/{tile['doc_id']}/perform", json={})
+    assert second.status_code == 200
+    assert second.json()["completed_at"] == first.json()["completed_at"]
+    assert second.json()["date"] == first.json()["date"]
+
+    movement = client.get("/api/exercises/Farmer Carry").json()
+    assert movement["use_count"] == 1
+
+
+def test_a_comment_edit_preserves_legacy_time_and_the_new_fields(client):
+    """`time` is read-only legacy, and the timing targets are sticky when an
+    update omits them — an older client editing a comment must not wipe
+    either."""
+    created = client.post(
+        "/api/workouts/",
+        json={
+            "date": "2024-04-10",
+            "exercise": "Plank",
+            "category": "Core",
+            "time": "0:30",
+        },
+    ).json()
+    # `time` is not writable at all any more, but the row still answers.
+    assert created["time"] is None
+
+    # Seed a legacy value directly, the way pre-0018 rows hold it.
+    from app import database
+    from app.db.models import Workout as WorkoutRow
+
+    with database.SessionLocal() as session:
+        row = session.get(WorkoutRow, created["doc_id"])
+        row.time = "0:30"
+        session.commit()
+
+    plank = client.get("/api/exercises/Plank").json()
+    client.put(f"/api/exercises/{plank['doc_id']}", json={"time_enabled": True})
+    timed = client.post(
+        "/api/workouts/",
+        json={
+            "date": "2024-04-10",
+            "exercise": "Plank",
+            "category": "Core",
+            "work_seconds": 30,
+        },
+    ).json()
+    assert timed["work_seconds"] == 30
+
+    edited_legacy = client.put(
+        f"/api/workouts/{created['doc_id']}",
+        json={"date": "2024-04-10", "exercise": "Plank", "category": "Core",
+              "comment": "held steady"},
+    ).json()
+    assert edited_legacy["time"] == "0:30"
+    assert edited_legacy["comment"] == "held steady"
+
+    edited_timed = client.put(
+        f"/api/workouts/{timed['doc_id']}",
+        json={"date": "2024-04-10", "exercise": "Plank", "category": "Core",
+              "comment": "shaking by 25"},
+    ).json()
+    assert edited_timed["work_seconds"] == 30
+    assert edited_timed["comment"] == "shaking by 25"

@@ -456,3 +456,136 @@ def test_counts_and_history_report_performed_work_only():
     history = repo.get_by_exercise("Bench")
     assert [w["doc_id"] for w in history] == [done["doc_id"]]
     assert planned["doc_id"] not in [w["doc_id"] for w in history]
+
+
+# --- Idempotency and legacy-field discipline ---------------------------------
+
+
+def test_perform_is_idempotent_on_an_already_performed_tile():
+    """A lost response makes the client's Retry repeat the write; the second
+    one must come back as the first did — same completion, same date, same
+    order — not as a fresh performance that double-counts the movement."""
+    from app.db.models import Exercise
+
+    repo = WorkoutRepository()
+    created = _create_timed(repo, "2024-03-14")
+    first = repo.perform(created["doc_id"], ended_early=False)
+
+    second = repo.perform(created["doc_id"], ended_early=False)
+    assert second["doc_id"] == first["doc_id"]
+    assert second["completed_at"] == first["completed_at"]
+    assert second["date"] == first["date"]
+    assert second["order"] == first["order"]
+
+    with database.SessionLocal() as session:
+        exercise = session.query(Exercise).filter(
+            Exercise.name == "Farmer Carry"
+        ).one()
+        assert exercise.use_count == 1
+
+
+def test_toggle_complete_on_a_completed_tile_preserves_measured_actuals():
+    """Ticking an already-ticked tile must not overwrite the player's measured
+    actuals with derived ones, and must not count the movement a second time."""
+    from app.db.models import Exercise
+
+    repo = WorkoutRepository()
+    created = _create_timed(repo, "2024-03-15")
+    repo.perform(
+        created["doc_id"],
+        ended_early=True,
+        completed_reps=1,
+        actual_work_seconds=52.5,
+        actual_rest_seconds=20,
+    )
+
+    again = repo.toggle_complete(created["doc_id"], True)
+    assert again["completed_reps"] == 1
+    assert again["actual_work_seconds"] == 52.5
+    assert again["ended_early"] is True
+
+    with database.SessionLocal() as session:
+        exercise = session.query(Exercise).filter(
+            Exercise.name == "Farmer Carry"
+        ).one()
+        assert exercise.use_count == 1
+
+
+def test_uncompleting_clears_every_actual_including_the_divider():
+    repo = WorkoutRepository()
+    created = _create_timed(repo, "2024-03-16")
+    repo.perform(created["doc_id"], ended_early=False)
+    repo.record_rest_after(created["doc_id"], 7.5)
+
+    planned = repo.toggle_complete(created["doc_id"], False)
+    assert planned["completed_at"] is None
+    assert planned["completed_reps"] is None
+    assert planned["actual_work_seconds"] is None
+    assert planned["actual_rest_seconds"] is None
+    assert planned["actual_rest_after_seconds"] is None
+    assert planned["ended_early"] is False
+
+
+def test_time_is_legacy_read_only_on_create_and_update():
+    """`time` stays in responses for old rows but is never written any more
+    (plan 0018): null accepted for compatibility, a value ignored."""
+    repo = WorkoutRepository()
+    created = repo.create(
+        WorkoutCreate(
+            date="2024-03-17", exercise="Plank", category="Core", time="0:30"
+        )
+    )
+    assert created["time"] is None
+
+    # A row that genuinely has a legacy value keeps it through edits.
+    with database.SessionLocal() as session:
+        row = session.get(Workout, created["doc_id"])
+        row.time = "0:30"
+        session.commit()
+
+    updated = repo.update(
+        created["doc_id"],
+        WorkoutUpdate(
+            date="2024-03-17",
+            exercise="Plank",
+            category="Core",
+            comment="held steady",
+        ),
+    )
+    assert updated["time"] == "0:30"
+    assert updated["comment"] == "held steady"
+
+
+def test_timing_targets_are_sticky_when_omitted_from_an_update():
+    """An older client that does not know the new fields must not wipe them by
+    omitting them; sending an explicit null is how one clears."""
+    repo = WorkoutRepository()
+    created = _create_timed(repo, "2024-03-18")
+
+    updated = repo.update(
+        created["doc_id"],
+        WorkoutUpdate(
+            date="2024-03-18",
+            exercise="Farmer Carry",
+            category="Legs",
+            comment="comment only",
+        ),
+    )
+    assert updated["work_seconds"] == 40
+    assert updated["rest_seconds"] == 20
+    assert updated["rest_after_seconds"] == 15
+
+    cleared = repo.update(
+        created["doc_id"],
+        WorkoutUpdate(
+            date="2024-03-18",
+            exercise="Farmer Carry",
+            category="Legs",
+            work_seconds=None,
+            rest_after_seconds=None,
+        ),
+    )
+    assert cleared["work_seconds"] is None
+    assert cleared["rest_after_seconds"] is None
+    # Omitted again here: untouched by the second write as well.
+    assert cleared["rest_seconds"] == 20

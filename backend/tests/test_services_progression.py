@@ -9,34 +9,38 @@ from app.services.progression_service import ProgressionService
 pytestmark = pytest.mark.usefixtures("db_engine")
 
 
+def _performed(workout_repo, **kwargs):
+    """Progression history is performed work (plan 0018): a planned tile has
+    targets, not a performance, and does not appear here."""
+    created = workout_repo.create(WorkoutCreate(**kwargs))
+    return workout_repo.toggle_complete(created["doc_id"], True)
+
+
 def test_progression_data_selects_best_set_per_date():
     workout_repo = WorkoutRepository()
-    workout_repo.create(
-        WorkoutCreate(
-            date="2024-01-01",
-            exercise="Bench",
-            category="Push",
-            weight=100,
-            reps=5,
-        )
+    _performed(
+        workout_repo,
+        date="2024-01-01",
+        exercise="Bench",
+        category="Push",
+        weight=100,
+        reps=5,
     )
-    workout_repo.create(
-        WorkoutCreate(
-            date="2024-01-01",
-            exercise="Bench",
-            category="Push",
-            weight=110,
-            reps=3,
-        )
+    _performed(
+        workout_repo,
+        date="2024-01-01",
+        exercise="Bench",
+        category="Push",
+        weight=110,
+        reps=3,
     )
-    workout_repo.create(
-        WorkoutCreate(
-            date="2024-01-03",
-            exercise="Bench",
-            category="Push",
-            weight=105,
-            reps=5,
-        )
+    _performed(
+        workout_repo,
+        date="2024-01-03",
+        exercise="Bench",
+        category="Push",
+        weight=105,
+        reps=5,
     )
 
     service = ProgressionService()
@@ -93,15 +97,14 @@ def test_historical_day_carries_every_set_best_first():
     """
     workout_repo = WorkoutRepository()
     for order, (weight, reps) in enumerate([(135, 10), (185, 5), (155, 8)], start=1):
-        workout_repo.create(
-            WorkoutCreate(
-                date="2026-07-08",
-                exercise="Bench",
-                category="Chest",
-                weight=weight,
-                reps=reps,
-                order=order,
-            )
+        _performed(
+            workout_repo,
+            date="2026-07-08",
+            exercise="Bench",
+            category="Chest",
+            weight=weight,
+            reps=reps,
+            order=order,
         )
 
     data = ProgressionService().get_progression_data("Bench", include_upcoming=False)

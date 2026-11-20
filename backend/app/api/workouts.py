@@ -16,6 +16,8 @@ from app.models.workout import (
     WorkoutDayMobilityResponse,
     WorkoutMoveDate,
     WorkoutMoveDateResponse,
+    WorkoutPerform,
+    WorkoutRestAfter,
     WorkoutUpdate,
 )
 from app.repositories.workout_repo import WorkoutRepository
@@ -196,6 +198,58 @@ def toggle_workout_complete(workout_id: int, complete: WorkoutComplete):
     repo = WorkoutRepository()
 
     updated = repo.toggle_complete(workout_id, complete.completed)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    return updated
+
+
+@router.post("/{workout_id}/perform", response_model=Workout)
+def perform_workout(workout_id: int, performance: WorkoutPerform):
+    """Write one tile's performance, as measured by the day player.
+
+    Natural completion sends an empty body and the server derives the full
+    actuals from the targets; a Stop sends the measured values with
+    `ended_early: true`. The server assigns `completed_at` and the date —
+    work is logged on the day it is performed, so a tile played from another
+    day's view moves to today.
+    """
+    repo = WorkoutRepository()
+
+    performed = repo.perform(
+        workout_id,
+        ended_early=performance.ended_early,
+        completed_reps=performance.completed_reps,
+        actual_work_seconds=performance.actual_work_seconds,
+        actual_rest_seconds=performance.actual_rest_seconds,
+    )
+
+    if not performed:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    return performed
+
+
+@router.patch("/{workout_id}/rest-after", response_model=Workout)
+def record_rest_after(workout_id: int, rest: WorkoutRestAfter):
+    """Record the rest divider that ran after a tile, on that tile.
+
+    Separate from `perform` because a Stop *during* the divider must not
+    complete the next tile — this writes only the preceding tile's rest,
+    whole on a full run and partial on a Stop.
+    """
+    repo = WorkoutRepository()
+
+    try:
+        updated = repo.record_rest_after(
+            workout_id, rest.actual_rest_after_seconds
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot record a rest-after on a tile that was not performed",
+        )
 
     if not updated:
         raise HTTPException(status_code=404, detail="Workout not found")

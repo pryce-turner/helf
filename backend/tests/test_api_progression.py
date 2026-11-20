@@ -15,7 +15,7 @@ def test_progression_exercise_list(client):
 
 
 def test_progression_returns_historical_and_upcoming(client):
-    client.post(
+    created = client.post(
         "/api/workouts/",
         json={
             "date": "2024-01-01",
@@ -24,7 +24,9 @@ def test_progression_returns_historical_and_upcoming(client):
             "weight": 100,
             "reps": 5,
         },
-    )
+    ).json()
+    # History is performed work (plan 0018); an unplayed tile is not in it.
+    client.patch(f"/api/workouts/{created['doc_id']}/complete", json={"completed": True})
     client.post(
         "/api/upcoming/",
         json={"session": 1, "exercise": "Bench", "category": "Push", "weight": 110, "reps": 3},

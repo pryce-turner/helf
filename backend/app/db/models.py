@@ -190,6 +190,35 @@ class Workout(Base):
     __table_args__ = (
         Index("ix_workouts_date_order", "date", "order"),
         CheckConstraint("is_mobility IN (0, 1)", name="ck_workouts_is_mobility"),
+        CheckConstraint(
+            "work_seconds IS NULL OR work_seconds BETWEEN 1 AND 3600",
+            name="ck_workouts_work_seconds",
+        ),
+        CheckConstraint(
+            "rest_seconds IS NULL OR rest_seconds BETWEEN 0 AND 3600",
+            name="ck_workouts_rest_seconds",
+        ),
+        CheckConstraint(
+            "rest_after_seconds IS NULL OR rest_after_seconds BETWEEN 0 AND 3600",
+            name="ck_workouts_rest_after_seconds",
+        ),
+        CheckConstraint(
+            "completed_reps IS NULL OR completed_reps >= 0",
+            name="ck_workouts_completed_reps",
+        ),
+        CheckConstraint(
+            "actual_work_seconds IS NULL OR actual_work_seconds >= 0",
+            name="ck_workouts_actual_work_seconds",
+        ),
+        CheckConstraint(
+            "actual_rest_seconds IS NULL OR actual_rest_seconds >= 0",
+            name="ck_workouts_actual_rest_seconds",
+        ),
+        CheckConstraint(
+            "actual_rest_after_seconds IS NULL OR actual_rest_after_seconds >= 0",
+            name="ck_workouts_actual_rest_after_seconds",
+        ),
+        CheckConstraint("ended_early IN (0, 1)", name="ck_workouts_ended_early"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -204,6 +233,9 @@ class Workout(Base):
     reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     distance: Mapped[float | None] = mapped_column(Float, nullable=True)
     distance_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Legacy free-form duration ('0:30'), read-only since b7e2d4f81a05: new
+    # tiles write the numeric target fields below, and the column drops in a
+    # follow-up once no consumer reads it.
     time: Mapped[str | None] = mapped_column(String(32), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -214,6 +246,25 @@ class Workout(Base):
         Boolean,
         nullable=False,
         server_default="0",
+    )
+    # Target timing (plan 0018): what the tile asks the player to run.
+    # `rest_after_seconds` belongs to *this* tile and renders as the rest
+    # divider after it — deliberately not a row of its own.
+    work_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Actual performance: what the player measured, NULL until performed.
+    # A planned tile (completed_at NULL) has none of these; a performed one
+    # keeps them beside the targets so the shortfall stays readable. The
+    # seconds are REAL — a partial rep measures in wall-clock seconds.
+    completed_reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actual_work_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_rest_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_rest_after_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Natural completion vs Stop. A stopped tile is still complete — it is
+    # skipped on replay — but the flag keeps the two apart.
+    ended_early: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="0"
     )
 
     exercise: Mapped[Exercise] = relationship("Exercise", back_populates="workouts")

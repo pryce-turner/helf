@@ -106,3 +106,53 @@ def test_the_day_endpoint_still_has_a_target_before_anything_is_logged():
     assert _row("2026-08-09") is None      # not in the view at all
     assert day["totals"]["kcal"] is None
     assert day["totals"]["kcal_target"] == 2730.0
+
+
+def _log_set(date: str, *, completed: bool, reps: int = 5, weight: float = 100.0) -> None:
+    from app.models.workout import WorkoutCreate
+    from app.repositories.workout_repo import WorkoutRepository
+
+    repo = WorkoutRepository()
+    created = repo.create(
+        WorkoutCreate(
+            date=date,
+            exercise="Bench",
+            category="Push",
+            reps=reps,
+            weight=weight,
+        )
+    )
+    if completed:
+        repo.toggle_complete(created["doc_id"], True)
+
+
+def test_sets_logged_counts_performed_tiles_not_suggestions():
+    """A planned tile is not training yet (plan 0018)."""
+    _log_set("2026-08-07", completed=True)
+    _log_set("2026-08-07", completed=False)
+
+    row = _row("2026-08-07")
+    # The day is on the spine — the planned tile exists — but it does not
+    # report as work.
+    assert row.sets_logged == 1
+
+
+def test_volume_uses_completed_reps_and_performed_tiles_only():
+    _log_set("2026-08-08", completed=False, reps=5, weight=100.0)
+    row = _row("2026-08-08")
+    assert row.training_volume_lb is None
+
+    # A stopped tile counts what was actually done: 2 of 5 planned reps.
+    # `perform` logs work on the day it happens, so the tile moves to today.
+    from app.models.workout import WorkoutCreate
+    from app.repositories.workout_repo import WorkoutRepository
+    from app.utils.date_helpers import get_current_date
+
+    repo = WorkoutRepository()
+    tile = repo.create(
+        WorkoutCreate(date="2026-08-09", exercise="Bench", category="Push",
+                      reps=5, weight=100.0)
+    )
+    repo.perform(tile["doc_id"], ended_early=True, completed_reps=2)
+
+    assert _row(get_current_date()).training_volume_lb == 200.0

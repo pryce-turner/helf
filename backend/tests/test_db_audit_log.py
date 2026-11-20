@@ -331,3 +331,51 @@ def test_field_defaults_are_bounded_for_the_raw_writer_too():
         )
         conn.commit()
     conn.close()
+
+
+def test_workout_target_and_actual_fields_are_audited():
+    """The set-tile columns (plan 0018) join the `workouts` triggers' payload:
+    target times, the performed actuals and `ended_early`, both sides."""
+    conn = _raw()
+    conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-11-12')")
+    conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
+                 "VALUES ('Farmer Carry', 1, 0, '2026-11-12')")
+    conn.execute(
+        'INSERT INTO workouts (date, exercise_id, category_id, reps, "order", '
+        "created_at, updated_at) "
+        "VALUES ('2026-11-12', 1, 1, 2, 1, '2026-11-12', '2026-11-12')"
+    )
+    conn.commit()
+    conn.execute(
+        "UPDATE workouts SET work_seconds = 40, rest_after_seconds = 15, "
+        "completed_reps = 1, actual_work_seconds = 52.5, ended_early = 1 WHERE id = 1"
+    )
+    conn.commit()
+    conn.close()
+
+    entry = _log("table_name = 'workouts' AND op = 'UPDATE'")[0]
+    before = json.loads(entry["old_values"])
+    after = json.loads(entry["new_values"])
+    assert before["work_seconds"] is None and after["work_seconds"] == 40
+    assert after["rest_after_seconds"] == 15
+    assert after["completed_reps"] == 1
+    assert after["actual_work_seconds"] == 52.5
+    assert before["ended_early"] == 0 and after["ended_early"] == 1
+
+
+def test_workout_actual_fields_are_bounded_for_the_raw_writer_too():
+    conn = _raw()
+    conn.execute("INSERT INTO categories (name, created_at) VALUES ('Legs', '2026-11-12')")
+    conn.execute("INSERT INTO exercises (name, category_id, use_count, created_at) "
+                 "VALUES ('Farmer Carry', 1, 0, '2026-11-12')")
+    conn.execute(
+        'INSERT INTO workouts (date, exercise_id, category_id, reps, "order", '
+        "created_at, updated_at) "
+        "VALUES ('2026-11-12', 1, 1, 2, 1, '2026-11-12', '2026-11-12')"
+    )
+    conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE workouts SET completed_reps = -1 WHERE id = 1")
+        conn.commit()
+    conn.close()

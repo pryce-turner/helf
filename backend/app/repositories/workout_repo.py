@@ -33,7 +33,62 @@ class WorkoutRepository:
             "updated_at": workout.updated_at,
             "completed_at": workout.completed_at,
             "is_mobility": bool(workout.is_mobility),
+            # Targets, then actuals (plan 0018). A planned tile has the first
+            # and none of the second.
+            "work_seconds": workout.work_seconds,
+            "rest_seconds": workout.rest_seconds,
+            "rest_after_seconds": workout.rest_after_seconds,
+            "completed_reps": workout.completed_reps,
+            "actual_work_seconds": workout.actual_work_seconds,
+            "actual_rest_seconds": workout.actual_rest_seconds,
+            "actual_rest_after_seconds": workout.actual_rest_after_seconds,
+            "ended_early": bool(workout.ended_early),
         }
+
+    @staticmethod
+    def _derive_actuals(workout: Workout) -> None:
+        """Fill a naturally completed tile's actuals from its targets.
+
+        Shared by the manual tick and by a row created already completed:
+        ordinary completion without a timer means "the target is what
+        happened". The rest-after divider is deliberately not derived — it is
+        recorded separately, by the player, when it actually runs.
+        """
+        workout.completed_reps = workout.reps
+        workout.actual_work_seconds = workout.work_seconds
+        workout.actual_rest_seconds = workout.rest_seconds
+        workout.ended_early = False
+
+    @staticmethod
+    def _clear_actuals(workout: Workout) -> None:
+        """Return a tile to purely planned: no performance without a completion."""
+        workout.completed_reps = None
+        workout.actual_work_seconds = None
+        workout.actual_rest_seconds = None
+        workout.actual_rest_after_seconds = None
+        workout.ended_early = False
+
+    @staticmethod
+    def _apply_field_config(workout_dict: dict, exercise: Exercise) -> None:
+        """Null the fields of any group the exercise has disabled.
+
+        Ordinary manual creation can fill only enabled fields (plan 0018):
+        the day view does not offer them, and this is the second line, so a
+        caller working from a stale configuration loses the value rather
+        than writing a tile the movement says it does not take. Existing
+        tiles are never rewritten — this runs on create only.
+        """
+        if not exercise.reps_enabled:
+            workout_dict["reps"] = None
+        if not exercise.weight_enabled:
+            workout_dict["weight"] = None
+        if not exercise.distance_enabled:
+            workout_dict["distance"] = None
+            workout_dict["distance_unit"] = None
+        if not exercise.time_enabled:
+            workout_dict["work_seconds"] = None
+            workout_dict["rest_seconds"] = None
+            workout_dict["rest_after_seconds"] = None
 
     def _get_or_create_category(self, session, name: str) -> Category:
         category = session.execute(
@@ -110,6 +165,11 @@ class WorkoutRepository:
             category = self._get_or_create_category(session, workout_dict["category"])
             exercise = self._get_or_create_exercise(session, workout_dict["exercise"], category)
 
+            # Ordinary manual creation can fill only enabled fields (plan
+            # 0018). Groups the exercise has disabled come back NULL whoever
+            # sent them.
+            self._apply_field_config(workout_dict, exercise)
+
             # With no position given, the next set goes below the bottom-most
             # completed one, not after everything: while a session is under way
             # the sets under that line are the ones not yet run, and a set
@@ -143,7 +203,14 @@ class WorkoutRepository:
                 updated_at=now,
                 completed_at=workout_dict.get("completed_at"),
                 is_mobility=bool(workout_dict.get("is_mobility")),
+                work_seconds=workout_dict.get("work_seconds"),
+                rest_seconds=workout_dict.get("rest_seconds"),
+                rest_after_seconds=workout_dict.get("rest_after_seconds"),
             )
+            # A row created already completed was performed at creation, so it
+            # derives its actuals the same way a manual tick does.
+            if new_workout.completed_at is not None:
+                self._derive_actuals(new_workout)
             session.add(new_workout)
             session.commit()
             session.refresh(new_workout)
@@ -153,13 +220,12 @@ class WorkoutRepository:
             # relationships, which a closed session cannot load.
             result = self._serialize(new_workout)
 
-        # `exercises.last_used` and `use_count` are written here because this
-        # is where a set is written, and nowhere else does it. They were a year
-        # stale — max `last_used` was 2025-12-21 against workouts logged
-        # through today — which made `GET /exercises/recent` answer from
-        # December and put the wrong movements first in the day view's add
-        # form. `update_usage` existed and had no caller.
-        ExerciseRepository().update_usage(workout_dict["exercise"], workout.date)
+        # Usage moves at *performance* time, not suggestion time (plan 0018):
+        # an unplayed tile must not affect the next shuffle or the recent
+        # list, so only a row born completed counts here — the performance
+        # paths (`toggle_complete`, `perform`) maintain the rest.
+        if result["completed_at"] is not None:
+            ExerciseRepository().update_usage(workout_dict["exercise"], workout.date)
         return result
 
     @staticmethod
@@ -214,7 +280,20 @@ class WorkoutRepository:
             existing.comment = workout_dict.get("comment")
             if workout_dict.get("order") is not None:
                 existing.order = workout_dict.get("order")
-            existing.completed_at = workout_dict.get("completed_at")
+            # Sticky unless explicitly sent — same `model_fields_set`
+            # distinction as `is_mobility` below. An edit form is not a
+            # performance write: a PUT carrying only a comment must not
+            # uncomplete a performed tile, and the day view's editor does not
+            # send `completed_at` at all.
+            if "completed_at" in workout.model_fields_set:
+                existing.completed_at = workout_dict.get("completed_at")
+            # The target timing is edit-form business and a full replace,
+            # like weight and reps. The *actuals* are not here at all: they
+            # are written by the performance paths alone, so no edit can
+            # rewrite what happened.
+            existing.work_seconds = workout_dict.get("work_seconds")
+            existing.rest_seconds = workout_dict.get("rest_seconds")
+            existing.rest_after_seconds = workout_dict.get("rest_after_seconds")
             # Sticky unless explicitly sent, distinguished by `model_fields_set`
             # the way `ExerciseUpdate.rating` is. Every other field here is a
             # full replace, but this one defaults to False, so a PUT that only
@@ -241,15 +320,104 @@ class WorkoutRepository:
             return True
 
     def toggle_complete(self, doc_id: int, completed: bool) -> dict | None:
-        """Mark a workout as complete or incomplete."""
+        """Mark a workout as complete or incomplete.
+
+        Manual completion is a performance write without a timer: completing
+        derives the actuals from the targets ("the target is what happened"),
+        and uncompleting clears them, so a tile only ever carries performance
+        while it is performed. Usage moves with it — a suggestion never does.
+        """
         with SessionLocal() as session:
             workout = session.get(Workout, doc_id)
             if not workout:
                 return None
 
             now = get_current_datetime()
-            workout.completed_at = now if completed else None
+            if completed:
+                workout.completed_at = now
+                self._derive_actuals(workout)
+            else:
+                workout.completed_at = None
+                self._clear_actuals(workout)
             workout.updated_at = now
+            exercise_name = workout.exercise.name
+            session.commit()
+            session.refresh(workout)
+            result = self._serialize(workout)
+
+        if completed:
+            ExerciseRepository().update_usage(exercise_name, result["date"])
+        return result
+
+    def perform(
+        self,
+        doc_id: int,
+        *,
+        ended_early: bool,
+        completed_reps: int | None = None,
+        actual_work_seconds: float | None = None,
+        actual_rest_seconds: float | None = None,
+    ) -> dict | None:
+        """Write one tile's performance, as measured by the day player.
+
+        Natural completion (`ended_early=False`) derives the full actuals
+        from the targets; a Stop takes the measured values. The server
+        assigns `completed_at` **and the date**: work is logged on the day it
+        is performed (plan 0018), so a tile played on another day moves to
+        today, at the end of it. The rest-after divider is not part of this
+        write — it is recorded separately, by `record_rest_after`, when it
+        actually runs.
+        """
+        with SessionLocal() as session:
+            workout = session.get(Workout, doc_id)
+            if not workout:
+                return None
+
+            now = get_current_datetime()
+            today = now.date().isoformat()
+            workout.completed_at = now
+            if workout.date != today:
+                # Move to the day the work actually happened on, after
+                # anything already there.
+                highest = session.execute(
+                    select(func.max(Workout.order)).where(Workout.date == today)
+                ).scalar()
+                workout.date = today
+                workout.order = (highest or 0) + 1
+            workout.ended_early = ended_early
+            if ended_early:
+                workout.completed_reps = completed_reps
+                workout.actual_work_seconds = actual_work_seconds
+                workout.actual_rest_seconds = actual_rest_seconds
+            else:
+                self._derive_actuals(workout)
+            workout.updated_at = now
+            exercise_name = workout.exercise.name
+            session.commit()
+            session.refresh(workout)
+            result = self._serialize(workout)
+
+        ExerciseRepository().update_usage(exercise_name, today)
+        return result
+
+    def record_rest_after(self, doc_id: int, seconds: float) -> dict | None:
+        """Record the rest divider that ran after a tile, on *that* tile.
+
+        Whole on a full run, partial on a Stop. The next tile is not
+        involved — a Stop during the divider leaves it planned, which is the
+        whole reason this write exists apart from `perform`.
+        """
+        with SessionLocal() as session:
+            workout = session.get(Workout, doc_id)
+            if not workout:
+                return None
+            if workout.completed_at is None:
+                raise ValueError(
+                    "cannot record a rest-after on a tile that was not performed"
+                )
+
+            workout.actual_rest_after_seconds = seconds
+            workout.updated_at = get_current_datetime()
             session.commit()
             session.refresh(workout)
             return self._serialize(workout)
@@ -393,7 +561,12 @@ class WorkoutRepository:
                     order=starting_order + i,
                     created_at=now,
                     updated_at=now,
-                    completed_at=None,  # Reset completion status for copies
+                    # A copy of a performed tile is a *planned* tile: targets
+                    # survive, completion and every actual reset (plan 0018).
+                    completed_at=None,
+                    work_seconds=source_workout.work_seconds,
+                    rest_seconds=source_workout.rest_seconds,
+                    rest_after_seconds=source_workout.rest_after_seconds,
                     # Copied sets keep their intent: a mobility session
                     # copied to another date is still mobility work.
                     is_mobility=source_workout.is_mobility,
@@ -404,26 +577,38 @@ class WorkoutRepository:
             return len(source_workouts)
 
     def get_workout_counts_by_date(self, year: int, month: int) -> dict[str, int]:
-        """Get workout counts grouped by date for a specific month."""
+        """Get workout counts grouped by date for a specific month.
+
+        **Performed tiles only.** A day of unplayed suggestions is a planned
+        day, not training, and the calendar dot must not claim otherwise
+        (plan 0018).
+        """
         pattern = f"{year}-{month:02d}-%"
 
         with SessionLocal() as session:
             rows = session.execute(
                 select(Workout.date, func.count())
                 .where(Workout.date.like(pattern))
+                .where(Workout.completed_at.is_not(None))
                 .group_by(Workout.date)
             ).all()
 
             return {date: count for date, count in rows}
 
     def get_by_exercise(self, exercise: str) -> list[dict]:
-        """Get all workouts for a specific exercise."""
+        """Get all workouts for a specific exercise.
+
+        Performed tiles only: a planned tile has targets, and a target is not
+        a performance — an unplayed 100 lb suggestion must not move a 1RM
+        estimate or appear in the history it is derived from.
+        """
         with SessionLocal() as session:
             workouts = session.execute(
                 select(Workout)
                 .join(Exercise)
                 .options(selectinload(Workout.exercise), selectinload(Workout.category))
                 .where(Exercise.name == exercise)
+                .where(Workout.completed_at.is_not(None))
                 # `order` as the tiebreak so a day's sets come back in the
                 # sequence they were performed, which is what the progression
                 # history lists under each date.

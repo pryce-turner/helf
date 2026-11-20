@@ -1,4 +1,4 @@
-import { Pause, Play, Square, Check, AlertTriangle } from "lucide-react";
+import { Pause, Play, RotateCcw, SkipForward, Square, Check, AlertTriangle } from "lucide-react";
 import { formatSeconds } from "@/lib/setTiles";
 import type { PlayerStatus } from "@/hooks/useWorkoutPlayer";
 
@@ -23,6 +23,8 @@ interface WorkoutPlayerControlsProps {
     onCompleteSet: () => void;
     onRetry: () => void;
     onCancel: () => void;
+    onRestartPhase: () => void;
+    onSkipPhase: () => void;
 }
 
 const PHASE_LABEL: Record<string, string> = {
@@ -53,6 +55,8 @@ const WorkoutPlayerControls = ({
     onCompleteSet,
     onRetry,
     onCancel,
+    onRestartPhase,
+    onSkipPhase,
 }: WorkoutPlayerControlsProps) => {
 
     if (status === "error") {
@@ -142,19 +146,43 @@ const WorkoutPlayerControls = ({
                         <Check className="timer-play__icon" />
                     </button>
                 ) : (
-                    <button
-                        type="button"
-                        className="timer-play"
-                        style={{ color }}
-                        onClick={paused ? onResume : onPause}
-                        aria-label={paused ? "Resume" : "Pause"}
-                    >
-                        {paused ? (
-                            <Play className="timer-play__icon" fill="currentColor" style={{ marginLeft: "4px" }} />
-                        ) : (
-                            <Pause className="timer-play__icon" fill="currentColor" />
-                        )}
-                    </button>
+                    <>
+                        {/* Restart re-arms the current phase at full; Skip
+                            ends it now and banks partial — a skipped rep is
+                            a partial rep, never a full one. */}
+                        <button
+                            type="button"
+                            className="timer-skip"
+                            onClick={onRestartPhase}
+                            aria-label="Restart timer"
+                            title="Restart this phase at full"
+                        >
+                            <RotateCcw style={{ width: "18px", height: "18px" }} />
+                        </button>
+                        <button
+                            type="button"
+                            className="timer-play"
+                            style={{ color }}
+                            onClick={paused ? onResume : onPause}
+                            aria-label={paused ? "Resume" : "Pause"}
+                        >
+                            {paused ? (
+                                <Play className="timer-play__icon" fill="currentColor" style={{ marginLeft: "4px" }} />
+                            ) : (
+                                <Pause className="timer-play__icon" fill="currentColor" />
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            className="timer-skip"
+                            onClick={onSkipPhase}
+                            aria-label="Skip to next timer"
+                            title="End this phase and move on"
+                            disabled={paused}
+                        >
+                            <SkipForward style={{ width: "18px", height: "18px" }} />
+                        </button>
+                    </>
                 )}
                 <button
                     type="button"

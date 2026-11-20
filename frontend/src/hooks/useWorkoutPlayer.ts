@@ -4,7 +4,6 @@ import { workoutsApi } from "@/lib/api";
 import { derivedActuals } from "@/lib/setTiles";
 import {
     buildPlayerPhases,
-    computeStopActuals,
     type PlayerPhase,
     type PlayerTile,
 } from "@/lib/workoutPlayer";
@@ -119,6 +118,10 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
     const [failedOp, setFailedOp] = useState<FailedOp | null>(null);
 
     const endAtRef = useRef(0);
+    // Wall-clock start of the current phase. The countdown's deadline gets
+    // overshoot carried into it; measurement must not — a skip or a stop
+    // records the time the phase actually ran, not the carried frames.
+    const phaseStartAtRef = useRef(0);
     const rafRef = useRef(0);
     const audioRef = useRef<AudioContext | null>(null);
     const lastTickSecondRef = useRef(-1);
@@ -126,6 +129,24 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
     // wrote nothing simply resets — a run abandoned before any work is not
     // a result.
     const wroteAnythingRef = useRef(false);
+
+    // The current tile's measured performance, banked phase by phase. A work
+    // rep banks when it *ends* — full at a natural boundary, partial on a
+    // skip — and counts in `bankedReps` only when it ran out naturally (a
+    // skipped rep is a partial rep: its seconds count, the rep does not —
+    // the same rule as a Stop). `skippedWork` is what marks the tile
+    // `ended_early` at the write. Reset per tile at its save.
+    const bankedWorkMsRef = useRef(0);
+    const bankedRestMsRef = useRef(0);
+    const bankedRepsRef = useRef(0);
+    const skippedWorkRef = useRef(false);
+
+    const resetBanks = useCallback(() => {
+        bankedWorkMsRef.current = 0;
+        bankedRestMsRef.current = 0;
+        bankedRepsRef.current = 0;
+        skippedWorkRef.current = false;
+    }, []);
 
     const phase = phases[phaseIndex] ?? null;
     const activeTileId =
@@ -178,12 +199,112 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
         [invalidatePerformance],
     );
 
+    /** The measured totals from the banks, for a timed tile. */
+    const bankedTotals = useCallback(
+        (tile: PlayerTile, extraWorkMs = 0, extraRestMs = 0) => ({
+            ended_early: skippedWorkRef.current,
+            ...(tile.reps != null ? { completed_reps: bankedRepsRef.current } : {}),
+            ...(tile.work_seconds != null
+                ? {
+                      actual_work_seconds:
+                          Math.round(((bankedWorkMsRef.current + extraWorkMs) / 1000) * 10) / 10,
+                  }
+                : {}),
+            ...(tile.rest_seconds != null
+                ? {
+                      actual_rest_seconds:
+                          Math.round(((bankedRestMsRef.current + extraRestMs) / 1000) * 10) / 10,
+                  }
+                : {}),
+        }),
+        [],
+    );
+
     const saveTile = useCallback(
         (tileIndex: number, afterwards: () => void) => {
             const tile = tiles[tileIndex];
-            saveThen(() => workoutsApi.perform(tile.doc_id, snapshotTotals(tile)), afterwards);
+            // An untimed tile has nothing measured: the shared derived rule.
+            // A timed one writes what was banked, skip or no skip.
+            const payload =
+                tile.work_seconds == null
+                    ? snapshotTotals(tile)
+                    : bankedTotals(tile);
+            saveThen(
+                () => workoutsApi.perform(tile.doc_id, payload),
+                () => {
+                    resetBanks();
+                    afterwards();
+                },
+            );
         },
-        [tiles, saveThen],
+        [tiles, saveThen, bankedTotals, resetBanks],
+    );
+
+    /**
+     * The one way past a phase, shared by the countdown's natural boundary
+     * and by Skip: the finished phase banks (full at a boundary, partial on
+     * skip), the boundary saves fire before advancing, and the next phase
+     * gets a fresh deadline with any overshoot carried.
+     */
+    const advancePast = useCallback(
+        (
+            prevPhase: PlayerPhase,
+            prevIndex: number,
+            phaseMs: number,
+            overshootMs: number,
+            skipped: boolean,
+        ) => {
+            if (prevPhase.kind === "work") {
+                bankedWorkMsRef.current += phaseMs;
+                if (skipped) skippedWorkRef.current = true;
+                else bankedRepsRef.current += 1;
+            } else if (prevPhase.kind === "rest") {
+                bankedRestMsRef.current += phaseMs;
+            }
+
+            const nextIndex = prevIndex + 1;
+            const advance = () => {
+                if (nextIndex >= phases.length) {
+                    setRemainingMs(0);
+                    finish();
+                    return;
+                }
+                const next = phases[nextIndex];
+                phaseStartAtRef.current = performance.now();
+                endAtRef.current =
+                    phaseStartAtRef.current + next.durationMs - overshootMs;
+                lastTickSecondRef.current = -1;
+                setPhaseIndex(nextIndex);
+                setRemainingMs(next.durationMs - overshootMs);
+                setStatus("running");
+                if (audioRef.current) {
+                    playBeeps(
+                        audioRef.current,
+                        next.kind === "work" ? WORK_START : REST_START,
+                    );
+                }
+            };
+
+            // A tile's performance writes when its last work rep ends; the
+            // divider's when the rest-after runs out (or is cut short).
+            const tileFinished =
+                prevPhase.kind === "work" && prevPhase.rep === prevPhase.repsTotal;
+            if (tileFinished) {
+                saveTile(prevPhase.tileIndex, advance);
+            } else if (prevPhase.kind === "restAfter") {
+                const tile = tiles[prevPhase.tileIndex];
+                const seconds = skipped
+                    ? Math.round(phaseMs / 100) / 10
+                    : (tile.rest_after_seconds ?? 0);
+                saveThen(
+                    () => workoutsApi.recordRestAfter(tile.doc_id, seconds),
+                    advance,
+                );
+            } else {
+                advance();
+            }
+        },
+        [phases, tiles, saveTile, saveThen, finish],
     );
 
     // The countdown loop. Runs only while `status === "running"`; pausing is
@@ -214,58 +335,15 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
                 return;
             }
 
-            // Phase boundary. The overshoot is carried into the next deadline
-            // so a busy frame makes the run late once, not every phase.
-            const overshoot = -remaining;
-            const nextIndex = phaseIndex + 1;
-            const prev = phase;
-
-            const advance = () => {
-                if (nextIndex >= phases.length) {
-                    setRemainingMs(0);
-                    finish();
-                    return;
-                }
-                const next = phases[nextIndex];
-                endAtRef.current = performance.now() + next.durationMs - overshoot;
-                lastTickSecondRef.current = -1;
-                setPhaseIndex(nextIndex);
-                setRemainingMs(next.durationMs - overshoot);
-                // Reached from a save as well as from the plain loop: the
-                // countdown only runs in `running`.
-                setStatus("running");
-                if (audioRef.current) {
-                    playBeeps(
-                        audioRef.current,
-                        next.kind === "work" ? WORK_START : REST_START,
-                    );
-                }
-            };
-
-            // A tile's performance writes when its last work rep ends; the
-            // divider's when the rest-after runs out. Both before advancing,
-            // so nothing advances unsaved.
-            const tileFinished = prev.kind === "work" && prev.rep === prev.repsTotal;
-            if (tileFinished) {
-                saveTile(prev.tileIndex, advance);
-            } else if (prev.kind === "restAfter") {
-                const tile = tiles[prev.tileIndex];
-                saveThen(
-                    () =>
-                        workoutsApi.recordRestAfter(
-                            tile.doc_id,
-                            tile.rest_after_seconds ?? 0,
-                        ),
-                    advance,
-                );
-            } else {
-                advance();
-            }
+            // Phase boundary: the phase that just ended banks full, and the
+            // overshoot is carried into the next deadline so a busy frame
+            // makes the run late once, not every phase.
+            advancePast(phase, phaseIndex, phase.durationMs, -remaining, false);
         };
 
         rafRef.current = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafRef.current);
-    }, [status, phaseIndex, phase, phases, tiles, saveTile, saveThen, finish]);
+    }, [status, phaseIndex, phase, phases, advancePast]);
 
     // Keep the screen on while running. A sleeping phone stops the rAF loop
     // and with it the cues.
@@ -318,13 +396,15 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
             setPhaseIndex(0);
             setFailedOp(null);
             wroteAnythingRef.current = false;
+            resetBanks();
             lastTickSecondRef.current = -1;
-            endAtRef.current = performance.now() + schedule[0].durationMs;
+            phaseStartAtRef.current = performance.now();
+            endAtRef.current = phaseStartAtRef.current + schedule[0].durationMs;
             setRemainingMs(schedule[0].durationMs);
             setStatus("running");
         },
         // ensureAudio is stable (refs only).
-        [],
+        [resetBanks],
     );
 
     const pause = useCallback(() => {
@@ -335,46 +415,83 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
     const resume = useCallback(() => {
         if (status !== "paused") return;
         ensureAudio();
-        endAtRef.current = performance.now() + remainingMs;
+        // Re-anchor both clocks: the deadline for the countdown, and the
+        // phase's wall-clock start for measurement — paused time is neither
+        // countdown nor performance.
+        const now = performance.now();
+        phaseStartAtRef.current = now - (phase ? phase.durationMs - remainingMs : 0);
+        endAtRef.current = now + remainingMs;
         setStatus("running");
-    }, [status, remainingMs]);
+    }, [status, phase, remainingMs]);
 
     /**
-     * End the run here and save actual performance through this instant.
-     * Earlier completed tiles stay completed; later tiles remain planned. A
-     * Stop in the get-ready or on a manual wait writes nothing.
+     * End the run here and save actual performance through this instant:
+     * the banks plus the current phase's elapsed, `ended_early`. Earlier
+     * completed tiles stay completed; later tiles remain planned. A Stop in
+     * the get-ready or on a manual wait writes nothing.
      */
     const stop = useCallback(() => {
         if (status !== "running" && status !== "paused") return;
-        const elapsedMs = phase ? Math.max(0, phase.durationMs - remainingMs) : 0;
-        const actuals = computeStopActuals(tiles, phases, phaseIndex, elapsedMs);
-
-        if (actuals.kind === "none") {
+        if (!phase || phase.kind === "getReady" || phase.kind === "manual") {
             setPhases([]);
             setTiles([]);
             setStatus("idle");
             return;
         }
-        if (actuals.kind === "restAfter") {
-            const tile = tiles[actuals.tileIndex];
+        const elapsedMs = Math.max(
+            0,
+            status === "paused"
+                ? phase.durationMs - remainingMs
+                : performance.now() - phaseStartAtRef.current,
+        );
+        const tile = tiles[phase.tileIndex];
+
+        if (phase.kind === "restAfter") {
+            const seconds = Math.round(elapsedMs / 100) / 10;
             saveThen(
-                () => workoutsApi.recordRestAfter(tile.doc_id, actuals.seconds),
+                () => workoutsApi.recordRestAfter(tile.doc_id, seconds),
                 finish,
             );
             return;
         }
-        const tile = tiles[actuals.tileIndex];
-        saveThen(
-            () =>
-                workoutsApi.perform(tile.doc_id, {
-                    ended_early: true,
-                    completed_reps: actuals.completedReps,
-                    actual_work_seconds: actuals.actualWorkSeconds,
-                    actual_rest_seconds: actuals.actualRestSeconds,
-                }),
-            finish,
-        );
-    }, [status, phase, phases, phaseIndex, remainingMs, tiles, saveThen, finish]);
+
+        const payload = {
+            ...bankedTotals(
+                tile,
+                phase.kind === "work" ? elapsedMs : 0,
+                phase.kind === "rest" ? elapsedMs : 0,
+            ),
+            ended_early: true,
+        };
+        saveThen(() => workoutsApi.perform(tile.doc_id, payload), finish);
+    }, [status, phase, remainingMs, tiles, bankedTotals, saveThen, finish]);
+
+    /**
+     * Skip to the next phase: the current one ends NOW and banks partial.
+     * A skipped work rep is a partial rep — its seconds count, the rep does
+     * not, and the tile shows it ran short. The divider records partial.
+     * Not offered on a manual wait (Complete set is the way through there).
+     */
+    const skipPhase = useCallback(() => {
+        if (status !== "running" || !phase || phase.kind === "manual") return;
+        const elapsedMs = Math.max(0, performance.now() - phaseStartAtRef.current);
+        advancePast(phase, phaseIndex, elapsedMs, 0, true);
+    }, [status, phase, phaseIndex, advancePast]);
+
+    /**
+     * Restart the current phase at full. Nothing banks and nothing is
+     * written — the phase simply runs again.
+     */
+    const restartPhase = useCallback(() => {
+        if (status !== "running" && status !== "paused") return;
+        if (!phase || phase.kind === "manual") return;
+        lastTickSecondRef.current = -1;
+        if (status === "running") {
+            phaseStartAtRef.current = performance.now();
+            endAtRef.current = phaseStartAtRef.current + phase.durationMs;
+        }
+        setRemainingMs(phase.durationMs);
+    }, [status, phase]);
 
     /** The manual tile's one action: the set is done, write it and move on. */
     const completeSet = useCallback(() => {
@@ -472,5 +589,7 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
         retry,
         cancel,
         reset,
+        skipPhase,
+        restartPhase,
     };
 }

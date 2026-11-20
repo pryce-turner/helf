@@ -781,6 +781,59 @@ it("closes an open delete confirm and edit form when Play starts", async () => {
     }
 });
 
+it("shows restart and skip beside pause on a timed run, and skip advances phases", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.getAll.mockResolvedValue({
+            data: [set({ doc_id: 1, work_seconds: 40, reps: 2, rest_seconds: 20 })],
+        } as never);
+        renderDay();
+        await settle();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        tick(5020);
+        await settle();
+        expect(screen.getByText("WORK")).toBeInTheDocument();
+
+        expect(screen.getByRole("button", { name: "Restart timer" })).toBeEnabled();
+        expect(screen.getByRole("button", { name: "Skip to next timer" })).toBeEnabled();
+
+        // Skip ends the first rep early: the rest phase starts at once.
+        fireEvent.click(screen.getByRole("button", { name: "Skip to next timer" }));
+        await settle();
+        expect(screen.getByText("REST")).toBeInTheDocument();
+
+        // Restart re-arms the current phase at full.
+        tick(5_000);
+        fireEvent.click(screen.getByRole("button", { name: "Restart timer" }));
+        await settle();
+        expect(screen.getByRole("timer")).toHaveTextContent("0:20");
+    } finally {
+        restore();
+    }
+});
+
+it("offers only Complete set on an untimed tile — no timers to restart or skip", async () => {
+    const restore = fakeClock();
+    try {
+        workouts.getAll.mockResolvedValue({
+            data: [set({ doc_id: 1, work_seconds: null, reps: 8 })],
+        } as never);
+        renderDay();
+        await settle();
+
+        fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+        tick(5020);
+        await settle();
+
+        expect(screen.getByRole("button", { name: "Complete set" })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Restart timer" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Skip to next timer" })).not.toBeInTheDocument();
+    } finally {
+        restore();
+    }
+});
+
 it("cannot reach or fire the delete confirm on a locked tile", async () => {
     const restore = fakeClock();
     try {

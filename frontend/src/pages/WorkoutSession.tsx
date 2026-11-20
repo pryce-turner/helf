@@ -1694,6 +1694,8 @@ const WorkoutSession = () => {
               onCompleteSet={player.completeSet}
               onRetry={player.retry}
               onCancel={player.cancel}
+              onRestartPhase={player.restartPhase}
+              onSkipPhase={player.skipPhase}
             />
           )}
 

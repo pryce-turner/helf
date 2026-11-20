@@ -1566,6 +1566,35 @@
 
     .player-wrap .timer-controls {
         margin-top: -36px;
+        align-items: center;
+        gap: var(--space-4);
+    }
+
+    /* The skip buttons either side of the player's pause: smaller, quieter
+       than the play button, same family as the stop button. */
+    .timer-skip {
+        width: 52px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-full);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: color var(--duration-fast) ease,
+            background var(--duration-fast) ease;
+    }
+
+    .timer-skip:hover:not(:disabled) {
+        color: var(--text-primary);
+        background: var(--bg-hover);
+    }
+
+    .timer-skip:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     .timer-settings {

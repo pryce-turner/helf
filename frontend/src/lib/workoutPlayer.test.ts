@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import {
     GET_READY_MS,
     buildPlayerPhases,
-    computeStopActuals,
     type PlayerTile,
 } from "./workoutPlayer";
 import { derivedActuals } from "./setTiles";
@@ -123,66 +122,5 @@ describe("buildPlayerPhases", () => {
 
         expect(phases.slice(1).map((p) => p.kind)).toEqual(["work"]);
         expect(phases[1].repsTotal).toBe(1);
-    });
-});
-
-describe("computeStopActuals", () => {
-    const tiles = [tile(), tile({ doc_id: 2 })];
-
-    it("writes nothing during get-ready", () => {
-        expect(computeStopActuals(tiles, buildPlayerPhases(tiles), 0, 2000)).toEqual({
-            kind: "none",
-        });
-    });
-
-    it("mid-work: the partial rep counts its seconds, not the rep", () => {
-        // Phase 1 is the first tile's first work rep; 12s in.
-        expect(computeStopActuals(tiles, buildPlayerPhases(tiles), 1, 12_000)).toEqual({
-            kind: "tile",
-            tileIndex: 0,
-            completedReps: 0,
-            actualWorkSeconds: 12,
-            actualRestSeconds: 0,
-        });
-    });
-
-    it("mid-rest: the work of the completed reps plus the partial rest", () => {
-        // Phase 2 is the rest after rep 1; 7s in.
-        expect(computeStopActuals(tiles, buildPlayerPhases(tiles), 2, 7_000)).toEqual({
-            kind: "tile",
-            tileIndex: 0,
-            completedReps: 1,
-            actualWorkSeconds: 40,
-            actualRestSeconds: 7,
-        });
-    });
-
-    it("during a rest divider: only the preceding tile's rest-after, partial", () => {
-        // Phase 4 is the restAfter of tile 0; 6s in.
-        expect(computeStopActuals(tiles, buildPlayerPhases(tiles), 4, 6_000)).toEqual({
-            kind: "restAfter",
-            tileIndex: 0,
-            seconds: 6,
-        });
-    });
-
-    it("on a manual tile: nothing measured, the tile stays planned", () => {
-        const manual = [tile({ work_seconds: null, reps: 8 })];
-        expect(computeStopActuals(manual, buildPlayerPhases(manual), 1, 30_000)).toEqual({
-            kind: "none",
-        });
-    });
-
-    it("on the second tile: the first is already saved and untouched", () => {
-        // getReady, then 3 phases of tile 0's reps, its restAfter, then tile
-        // 1's first work and rest: phase 7 is the second tile's second work
-        // rep, 25s in.
-        expect(computeStopActuals(tiles, buildPlayerPhases(tiles), 7, 25_000)).toEqual({
-            kind: "tile",
-            tileIndex: 1,
-            completedReps: 1,
-            actualWorkSeconds: 40 + 25,
-            actualRestSeconds: 20,
-        });
     });
 });

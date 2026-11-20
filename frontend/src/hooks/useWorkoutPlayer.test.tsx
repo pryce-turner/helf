@@ -441,3 +441,169 @@ it("derives a natural completion through the shared totals helper", async () => 
     });
     expect(result.current.status).toBe("done");
 });
+
+// --- Restart and skip ---------------------------------------------------------
+
+it("restart re-arms the current phase at full, writing nothing", async () => {
+    const { result } = mount();
+    play(result, [tile()]);
+
+    tick(12_000);
+    expect(result.current.remainingMs).toBeLessThan(35_000);
+
+    act(() => result.current.restartPhase());
+    expect(result.current.remainingMs).toBe(40_000);
+    expect(result.current.phase?.kind).toBe("work");
+
+    // The restarted rep runs full: the tile still completes naturally.
+    tick(40_100);
+    tick(20_100);
+    tick(40_100);
+    await settle();
+    expect(perform).toHaveBeenCalledTimes(1);
+    expect(perform).toHaveBeenCalledWith(1, {
+        ended_early: false,
+        completed_reps: 2,
+        actual_work_seconds: 80,
+        actual_rest_seconds: 20,
+    });
+});
+
+it("restart while paused re-arms full and stays paused", async () => {
+    const { result } = mount();
+    play(result, [tile()]);
+
+    tick(10_000);
+    act(() => result.current.pause());
+    const banked = result.current.remainingMs;
+
+    act(() => result.current.restartPhase());
+    expect(result.current.remainingMs).toBe(40_000);
+    expect(result.current.status).toBe("paused");
+    // Five wall seconds pass and nothing counts down.
+    tick(5_000);
+    expect(result.current.remainingMs).toBe(40_000);
+    expect(banked).toBeLessThan(40_000);
+});
+
+it("skip from get-ready starts the first work immediately, writing nothing", async () => {
+    const { result } = mount();
+    act(() => result.current.play([tile()]));
+
+    tick(2_000);
+    act(() => result.current.skipPhase());
+
+    expect(result.current.phase?.kind).toBe("work");
+    expect(result.current.remainingMs).toBe(40_000);
+    await settle();
+    expect(perform).not.toHaveBeenCalled();
+});
+
+it("a skipped rep banks its seconds but does not count, and flags the tile", async () => {
+    const { result } = mount();
+    play(result, [tile()]);
+
+    // 12s into rep 1 of 2: skip. The rest starts at once.
+    tick(12_000);
+    act(() => result.current.skipPhase());
+    expect(result.current.phase?.kind).toBe("rest");
+
+    // Run the rest out, then rep 2 full.
+    tick(20_100);
+    tick(40_100);
+    await settle();
+
+    // Rep 1 was cut short: its 12 seconds count, the rep does not — the same
+    // rule as a Stop's partial rep, and the tile shows it ran short. (Work
+    // seconds within a frame of jitter; the rest of the shape is exact.)
+    expect(perform).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+            ended_early: true,
+            completed_reps: 1,
+            actual_rest_seconds: 20,
+        }),
+    );
+    expect(perform.mock.calls[0][1].actual_work_seconds).toBeCloseTo(52, 0);
+    expect(result.current.status).toBe("done");
+});
+
+it("skipping the last rep of a tile completes it early and moves on", async () => {
+    const { result } = mount();
+    play(result, [tile(), tile({ doc_id: 2 })]);
+
+    // Rep 1 full, rest full, then 25s into rep 2: skip.
+    tick(40_100);
+    tick(20_100);
+    tick(25_000);
+    act(() => result.current.skipPhase());
+    await settle();
+
+    expect(perform).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+            ended_early: true,
+            completed_reps: 1,
+            actual_rest_seconds: 20,
+        }),
+    );
+    // 40 full + 25 into the second rep, plus one rAF frame of jitter per
+    // boundary crossed — the measurement is wall-clock, not tick arithmetic.
+    expect(perform.mock.calls[0][1].actual_work_seconds).toBeCloseTo(65, 0);
+    // The divider runs next (rest-after is tile 1's own phase), then tile 2.
+    expect(result.current.phase?.kind).toBe("restAfter");
+});
+
+it("a skipped rest banks the partial rest, not the target", async () => {
+    const { result } = mount();
+    play(result, [tile()]);
+
+    tick(40_100); // rep 1 full
+    tick(7_000); // 7s into the 20s rest
+    act(() => result.current.skipPhase());
+    expect(result.current.phase?.kind).toBe("work");
+
+    tick(40_100); // rep 2 full
+    await settle();
+
+    expect(perform).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+            ended_early: false,
+            completed_reps: 2,
+            actual_work_seconds: 80,
+        }),
+    );
+    expect(perform.mock.calls[0][1].actual_rest_seconds).toBeCloseTo(7, 0);
+});
+
+it("a skipped rest-after records the partial divider on the preceding tile", async () => {
+    const { result } = mount();
+    play(result, [tile(), tile({ doc_id: 2 })]);
+
+    tick(40_100);
+    tick(20_100);
+    tick(40_100);
+    await settle();
+    expect(result.current.phase?.kind).toBe("restAfter");
+
+    tick(6_000);
+    act(() => result.current.skipPhase());
+    await settle();
+
+    expect(recordRestAfter).toHaveBeenCalledWith(1, expect.closeTo(6, 0));
+    expect(result.current.phase?.kind).toBe("work");
+});
+
+it("skip is a no-op on a manual tile — Complete set is the only way through", async () => {
+    const { result } = mount();
+    play(result, [tile({ work_seconds: null, rest_seconds: null, reps: 8 })]);
+
+    expect(result.current.phase?.kind).toBe("manual");
+    act(() => result.current.skipPhase());
+    act(() => result.current.restartPhase());
+
+    expect(result.current.phase?.kind).toBe("manual");
+    await settle();
+    expect(perform).not.toHaveBeenCalled();
+});

@@ -32,34 +32,66 @@ if [[ -e "$dest" ]]; then
     exit 1
 fi
 
-# `.backup` rather than `cp`: see the header. Quoting matters — the path is
-# interpreted by sqlite3's dot-command parser, not by the shell.
-sqlite3 "$db" ".backup '$dest'"
+# `.backup` rather than `cp`: see the header. The sqlite3 CLI is preferred;
+# where the host lacks it, python3's stdlib module speaks the same online
+# backup API, so the script works on both.
+if command -v sqlite3 >/dev/null 2>&1; then
+    # Quoting matters — the path is interpreted by sqlite3's dot-command
+    # parser, not by the shell.
+    sqlite3 "$db" ".backup '$dest'"
 
-# Verify through an `immutable=1` handle, never a plain path. The destination
-# inherits journal_mode=WAL, so opening it read-write would create
-# helf.db.<label>.bak-wal / -shm beside it — sidecars that make the backup look
-# like a live database and invite exactly the partial `cp` this script exists to
-# prevent. `.backup` leaves a fully checkpointed file, so immutable is accurate.
-ro="file:$dest?immutable=1"
+    # Verify through an `immutable=1` handle, never a plain path. The
+    # destination inherits journal_mode=WAL, so opening it read-write would
+    # create helf.db.<label>.bak-wal / -shm beside it — sidecars that make the
+    # backup look like a live database and invite exactly the partial `cp`
+    # this script exists to prevent. `.backup` leaves a fully checkpointed
+    # file, so immutable is accurate.
+    ro="file:$dest?immutable=1"
 
-# A backup that is silently corrupt is worse than none, because it is trusted.
-# integrity_check reads every page; on a database this size it costs ~50ms.
-check="$(sqlite3 "$ro" 'PRAGMA integrity_check;')"
+    # A backup that is silently corrupt is worse than none, because it is
+    # trusted. integrity_check reads every page; ~50ms at this size.
+    check="$(sqlite3 "$ro" 'PRAGMA integrity_check;')"
+
+    # Row counts, not just "it exists" — the repo's commit convention asks
+    # for counts and checksums against the real database, not "tests pass".
+    read -r workouts observations metrics <<<"$(sqlite3 "$ro" \
+        "SELECT (SELECT count(*) FROM workouts),
+                (SELECT count(*) FROM observation),
+                (SELECT count(*) FROM metric);" | tr '|' ' ')"
+    rev="$(sqlite3 "$ro" 'SELECT version_num FROM alembic_version;' 2>/dev/null || echo '?')"
+else
+    read -r check workouts observations metrics rev <<<"$(python3 - "$db" "$dest" <<'PY'
+import sqlite3
+import sys
+
+src = sqlite3.connect(sys.argv[1])
+dst = sqlite3.connect(sys.argv[2])
+src.backup(dst)
+src.close()
+dst.close()
+
+ro = sqlite3.connect(f"file:{sys.argv[2]}?immutable=1", uri=True)
+check = ro.execute("PRAGMA integrity_check").fetchone()[0]
+workouts, observations, metrics = ro.execute(
+    "SELECT (SELECT count(*) FROM workouts),"
+    "       (SELECT count(*) FROM observation),"
+    "       (SELECT count(*) FROM metric)"
+).fetchone()
+try:
+    rev = ro.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+except sqlite3.Error:
+    rev = "?"
+print(check, workouts, observations, metrics, rev)
+PY
+)"
+fi
+
 if [[ "$check" != "ok" ]]; then
     echo "backup-db: integrity check FAILED on $dest:" >&2
     echo "$check" >&2
     exit 1
 fi
 
-# Row counts, not just "it exists" — the repo's commit convention asks for
-# counts and checksums against the real database rather than "tests pass".
-read -r workouts observations metrics <<<"$(sqlite3 "$ro" \
-    "SELECT (SELECT count(*) FROM workouts),
-            (SELECT count(*) FROM observation),
-            (SELECT count(*) FROM metric);" | tr '|' ' ')"
-
 printf 'backup-db: %s\n' "$dest"
 printf '  integrity ok · %s · workouts=%s observation=%s metric=%s · rev=%s\n' \
-    "$(du -h "$dest" | cut -f1)" "$workouts" "$observations" "$metrics" \
-    "$(sqlite3 "$ro" 'SELECT version_num FROM alembic_version;' 2>/dev/null || echo '?')"
+    "$(du -h "$dest" | cut -f1)" "$workouts" "$observations" "$metrics" "$rev"

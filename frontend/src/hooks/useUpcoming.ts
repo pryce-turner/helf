@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { upcomingApi } from '@/lib/api';
-import type { UpcomingWorkout, UpcomingWorkoutCreate, LiftoscriptGenerateRequest } from '@/types/upcoming';
+import type { UpcomingSession, UpcomingWorkoutCreate, LiftoscriptGenerateRequest } from '@/types/upcoming';
 
 export function useUpcomingWorkouts() {
   return useQuery({
@@ -62,11 +62,11 @@ export function useDeleteUpcomingSession() {
     onMutate: async (session) => {
       await queryClient.cancelQueries({ queryKey: ['upcoming'] });
 
-      const previousUpcoming = queryClient.getQueriesData<UpcomingWorkout[]>({ queryKey: ['upcoming'] });
+      const previousUpcoming = queryClient.getQueriesData<UpcomingSession[]>({ queryKey: ['upcoming'] });
 
-      queryClient.setQueriesData<UpcomingWorkout[]>(
+      queryClient.setQueriesData<UpcomingSession[]>(
         { queryKey: ['upcoming'] },
-        (old) => old?.filter((w) => w.session !== session)
+        (old) => old?.filter((s) => s.session !== session)
       );
 
       return { previousUpcoming };
@@ -95,12 +95,12 @@ export function useTransferSession() {
       await queryClient.cancelQueries({ queryKey: ['workouts'] });
       await queryClient.cancelQueries({ queryKey: ['calendar'] });
 
-      const previousUpcoming = queryClient.getQueriesData<UpcomingWorkout[]>({ queryKey: ['upcoming'] });
+      const previousUpcoming = queryClient.getQueriesData<UpcomingSession[]>({ queryKey: ['upcoming'] });
 
       // Remove transferred session from upcoming cache
-      queryClient.setQueriesData<UpcomingWorkout[]>(
+      queryClient.setQueriesData<UpcomingSession[]>(
         { queryKey: ['upcoming'] },
-        (old) => old?.filter((w) => w.session !== session)
+        (old) => old?.filter((s) => s.session !== session)
       );
 
       return { previousUpcoming };
@@ -114,6 +114,9 @@ export function useTransferSession() {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['workouts'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      // Transferring the agent's session promotes its rationale into the note
+      // the last-session card reads.
+      queryClient.invalidateQueries({ queryKey: ['mobility'] });
     },
   });
 }

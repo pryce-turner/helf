@@ -36,6 +36,7 @@ const mockedUpcoming = vi.mocked(upcomingApi);
 const planned = (overrides: Record<string, unknown> = {}) => ({
     doc_id: 1,
     session: 7,
+    is_mobility: false,
     exercise: "Barbell Squat",
     category: "Legs",
     weight: null,
@@ -47,6 +48,19 @@ const planned = (overrides: Record<string, unknown> = {}) => ({
     comment: null,
     created_at: "2026-03-31",
     ...overrides,
+});
+
+/** The queue comes back grouped by session now (9c4e7b21f806). */
+const queue = (...items: ReturnType<typeof planned>[]) => ({
+    data: [
+        {
+            session: 7,
+            label: null,
+            rationale: null,
+            generated_at: null,
+            items,
+        },
+    ],
 });
 
 beforeEach(() => {
@@ -74,9 +88,9 @@ beforeEach(() => {
 
 describe("Progression: including upcoming workouts", () => {
     it("says the planned sets carry no weight rather than toggling nothing", async () => {
-        mockedUpcoming.getAll.mockResolvedValue({
-            data: [planned(), planned({ doc_id: 2 })],
-        } as never);
+        mockedUpcoming.getAll.mockResolvedValue(
+            queue(planned(), planned({ doc_id: 2 })) as never,
+        );
 
         renderPage(<ProgressionPage />, "/progression");
 
@@ -89,9 +103,9 @@ describe("Progression: including upcoming workouts", () => {
     });
 
     it("distinguishes nothing planned from planned-without-weight", async () => {
-        mockedUpcoming.getAll.mockResolvedValue({
-            data: [planned({ exercise: "Decline Crunch" })],
-        } as never);
+        mockedUpcoming.getAll.mockResolvedValue(
+            queue(planned({ exercise: "Decline Crunch" })) as never,
+        );
 
         renderPage(<ProgressionPage />, "/progression");
 
@@ -104,9 +118,9 @@ describe("Progression: including upcoming workouts", () => {
 
     it("stays usable when a planned set does carry a weight", async () => {
         const user = userEvent.setup();
-        mockedUpcoming.getAll.mockResolvedValue({
-            data: [planned({ weight: 245 })],
-        } as never);
+        mockedUpcoming.getAll.mockResolvedValue(
+            queue(planned({ weight: 245 })) as never,
+        );
 
         renderPage(<ProgressionPage />, "/progression");
 

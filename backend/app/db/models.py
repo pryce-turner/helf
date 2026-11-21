@@ -302,36 +302,37 @@ class MobilityPlan(Base):
 
 
 class UpcomingWorkout(Base):
-    """Planned upcoming workout entry — lifting or mobility.
+    """Planned upcoming workout entry.
 
     One row per prescribed set, waiting to be copied onto a date. Undated on
     purpose: a plan becomes dated at the moment it is transferred into
     `workouts`, and until then "when" is not a fact about it.
 
-    `kind` is what lets one table hold two programs that are written by
-    different authors. Lifting sessions come from a Liftoscript program the user
-    edits; mobility sessions are written one at a time by the agent, which reads
-    the last logged session's comments and adjusts. The shape is identical, so
-    the split is a discriminator rather than a second pair of tables (Plan
-    0012 §2).
+    The queue is one program now (9c4e7b21f806). Lifting sessions come from a
+    Liftoscript program the user edits; mobility sessions are written one at a
+    time by the agent, and both list together on the upcoming page, the agent's
+    carrying the label and rationale `mobility_plan` holds. `is_mobility` marks
+    which *sets* of a prescription are mobility work — the same fact
+    `workouts.is_mobility` records once they are logged (d7e4f2a91b83) — and
+    transfer carries it across.
 
-    The consequence to remember: **every query has to say which kind it means.**
-    A missing filter does not error, it silently mixes the two — the Liftoscript
-    generator deletes all upcoming rows before writing, and unscoped that would
-    take the pending mobility session with it.
+    Session numbers are one sequence across both authors: a new agent session
+    takes the global max + 1, and the Liftoscript generator clears the whole
+    board (rows and plans) before renumbering from 1, so a number never picks
+    out two sessions.
     """
 
     __tablename__ = "upcoming_workouts"
     __table_args__ = (
-        CheckConstraint("kind IN ('lifting', 'mobility')", name="ck_upcoming_kind"),
+        CheckConstraint("is_mobility IN (0, 1)", name="ck_upcoming_is_mobility"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
-    kind: Mapped[str] = mapped_column(
-        Text,
+    is_mobility: Mapped[bool] = mapped_column(
+        Boolean,
         nullable=False,
-        server_default="lifting",
+        server_default="0",
     )
     exercise_id: Mapped[int] = mapped_column(
         ForeignKey("exercises.id"), nullable=False, index=True

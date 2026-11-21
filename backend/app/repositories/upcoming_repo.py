@@ -10,33 +10,22 @@ from app.models.upcoming import UpcomingWorkoutCreate
 from app.utils.date_helpers import get_current_datetime
 from app.utils.units import CANONICAL_WEIGHT_UNIT
 
-#: A mobility program is one rolling routine, not a queue of them, so its rows
-#: always share this session number. `session` is meaningful for lifting, where
-#: a Liftoscript program generates many sessions at once and they are run in
-#: order; for mobility there is only ever the next one, and an ordinal that
-#: counts up would be a number with nothing to say.
-MOBILITY_SESSION = 1
-
-LIFTING = "lifting"
-MOBILITY = "mobility"
-
 
 class UpcomingWorkoutRepository:
     """Repository for upcoming workout data operations.
 
-    Every method here is scoped to one `kind`. That is not defensive style — it
-    is the whole cost of the single-table decision (Plan 0012 §2). `delete_all`
-    unscoped would let generating a Liftoscript program silently destroy the
-    pending mobility session, and `get_all` unscoped would put stretches in the
-    lifting planner. The default is `'lifting'` everywhere, so an existing
-    caller that has not been told about mobility keeps its old behaviour.
+    The queue is one program (9c4e7b21f806): nothing here is scoped by author
+    any more, because the `kind` split that made scoping load-bearing is gone.
+    The Liftoscript generator's `delete_all` now really does clear the board —
+    the routes layer deletes the `mobility_plan` rows alongside — and the
+    frontend warns before confirming.
     """
 
     def _serialize(self, workout: UpcomingWorkout) -> dict:
         return {
             "doc_id": workout.id,
             "session": workout.session,
-            "kind": workout.kind,
+            "is_mobility": workout.is_mobility,
             "exercise": workout.exercise.name if workout.exercise else None,
             "category": workout.category.name if workout.category else None,
             "weight": workout.weight,
@@ -69,11 +58,11 @@ class UpcomingWorkoutRepository:
     ) -> Exercise:
         """Resolve a movement by name, creating it if it is new.
 
-        Nothing about mobility is recorded here any more. A movement is not
-        mobility work or lifting work; the *set* is (d7e4f2a91b83), and the
-        planned row already knows which through `kind`. A good morning
-        prescribed as a loaded stretch and the same good morning pulled heavy
-        are one exercise row and two different sets.
+        Nothing about mobility is recorded here. A movement is not mobility
+        work or lifting work; the *set* is (d7e4f2a91b83), and the planned row
+        already knows which through `is_mobility`. A good morning prescribed as
+        a loaded stretch and the same good morning pulled heavy are one
+        exercise row and two different sets.
         """
         exercise = session.execute(
             select(Exercise).where(Exercise.name == name)
@@ -92,8 +81,8 @@ class UpcomingWorkoutRepository:
         session.flush()
         return exercise
 
-    def get_all(self, kind: str = LIFTING) -> list[dict]:
-        """Get all upcoming workouts of one kind, sorted by session."""
+    def get_all(self) -> list[dict]:
+        """Get all upcoming workouts, sorted by session."""
         with SessionLocal() as session:
             workouts = (
                 session.execute(
@@ -102,7 +91,6 @@ class UpcomingWorkoutRepository:
                         selectinload(UpcomingWorkout.exercise),
                         selectinload(UpcomingWorkout.category),
                     )
-                    .where(UpcomingWorkout.kind == kind)
                     .order_by(UpcomingWorkout.session.asc(), UpcomingWorkout.id.asc())
                 )
                 .scalars()
@@ -110,13 +98,13 @@ class UpcomingWorkoutRepository:
             )
             return [self._serialize(workout) for workout in workouts]
 
-    def get_by_session(self, session_id: int, kind: str = LIFTING) -> list[dict]:
+    def get_by_session(self, session_id: int) -> list[dict]:
         """Get all workouts for a specific session.
 
         Ordered by `id`, which is insertion order. The table has no `order`
-        column, so for mobility this is the prescribed order of the routine —
-        the agent writes the items in the sequence they are to be performed and
-        that sequence is carried by nothing else.
+        column, so this is the prescribed order of the routine — the author
+        writes the items in the sequence they are to be performed and that
+        sequence is carried by nothing else.
         """
         with SessionLocal() as session:
             workouts = (
@@ -126,10 +114,7 @@ class UpcomingWorkoutRepository:
                         selectinload(UpcomingWorkout.exercise),
                         selectinload(UpcomingWorkout.category),
                     )
-                    .where(
-                        UpcomingWorkout.session == session_id,
-                        UpcomingWorkout.kind == kind,
-                    )
+                    .where(UpcomingWorkout.session == session_id)
                     .order_by(UpcomingWorkout.id.asc())
                 )
                 .scalars()
@@ -137,12 +122,11 @@ class UpcomingWorkoutRepository:
             )
             return [self._serialize(workout) for workout in workouts]
 
-    def get_lowest_session(self, kind: str = LIFTING) -> int | None:
+    def get_lowest_session(self) -> int | None:
         """Get the lowest session number."""
         with SessionLocal() as session:
             lowest = session.execute(
                 select(UpcomingWorkout.session)
-                .where(UpcomingWorkout.kind == kind)
                 .order_by(UpcomingWorkout.session.asc())
                 .limit(1)
             ).scalar_one_or_none()
@@ -152,8 +136,6 @@ class UpcomingWorkoutRepository:
         """Create a new upcoming workout."""
         workout_dict = workout.model_dump(exclude_none=False)
 
-        kind = workout_dict.get("kind") or LIFTING
-
         with SessionLocal() as session:
             category = self._get_or_create_category(session, workout_dict["category"])
             exercise = self._get_or_create_exercise(
@@ -162,7 +144,7 @@ class UpcomingWorkoutRepository:
 
             new_workout = UpcomingWorkout(
                 session=workout_dict["session"],
-                kind=kind,
+                is_mobility=workout_dict.get("is_mobility") or False,
                 exercise_id=exercise.id,
                 category_id=category.id,
                 weight=workout_dict.get("weight"),
@@ -192,7 +174,6 @@ class UpcomingWorkoutRepository:
                 workout_dict = workout.model_dump(exclude_none=False)
                 category_name = workout_dict["category"]
                 exercise_name = workout_dict["exercise"]
-                kind = workout_dict.get("kind") or LIFTING
 
                 category = categories_cache.get(category_name)
                 if not category:
@@ -208,11 +189,11 @@ class UpcomingWorkoutRepository:
 
                 new_workout = UpcomingWorkout(
                     session=workout_dict["session"],
-                    kind=kind,
+                    is_mobility=workout_dict.get("is_mobility") or False,
                     exercise_id=exercise.id,
                     category_id=category.id,
                     weight=workout_dict.get("weight"),
-                        reps=workout_dict.get("reps"),
+                    reps=workout_dict.get("reps"),
                     distance=workout_dict.get("distance"),
                     distance_unit=workout_dict.get("distance_unit"),
                     time=workout_dict.get("time"),
@@ -228,14 +209,13 @@ class UpcomingWorkoutRepository:
 
             return [self._serialize(workout) for workout in created]
 
-    def delete_session(self, session_id: int, kind: str = LIFTING) -> int:
+    def delete_session(self, session_id: int) -> int:
         """Delete all workouts in a session. Returns count of deleted workouts."""
         with SessionLocal() as session:
             workouts = (
                 session.execute(
                     select(UpcomingWorkout).where(
                         UpcomingWorkout.session == session_id,
-                        UpcomingWorkout.kind == kind,
                     )
                 )
                 .scalars()
@@ -250,12 +230,12 @@ class UpcomingWorkoutRepository:
             session.commit()
             return len(workouts)
 
-    def get_by_exercise(self, exercise: str, kind: str = LIFTING) -> list[dict]:
-        """Get all upcoming workouts for a specific exercise.
+    def get_by_exercise(self, exercise: str) -> list[dict]:
+        """Get all planned lifting sets for a specific exercise.
 
-        Lifting-only by default because the caller is the progression service,
-        which projects a 1RM curve forward from planned work. A prescribed
-        stretch at bodyweight is not a data point on that curve.
+        Mobility sets are excluded because the caller is the progression
+        service, which projects a 1RM curve forward from planned work. A
+        prescribed stretch at bodyweight is not a data point on that curve.
         """
         with SessionLocal() as session:
             workouts = (
@@ -266,7 +246,10 @@ class UpcomingWorkoutRepository:
                         selectinload(UpcomingWorkout.exercise),
                         selectinload(UpcomingWorkout.category),
                     )
-                    .where(Exercise.name == exercise, UpcomingWorkout.kind == kind)
+                    .where(
+                        Exercise.name == exercise,
+                        UpcomingWorkout.is_mobility.is_(False),
+                    )
                     .order_by(UpcomingWorkout.session.asc())
                 )
                 .scalars()
@@ -274,24 +257,18 @@ class UpcomingWorkoutRepository:
             )
             return [self._serialize(workout) for workout in workouts]
 
-    def delete_all(self, kind: str = LIFTING) -> int:
-        """Delete every upcoming workout of one kind. Returns the count.
+    def delete_all(self) -> int:
+        """Delete every upcoming workout. Returns the count.
 
-        The `kind` scope is the reason this is not `DELETE FROM
-        upcoming_workouts`. Its caller is the Liftoscript generator, which
-        clears the board before writing a new program — unscoped, generating a
-        lifting program would take the pending mobility session with it, and
-        the mobility page would go back to "needs generation" for a reason the
-        user could not see.
+        Unscoped on purpose: its caller is the Liftoscript generator, which
+        clears the board — rows *and* their plans, deleted by the route —
+        before writing a new program. The kind-scoped version existed to
+        protect the pending mobility session from exactly this call; with one
+        queue the protection is a warning on the generate button instead
+        (9c4e7b21f806).
         """
         with SessionLocal() as session:
-            workouts = (
-                session.execute(
-                    select(UpcomingWorkout).where(UpcomingWorkout.kind == kind)
-                )
-                .scalars()
-                .all()
-            )
+            workouts = session.execute(select(UpcomingWorkout)).scalars().all()
 
             count = len(workouts)
             for workout in workouts:

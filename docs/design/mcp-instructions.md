@@ -84,7 +84,7 @@ and then followed. All five mobility tools are available in both modes.
 
 **Several sessions can be pending at once**, each addressed by a `label`:
 rehabbing a low back and a shoulder means two prescriptions alive on different
-schedules. The user picks which to run from the mobility tab, so a label should
+schedules. The user picks which to run from the upcoming page, so a label should
 say what the session is *for* — "Low back", "Shoulder" — not what is in it.
 
 **The loop is: read the last session, adjust, write the next one.**
@@ -131,7 +131,7 @@ say what the session is *for* — "Low back", "Shoulder" — not what is in it.
    needs something to draw from; you do not, and you should keep prescribing
    from `form` and `application` as before.
 4. `write_next_mobility_session(label, items, rationale)` — a new label adds
-   a session to the tab, an existing one replaces that session and cannot
+   a session to the upcoming page, an existing one replaces that session and cannot
    touch the others. **Prescribed sets carry no comment**; everything you have
    to say about the session goes in `rationale`. See below. If this fails
    because the database file is not writable from your process, the app's
@@ -162,7 +162,7 @@ the point of most of these movements, and prescriptions should say so.
   beforehand switches the muscle off for it. Exception: a brief (<30s) primer is
   fine if the loaded position cannot otherwise be reached with good form.
 - **Leave the per-set comment blank. Everything you want to say goes in the
-  session's `rationale`** — the blurb the user reads on the tab before running
+  session's `rationale`** — the blurb the user reads on the page before running
   it. Loads, cues, side-to-side instructions, what changed since last time and
   why: all of it, written once for the whole workout rather than sprayed across
   the sets. Passing a comment is refused, not quietly dropped.

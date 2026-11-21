@@ -10,7 +10,6 @@ const Navigation = () => {
     // (docs/decisions/0006-food-is-a-tab-under-body-not-a-sixth-nav-item.md).
     const sectionAliases: Record<string, string[]> = {
         "/supplements": ["/food"],
-        "/upcoming": ["/mobility"],
         "/exercises": ["/progression"],
     };
 

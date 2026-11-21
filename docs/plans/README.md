@@ -43,6 +43,7 @@ table.
 | 0016 | [Supplements leave the food page](0016-supplements-leave-the-food-page.md) | Implemented 2026-08-20 | no migration | — |
 | 0017 | [Popcorn: equipment-free mobility, timed](0017-popcorn-mobility.md) | Implemented 2026-11-16 | `5d1a7c3e8f02`, renamed to *movement break* in `c8e1f4a7b293` | The pool is seeded by `migrations/seed_movement_break_pool.py`, not the migration — run it on a fresh install (§2). **Partly superseded by 0018**: `movement_break_seconds` is now `movement_break_enabled` + time defaults, and the finished-run writer is the suggestion |
 | 0018 | [Configurable set tiles and the day player](0018-configurable-set-tiles-and-day-player.md) | Implemented 2026-11-19 | through `85ac045` | `workouts.time` is read-only legacy, dropping in a follow-up |
+| 0019 | [One upcoming queue](0019-one-upcoming-queue.md) | Implemented 2026-11-21 | `9c4e7b21f806` | Retires 0012 §2's `kind` split: mobility is a flag on the planned set, and `/mobility` merged into `/upcoming` |
 
 ## Where things stand
 
@@ -199,6 +200,14 @@ Each of these cost real debugging time at least once.
 - **`data/helf.db` is a live copy of production**, on local disk, bind-mounted
   into the container. WAL is on, so `cp` is not a consistent copy — use
   `sqlite3 … ".backup …"`. Back up before every migration.
+- **Writing a migration file can be what runs it.** A dev server on :8000 with
+  `--reload` restarts when the revision file lands, and the lifespan's
+  `init_db()` runs `alembic upgrade head` — against production, before any
+  backup. That is how `9c4e7b21f806` shipped: correctly, fortunately, with the
+  backup taken after. The pre-migration hook that would have fired first lives
+  in `.claude/settings.json` and exists only for that client — any other
+  session must **back up before writing the file**, not before running the
+  command.
 - **Tests run the real migrations** (`conftest` does `upgrade head`), so new
   tables and seeds must arrive via a migration, not `create_all()`.
 - **`from app.database import SessionLocal` at module scope binds the

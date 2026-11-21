@@ -91,7 +91,7 @@ helf/
 │   │   ├── repositories/     # SQLAlchemy data access layer
 │   │   │   ├── workout_repo.py
 │   │   │   ├── exercise_repo.py
-│   │   │   ├── upcoming_repo.py   # kind-scoped: lifting vs mobility
+│   │   │   ├── upcoming_repo.py   # one queue (0019); is_mobility per row
 │   │   │   ├── mobility_repo.py
 │   │   │   ├── body_comp_repo.py
 │   │   │   ├── food_repo.py
@@ -130,7 +130,6 @@ helf/
 │   │   │   ├── SectionTabs.tsx        # Sibling routes sharing one nav entry
 │   │   │   ├── NutritionSectionTabs.tsx   # Supplements + Food
 │   │   │   ├── ExerciseSectionTabs.tsx # Exercises + Progress
-│   │   │   ├── TrainingSectionTabs.tsx # Lifting + Mobility
 │   │   │   ├── LiftoscriptEditor.tsx  # Script editor for workout programs
 │   │   │   ├── PresetSelector.tsx     # Dropdown for built-in presets
 │   │   │   ├── PWA/
@@ -144,7 +143,7 @@ helf/
 │   │   │   ├── useProgression.ts      # 1RM data, main lifts
 │   │   │   ├── useBodyComposition.ts  # Measurements, trends, stats
 │   │   │   ├── useUpcoming.ts         # Sessions, Liftoscript, presets
-│   │   │   ├── useMobility.ts         # Pending session, transfer, discard
+│   │   │   ├── useMobility.ts         # Last-session read-back, movement break
 │   │   │   ├── useFood.ts             # Day, summary, catalog search, logging
 │   │   │   ├── useStacks.ts           # Preset groups, one-tap logging
 │   │   │   └── usePWA.ts             # Online status, install prompt
@@ -154,8 +153,8 @@ helf/
 │   │   │   ├── Calendar.tsx           # Month view + streak
 │   │   │   ├── WorkoutSession.tsx     # Day view, log exercises
 │   │   │   ├── Progression.tsx        # 1RM charts
-│   │   │   ├── Upcoming.tsx           # Session planner + Liftoscript
-│   │   │   ├── Mobility.tsx           # Next mobility session, agent-written
+│   │   │   ├── Upcoming.tsx           # The one queue: program, agent sessions,
+│   │   │   │                          #   movement break, last mobility session
 │   │   │   ├── BodyComposition.tsx    # Trends + stats
 │   │   │   ├── Food.tsx               # Daily log vs measured kcal target
 │   │   │   ├── Supplements.tsx        # Stacks, logged in one tap, and the dose log
@@ -217,16 +216,24 @@ incomplete tiles from an immutable snapshot, writing each tile's performance
 (from the snapshot, as totals) before advancing; a stopped tile completes
 with `ended_early` and the shortfall readable beside its targets.
 
-**Planned training is flat too, and holds two programs.**
-`upcoming_workouts.kind` is `lifting` or `mobility`: same shape — an ordered
-list of prescribed sets waiting to be copied onto a date — written by different
-authors. Lifting comes from a Liftoscript program the user edits; mobility is
-one rolling routine the agent rewrites each session (Plan 0012).
+**Planned training is flat too — one queue, two authors.**
+`upcoming_workouts` holds every prescribed set waiting to be copied onto a
+date (Plan 0019). Liftoscript-generated sessions and the agent's mobility
+prescriptions list together on `/upcoming`; what differs is metadata, not
+behaviour — an agent session carries the `label` and `rationale` its
+`mobility_plan` row holds, and a generated session has neither. Session
+numbers are one sequence across both authors: a new agent session takes the
+global max + 1, and the Liftoscript generator clears rows *and plans* before
+renumbering from 1 (the page warns, naming the agent sessions, before that
+confirm is offered).
 
-The cost is that **every query must name its kind**. A missing filter does not
-error, it mixes the two: `delete_all()` unscoped would let generating a
-Liftoscript program destroy the pending mobility session. Repository methods
-default to `lifting`.
+**Whether a prescribed set is mobility work is a flag on the set**, the same
+fact `workouts.is_mobility` records once logged: `upcoming_workouts.is_mobility`,
+written per item by the agent (default true — its writer is the mobility
+loop) and carried onto the logged set at transfer, where the day-view
+checkbox can adjust it. Every workout's mobility element is exactly its
+flagged sets. The `kind` column this replaced made every query name a
+program; the flag makes that whole class of mistake impossible.
 
 **Everything measured is tall.** An `observation` is one act of measuring — an
 instant and an instrument — carrying `metric` rows whose names come from a fixed
@@ -591,14 +598,25 @@ docker-compose up -d
 - `GET /exercises/list` - Available exercises for dropdown
 
 ### Upcoming Workouts (`/api/upcoming`)
-- `GET /` - List all upcoming workouts (grouped by session)
+- `GET /` - The whole queue, **grouped by session**: each with its items, and
+  the `label`/`rationale`/`generated_at` its `mobility_plan` row holds when it
+  has one. Every item carries `is_mobility`. A plan whose rows are gone is
+  omitted
 - `GET /session/{session}` - Get workouts for a specific session
 - `POST /` - Create single upcoming workout
 - `POST /bulk` - Create multiple upcoming workouts
-- `DELETE /session/{session}` - Delete all workouts in a session
-- `POST /session/{session}/transfer` - Transfer session to historical workouts
+- `DELETE /session/{session}` - Delete a session: its rows **and its plan**,
+  so a label cannot attach to a later session reusing the number
+- `POST /session/{session}/transfer` - Transfer a session onto a date, any
+  author: rows append after the day's existing work, each row's `is_mobility`
+  lands on the logged set, and a session with a plan has its rationale
+  promoted into the dated `mobility_session` note (and the plan deleted).
+  Response carries `label` when there was one
 - `GET /wendler/maxes` - Current estimated 1RM for main lifts
-- `POST /liftoscript/generate` - Parse Liftoscript and generate workout sessions
+- `POST /liftoscript/generate` - Parse Liftoscript and generate workout
+  sessions. **Clears the whole queue first** — rows and plans alike
+  (9c4e7b21f806); the page warns, naming the agent-written sessions, before
+  the confirm is offered
 - `GET /presets` - List available workout presets
 - `GET /presets/{name}` - Get preset script content
 
@@ -640,15 +658,13 @@ docker-compose up -d
 - `POST /{id}/log` - Write one `food_log` row per item, at one instant
 
 ### Mobility (`/api/mobility`)
-- `GET /pending` - **Every** pending session, each with its `label`, rationale
-  and movements, plus the last session that was run. `ready` is derived from
-  whether any session has items, and is the page's whole state discriminator.
-  A plan row with no items is omitted rather than shown as an empty heading
-- `POST /transfer` - Copy **one** pending session (named by `session`) onto a
-  date, appending after anything already logged that day, and flag the sets as
-  mobility work. Transferring one leaves the others pending
-- `DELETE /pending/{session}` - Discard one pending session without running it,
-  taking both its rows and the plan row that names them
+The queue half of mobility moved to `/api/upcoming` (plan 0019) — pending
+sessions are listed, transferred and discarded there. What stays here is what
+is genuinely mobility's:
+- `GET /last-session` - The last mobility session that reached the calendar:
+  its flagged sets with targets beside actuals, every comment on them, and the
+  rationale the plan's note promoted at transfer (null for a hand-flagged
+  day). `null` when nothing has ever been flagged
 - `POST /suggest` - Insert a **suggested, incomplete movement break tile** on a
   date: `{date?}`, today when omitted. The server shuffles from
   `movement_break_enabled` (three candidates, least recently used), applies the
@@ -658,8 +674,8 @@ docker-compose up -d
   404 when the pool is empty
 - `POST /pending` - Write one pending session under `label`, creating it or
   replacing *that* session: `{label, rationale, items: [{exercise, sets=1,
-  reps?, weight_lb?, category?}]}`. The same contract as the MCP tool
-  `write_next_mobility_session` — upsert the plan by label, replace that
+  reps?, weight_lb?, category?, mobility=true}]}`. The same contract as the MCP
+  tool `write_next_mobility_session` — upsert the plan by label, replace that
   session's rows, one row per set, exercises matched case-insensitively, one
   transaction. Unknown keys are a 422 (`weight` for `weight_lb` would otherwise
   drop every load), and so is a per-set `comment`, which belongs in `rationale`.
@@ -706,8 +722,8 @@ work is a field on the set, written through the normal workout routes
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — the Body nav item |
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Nutrition section |
 | `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 1 of the Nutrition section (the default) |
-| `/upcoming` | Upcoming | Session planner, Liftoscript editor, presets — tab 1 of the Upcoming section |
-| `/mobility` | Mobility | The next mobility session, ready to copy or awaiting generation — tab 2 of the Upcoming section |
+| `/upcoming` | Upcoming | The one queue: generated program sessions and the agent's labelled mobility sessions in one list, Liftoscript editor, movement break, last mobility session (plan 0019) |
+| `/mobility` | — | Redirects to `/upcoming`; the separate page is retired (plan 0019) |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category — tab 1 of the Exercises section |
 
 ## Key Features
@@ -770,7 +786,8 @@ model section above.*
   "Shoulder"), because rehabbing two areas means two prescriptions alive on
   different schedules. The label is the agent's addressing key: a new one adds
   a session, an existing one replaces *that* session and cannot touch the
-  others. The user picks which to run from `/mobility`
+  others. The user picks which to run from `/upcoming`, where they list beside
+  the generated program with their labels and rationales (plan 0019)
 - The agent drives it over MCP: `read_latest_mobility_session(date=…)` returns
   a mobility session's sets and every comment on them — the most recent day
   with flagged sets, or a day you name — and
@@ -827,7 +844,7 @@ so read them as one field.
   `v_daily_summary`, not the use count. The old writer created one completed
   row per interval; those rows remain as historical sets and cannot be
   faithfully regrouped (they lack rest and round structure — plan 0018 §2).
-- Entered from the **Movement break card on `/mobility`** (suggests onto today
+- Entered from the **Movement break card on `/upcoming`** (suggests onto today
   and navigates to the day) or the **Movement break button on the day view**
   (suggests onto the displayed date). Both disable while the write is in
   flight — a double tap must not insert two tiles.

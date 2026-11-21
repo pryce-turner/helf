@@ -541,8 +541,10 @@ def log_workout(
 # --------------------------------------------------------------------------
 # Several mobility sessions can be pending at once (b6f31a90c4de), each a row
 # in `mobility_plan` keyed by `session` and addressed by `label`. Their items
-# are `upcoming_workouts` rows sharing that session number — the column always
-# supported this; mobility used to pin itself to a constant 1.
+# are `upcoming_workouts` rows sharing that session number. The queue they sit
+# in is one program now (9c4e7b21f806): no `kind`, and a session number is
+# unique across both authors because new plans take the global max + 1 and the
+# Liftoscript generator clears rows and plans together before renumbering.
 #
 # Nothing is imported from `app` to learn any of that (ADR-0002): this process
 # knows the schema, not the application.
@@ -709,9 +711,10 @@ def read_pending_mobility_session() -> dict:
         sessions = []
         for plan in plans:
             rows = conn.execute(
-                """SELECT e.name AS exercise, u.weight, u.reps, u.time, u.comment
+                """SELECT e.name AS exercise, u.weight, u.reps, u.time, u.comment,
+                          u.is_mobility
                    FROM upcoming_workouts u JOIN exercises e ON e.id = u.exercise_id
-                   WHERE u.kind = 'mobility' AND u.session = ?
+                   WHERE u.session = ?
                    ORDER BY u.id""",
                 (plan["session"],),
             ).fetchall()
@@ -742,24 +745,28 @@ def write_next_mobility_session(
     """Write a pending mobility session under `label`, creating or replacing it.
 
     **`label` is the key.** "Low back", "Shoulder" — a new one adds a session
-    to the tab, an existing one replaces *that* session and cannot touch the
-    others. This is what lets two rehab programmes run at once, and it is why
-    writing no longer discards whatever was waiting. Use the label the user
-    uses; check `read_pending_mobility_session()` first so you revise rather
-    than duplicate.
+    to the upcoming page, an existing one replaces *that* session and cannot
+    touch the others. This is what lets two rehab programmes run at once, and
+    it is why writing no longer discards whatever was waiting. Use the label
+    the user uses; check `read_pending_mobility_session()` first so you revise
+    rather than duplicate.
 
     `items` is the routine in the order it is to be performed. Each is
-    {exercise, sets?, reps?, weight_lb?, category?}:
+    {exercise, sets?, reps?, weight_lb?, category?, mobility?}:
 
     - **`sets` expands into rows**, one per set, because that is how the user
       logs — "8 and then 10 reps" is two different numbers and needs two rows
       to land in. `sets: 2, reps: 8` becomes two rows of 8.
     - **`weight_lb` is pounds** (ADR-0003).
+    - **`mobility` defaults to true** — this writer is the mobility loop, and
+      everything it prescribes is mobility work unless an item says otherwise.
+      The flag transfers onto the logged set, which is what
+      `read_latest_mobility_session` reads back.
     - **There is no per-set comment, and passing one is an error.** The set's
       comment field is the user's, and only the user's — see `rationale`.
 
     `rationale` is what you changed and why, for the whole session. The user
-    reads it on the mobility tab before running the session, so write it to
+    reads it on the upcoming page before running the session, so write it to
     them, not to yourself, and put **everything** there: loads, cues, what
     moved since last time and why.
 
@@ -775,7 +782,7 @@ def write_next_mobility_session(
     So the field is left empty on the way out, and a non-empty comment on a
     mobility set now means exactly one thing: the user wrote it.
 
-    The user picks which pending session to run from the mobility tab, so a
+    The user picks which pending session to run from the upcoming page, so a
     label that says what the session is *for* is worth more than one that says
     what is in it.
 
@@ -787,7 +794,7 @@ def write_next_mobility_session(
             "ok": False,
             "error": "label is required",
             "hint": "It is how this session is addressed and how the user "
-                    "tells it from the others on the tab. Name what it is "
+                    "tells it from the others on the page. Name what it is "
                     "for - 'Low back', 'Shoulder' - not what is in it.",
         }
     if not items:
@@ -805,6 +812,10 @@ def write_next_mobility_session(
             return {"ok": False, "error": f"items[{index}] has no exercise"}
         if item.get("sets") is not None and int(item["sets"]) < 1:
             return {"ok": False, "error": f"items[{index}] has sets < 1"}
+        if item.get("mobility") is not None and not isinstance(
+            item["mobility"], bool
+        ):
+            return {"ok": False, "error": f"items[{index}].mobility is not a boolean"}
         # Refused rather than dropped. Silently discarding it would leave the
         # cue looking delivered, and the next session would be written on the
         # assumption the user had been told something they never saw.
@@ -825,20 +836,26 @@ def write_next_mobility_session(
 
     with _rw() as conn:
         replaced = conn.execute(
-            "DELETE FROM upcoming_workouts WHERE kind = 'mobility' "
-            "AND session = (SELECT session FROM mobility_plan WHERE label = ?)",
+            "DELETE FROM upcoming_workouts "
+            "WHERE session = (SELECT session FROM mobility_plan WHERE label = ?)",
             (label,),
         ).rowcount
 
         # Upsert the plan and learn its session number. A new label takes the
-        # next number *within mobility*; lifting numbers its own and the two
-        # never meet, because every query names its kind.
+        # global max + 1 over both tables that carry a session number — the
+        # queue is one namespace now (9c4e7b21f806), and a number that also
+        # picked out a Liftoscript session would make transfer and delete hit
+        # both.
         conn.execute(
             """INSERT INTO mobility_plan (session, label, rationale, created_at)
                VALUES (
                    COALESCE(
                        (SELECT session FROM mobility_plan WHERE label = ?),
-                       (SELECT COALESCE(MAX(session), 0) + 1 FROM mobility_plan)
+                       (SELECT COALESCE(MAX(session), 0) + 1 FROM (
+                           SELECT session FROM mobility_plan
+                           UNION ALL
+                           SELECT session FROM upcoming_workouts
+                       ))
                    ), ?, ?, ?)
                ON CONFLICT(label) DO UPDATE SET
                    rationale = excluded.rationale,
@@ -856,16 +873,18 @@ def write_next_mobility_session(
             if was_created:
                 created.append(item["exercise"])
 
+            is_mobility = 1 if item.get("mobility", True) else 0
             for _ in range(int(item.get("sets") or 1)):
                 written.append(
                     conn.execute(
                         # `comment` is written NULL, never from the caller.
                         """INSERT INTO upcoming_workouts
-                             (session, kind, exercise_id, category_id, weight,
-                              reps, comment, created_at)
-                           VALUES (?, 'mobility', ?, ?, ?, ?, NULL, ?)""",
+                             (session, is_mobility, exercise_id, category_id,
+                              weight, reps, comment, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, NULL, ?)""",
                         (
                             session_number,
+                            is_mobility,
                             exercise_id,
                             category_id,
                             item.get("weight_lb"),
@@ -1156,24 +1175,28 @@ the summary.
     "write_next_mobility_session": """Write a pending mobility session under `label`, creating or replacing it.
 
 **`label` is the key.** "Low back", "Shoulder" — a new one adds a session
-to the tab, an existing one replaces *that* session and cannot touch the
-others. This is what lets two rehab programmes run at once, and it is why
-writing no longer discards whatever was waiting. Use the label the user
-uses; check `read_pending_mobility_session()` first so you revise rather
-than duplicate.
+to the upcoming page, an existing one replaces *that* session and cannot
+touch the others. This is what lets two rehab programmes run at once, and
+it is why writing no longer discards whatever was waiting. Use the label
+the user uses; check `read_pending_mobility_session()` first so you revise
+rather than duplicate.
 
 `items` is the routine in the order it is to be performed. Each is
-{exercise, sets?, reps?, weight_lb?, category?}:
+{exercise, sets?, reps?, weight_lb?, category?, mobility?}:
 
 - **`sets` expands into rows**, one per set, because that is how the user
   logs — "8 and then 10 reps" is two different numbers and needs two rows
   to land in. `sets: 2, reps: 8` becomes two rows of 8.
 - **`weight_lb` is pounds** (ADR-0003).
+- **`mobility` defaults to true** — this writer is the mobility loop, and
+  everything it prescribes is mobility work unless an item says otherwise.
+  The flag transfers onto the logged set, which is what
+  `read_latest_mobility_session` reads back.
 - **There is no per-set comment, and passing one is an error.** The set's
   comment field is the user's, and only the user's — see `rationale`.
 
 `rationale` is what you changed and why, for the whole session. The user
-reads it on the mobility tab before running the session, so write it to
+reads it on the upcoming page before running the session, so write it to
 them, not to yourself, and put **everything** there: loads, cues, what
 moved since last time and why.
 
@@ -1189,7 +1212,7 @@ no cue at all, because it is indistinguishable from the thing it corrupts.
 So the field is left empty on the way out, and a non-empty comment on a
 mobility set now means exactly one thing: the user wrote it.
 
-The user picks which pending session to run from the mobility tab, so a
+The user picks which pending session to run from the upcoming page, so a
 label that says what the session is *for* is worth more than one that says
 what is in it.
 
@@ -1315,14 +1338,14 @@ def check_database() -> None:
             is None
         ]
         # `write_next_mobility_session` is registered in read-only mode too, so
-        # a database predating c4a92f18de07 would fail at the first call with an
-        # opaque "no such column: kind" rather than at startup.
+        # a database predating 9c4e7b21f806 would fail at the first call with an
+        # opaque "no such column: is_mobility" rather than at startup.
         columns = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(upcoming_workouts)")
         }
-        if columns and "kind" not in columns:
-            missing.append("upcoming_workouts.kind")
+        if columns and "is_mobility" not in columns:
+            missing.append("upcoming_workouts.is_mobility")
     finally:
         conn.close()
     if missing:

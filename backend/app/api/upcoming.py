@@ -1,4 +1,12 @@
-"""Upcoming workout API endpoints."""
+"""Upcoming workout API endpoints.
+
+The queue is one program (9c4e7b21f806): Liftoscript-generated sessions and
+agent-written mobility sessions list together, and transfer, delete and
+generate treat them alike. What still differs by author is metadata, not
+behaviour — an agent session carries the label and rationale `mobility_plan`
+holds, and transferring one promotes that rationale into a dated note so the
+next prescription can read why the last one was written.
+"""
 
 from pathlib import Path
 
@@ -11,12 +19,14 @@ from app.models.upcoming import (
     PresetInfo,
     SessionTransferRequest,
     SessionTransferResponse,
+    UpcomingSession,
     UpcomingWorkout,
     UpcomingWorkoutBulkCreate,
     UpcomingWorkoutCreate,
     WendlerCurrentMaxes,
 )
 from app.models.workout import WorkoutCreate
+from app.repositories.mobility_repo import MobilityRepository
 from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 from app.repositories.workout_repo import WorkoutRepository
 from app.services.liftoscript_service import LiftoscriptParseError, LiftoscriptParser
@@ -42,11 +52,31 @@ PRESETS = {
 router = APIRouter()
 
 
-@router.get("/", response_model=list[UpcomingWorkout])
+@router.get("/", response_model=list[UpcomingSession])
 def get_upcoming_workouts():
-    """Get all upcoming workouts."""
-    repo = UpcomingWorkoutRepository()
-    return repo.get_all()
+    """Get the whole upcoming queue, grouped by session.
+
+    Agent-written sessions carry the label, rationale and write date their
+    `mobility_plan` row holds; Liftoscript sessions have none. A plan whose
+    rows are all gone is omitted rather than shown as an empty heading.
+    """
+    rows = UpcomingWorkoutRepository().get_all()
+    plans = {plan["session"]: plan for plan in MobilityRepository().get_plans()}
+
+    sessions: dict[int, UpcomingSession] = {}
+    for row in rows:
+        number = row["session"]
+        if number not in sessions:
+            plan = plans.get(number)
+            sessions[number] = UpcomingSession(
+                session=number,
+                label=plan["label"] if plan else None,
+                rationale=plan["rationale"] if plan else None,
+                generated_at=plan["generated_at"] if plan else None,
+            )
+        sessions[number].items.append(UpcomingWorkout(**row))
+
+    return [sessions[number] for number in sorted(sessions)]
 
 
 @router.get("/session/{session}", response_model=list[UpcomingWorkout])
@@ -77,19 +107,40 @@ def create_bulk_upcoming_workouts(bulk: UpcomingWorkoutBulkCreate):
 
 @router.delete("/session/{session}", status_code=204)
 def delete_session(session: int):
-    """Delete all workouts in a session."""
+    """Delete a session: its rows, and its plan if it has one.
+
+    Both halves go together. Leaving the plan behind would lend its label and
+    rationale to whatever session is numbered the same later, and leaving the
+    rows behind would orphan them under a heading nothing renders.
+    """
     repo = UpcomingWorkoutRepository()
     count = repo.delete_session(session)
 
     if count == 0:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    MobilityRepository().delete_plan(session)
+
 
 @router.post("/session/{session}/transfer", response_model=SessionTransferResponse)
 def transfer_session(session: int, request: SessionTransferRequest):
-    """Transfer a session to historical workouts."""
+    """Transfer a session to historical workouts.
+
+    Rows are appended **after** anything already logged that day rather than
+    numbered from 1, so transferring a second session onto the same date
+    stacks under the first. Each row's `is_mobility` travels with it — the
+    prescription said which sets were mobility work, and the logged day keeps
+    it (the day-view checkbox can still adjust).
+
+    A session with a plan is the agent's: its rationale is promoted into a
+    dated `mobility_session` note, which is what
+    `read_latest_mobility_session` reports back as *why* the session was
+    written. The plan row goes with the promotion — it described a pending
+    session, and the session is no longer pending.
+    """
     upcoming_repo = UpcomingWorkoutRepository()
     workout_repo = WorkoutRepository()
+    mobility_repo = MobilityRepository()
 
     # Get all workouts in the session
     session_workouts = upcoming_repo.get_by_session(session)
@@ -97,8 +148,11 @@ def transfer_session(session: int, request: SessionTransferRequest):
     if not session_workouts:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    existing = workout_repo.get_by_date(request.date)
+    start_order = max((w.get("order") or 0) for w in existing) if existing else 0
+
     # Transfer each workout to historical
-    for i, upcoming_workout in enumerate(session_workouts):
+    for offset, upcoming_workout in enumerate(session_workouts, start=1):
         historical_workout = WorkoutCreate(
             date=request.date,
             exercise=upcoming_workout["exercise"],
@@ -112,18 +166,27 @@ def transfer_session(session: int, request: SessionTransferRequest):
             # onto the tile as `work_seconds` rather than dropping.
             work_seconds=parse_duration_seconds(upcoming_workout.get("time")),
             comment=upcoming_workout.get("comment"),
-            order=i + 1,
+            order=start_order + offset,
+            is_mobility=upcoming_workout.get("is_mobility", False),
         )
         workout_repo.create(historical_workout)
 
     # Delete the session from upcoming
     count = upcoming_repo.delete_session(session)
 
+    # Promote the plan's rationale into the record of a session run. A
+    # Liftoscript session has no plan, and the call returns None for it.
+    plan = mobility_repo.get_plan(session)
+    mobility_repo.record_session_note(session, request.date)
+
+    label = plan["label"] if plan else None
+    what = f"'{label}'" if label else f"session {session}"
     return SessionTransferResponse(
         session=session,
         date=request.date,
         count=count,
-        message=f"Transferred {count} workouts to {request.date}",
+        label=label,
+        message=f"Transferred {count} sets from {what} to {request.date}",
     )
 
 
@@ -153,8 +216,14 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
     Required comments for percentage/progression:
     - For %: "// ExerciseName 1RM: Xlb"
     - For progress: lp(): "// ExerciseName SW: Xlb" (SW = Starting Weight)
+
+    Generating clears the **whole** queue first — rows and plans alike. The
+    kind-scoped delete used to spare the pending mobility session; with one
+    queue the guard is the warning the page shows before confirming
+    (9c4e7b21f806).
     """
     repo = UpcomingWorkoutRepository()
+    mobility_repo = MobilityRepository()
 
     parser = LiftoscriptParser()
     try:
@@ -177,12 +246,16 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
         )
 
     deleted_count = repo.delete_all()
+    deleted_plans = mobility_repo.delete_all_plans()
     created = repo.create_bulk(workouts)
     sessions = len(set(w.session for w in workouts))
 
+    message = f"Generated {len(created)} workouts across {sessions} sessions"
+    if deleted_plans:
+        message += f"; replaced {deleted_plans} agent-written session(s)"
     return LiftoscriptGenerateResponse(
         success=True,
-        message=f"Generated {len(created)} workouts across {sessions} sessions",
+        message=message,
         count=len(created),
         sessions=sessions,
         deleted_count=deleted_count,

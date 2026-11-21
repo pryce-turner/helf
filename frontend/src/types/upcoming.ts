@@ -1,10 +1,8 @@
-/** Which program a planned row belongs to. Mirrors the CHECK on the column. */
-export type WorkoutKind = "lifting" | "mobility";
-
 export interface UpcomingWorkout {
   doc_id: number;
   session: number;
-  kind: WorkoutKind;
+  /** Whether this prescribed set is mobility work; transfer carries it onto the logged set. */
+  is_mobility: boolean;
   exercise: string;
   category: string;
   weight: number | null;
@@ -21,6 +19,7 @@ export interface UpcomingWorkoutCreate {
   session: number;
   exercise: string;
   category: string;
+  is_mobility?: boolean;
   weight?: number | null;
   weight_unit?: string;
   reps?: number | null;
@@ -28,6 +27,30 @@ export interface UpcomingWorkoutCreate {
   distance_unit?: string | null;
   time?: string | null;
   comment?: string | null;
+}
+
+/**
+ * One session of the upcoming queue, with its plan metadata if it has any.
+ *
+ * The queue is one list. Sessions the agent wrote carry the `label` and
+ * `rationale` their plan row holds; a Liftoscript-generated session has
+ * neither — a script has nothing to say about why.
+ */
+export interface UpcomingSession {
+  session: number;
+  label: string | null;
+  rationale: string | null;
+  generated_at: string | null;
+  items: UpcomingWorkout[];
+}
+
+export interface SessionTransferResponse {
+  session: number;
+  date: string;
+  count: number;
+  /** The agent-written session's label; null for a generated session. */
+  label: string | null;
+  message: string;
 }
 
 export interface WendlerCurrentMaxes {
@@ -59,5 +82,6 @@ export interface PresetInfo {
 export interface PresetContent {
   name: string;
   display_name: string;
+  description: string;
   script: string;
 }

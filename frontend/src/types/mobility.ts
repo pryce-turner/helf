@@ -1,5 +1,3 @@
-import type { UpcomingWorkout } from "./upcoming";
-
 /** One set as it was logged, with whatever was written about it afterwards. */
 export interface MobilityLoggedSet {
     exercise: string;
@@ -16,40 +14,4 @@ export interface MobilityLastSession {
     /** Null for a session the user flagged by hand: nothing prescribed it. */
     rationale: string | null;
     sets: MobilityLoggedSet[];
-}
-
-/**
- * The mobility tab's whole state, in one response.
- *
- * `ready` is the discriminator between the page's two states and is derived on
- * the server from whether a pending session has any items — there is no status
- * to fall out of step with the rows. `last_session` comes back in both states:
- * when nothing is pending it is what makes the empty state actionable, because
- * it carries the comments the next session gets written from.
- */
-export interface MobilityPendingSession {
-    session: number;
-    /**
-     * The addressing key. The agent writes "Low back" or "Shoulder"; an
-     * existing label replaces that session and leaves the others alone, which
-     * is what lets two rehab programmes run at once.
-     */
-    label: string;
-    rationale: string;
-    generated_at: string;
-    items: UpcomingWorkout[];
-}
-
-export interface MobilityPending {
-    /** Any session pending. Derived from the rows, never stored. */
-    ready: boolean;
-    /** Several can be alive at once; a session with no items is omitted. */
-    sessions: MobilityPendingSession[];
-    last_session: MobilityLastSession | null;
-}
-
-export interface MobilityTransferResponse {
-    date: string;
-    count: number;
-    message: string;
 }

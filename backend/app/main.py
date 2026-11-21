@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
@@ -196,7 +196,9 @@ if static_dir.exists() and static_dir.is_dir():
 
     @app.get("/mobility")
     async def spa_mobility():
-        return FileResponse(static_dir / "index.html", media_type="text/html")
+        # The page merged into /upcoming (9c4e7b21f806); the route stays as a
+        # redirect so old bookmarks and the installed PWA's history land.
+        return RedirectResponse(url="/upcoming", status_code=301)
 
     @app.get("/body-composition")
     async def spa_body_composition():

@@ -523,12 +523,67 @@ def test_write_next_expands_sets_into_rows(mcp):
     assert result["movements"] == 1
 
     rows = mcp.query(
-        "SELECT reps, weight, kind FROM upcoming_workouts ORDER BY id"
+        "SELECT reps, weight, is_mobility FROM upcoming_workouts ORDER BY id"
     )["rows"]
     assert rows == [
-        {"reps": 8, "weight": 30.0, "kind": "mobility"},
-        {"reps": 8, "weight": 30.0, "kind": "mobility"},
+        {"reps": 8, "weight": 30.0, "is_mobility": 1},
+        {"reps": 8, "weight": 30.0, "is_mobility": 1},
     ]
+
+
+def test_write_next_can_prescribe_an_unflagged_item(mcp):
+    """Every workout has a mobility element, not every set in it is one — the
+    flag is per item and defaults to on."""
+    result = mcp.write_next_mobility_session(
+        label="Posterior chain",
+        items=[
+            {"exercise": "Romanian Deadlift", "reps": 8, "weight_lb": 135,
+             "mobility": False},
+            {"exercise": "Jefferson Curl", "reps": 5},
+        ],
+        rationale="loaded hinge beside the stretch",
+    )
+
+    assert result["ok"] is True
+    rows = mcp.query(
+        "SELECT e.name, u.is_mobility FROM upcoming_workouts u "
+        "JOIN exercises e ON e.id = u.exercise_id ORDER BY u.id"
+    )["rows"]
+    assert rows == [
+        {"name": "Romanian Deadlift", "is_mobility": 0},
+        {"name": "Jefferson Curl", "is_mobility": 1},
+    ]
+
+
+def test_write_next_numbers_a_new_session_above_the_whole_queue(mcp):
+    """One namespace (9c4e7b21f806): a new label takes the global max + 1, so
+    its session number can never also pick out a Liftoscript session for
+    transfer or delete to hit both."""
+    with database.SessionLocal() as session:
+        session.execute(
+            text("INSERT INTO categories (name, created_at) VALUES ('Push', '2026-08-07')")
+        )
+        session.execute(
+            text(
+                "INSERT INTO exercises (name, category_id, use_count, created_at) "
+                "VALUES ('Bench', 1, 0, '2026-08-07')"
+            )
+        )
+        session.execute(
+            text(
+                "INSERT INTO upcoming_workouts (session, is_mobility, exercise_id, "
+                "category_id, reps, created_at) "
+                "VALUES (7, 0, 1, 1, 5, '2026-08-07')"
+            )
+        )
+        session.commit()
+
+    result = mcp.write_next_mobility_session(
+        label="Mobility",
+        items=[{"exercise": "QL Raise", "reps": 8}], rationale="one set"
+    )
+
+    assert result["session"] == 8
 
 
 def test_write_next_records_nothing_about_mobility_on_the_exercise(mcp):
@@ -536,8 +591,8 @@ def test_write_next_records_nothing_about_mobility_on_the_exercise(mcp):
 
     It used to flag an invented exercise `is_mobility = 1`, which made the
     pool grow by side effect and could not express the same movement being
-    used two ways. The intent rides on the planned row's `kind` and lands on
-    `workouts.is_mobility` at transfer.
+    used two ways. The intent rides on the planned row's `is_mobility` and
+    lands on `workouts.is_mobility` at transfer.
     """
     mcp.write_next_mobility_session(
         label="Mobility",
@@ -636,9 +691,9 @@ def test_write_next_leaves_lifting_rows_untouched(mcp):
         )
         session.execute(
             text(
-                "INSERT INTO upcoming_workouts (session, kind, exercise_id, "
+                "INSERT INTO upcoming_workouts (session, is_mobility, exercise_id, "
                 "category_id, reps, created_at) "
-                "VALUES (1, 'lifting', 1, 1, 5, '2026-08-07')"
+                "VALUES (1, 0, 1, 1, 5, '2026-08-07')"
             )
         )
         session.commit()
@@ -649,7 +704,7 @@ def test_write_next_leaves_lifting_rows_untouched(mcp):
     )
 
     assert mcp.query(
-        "SELECT count(*) n FROM upcoming_workouts WHERE kind = 'lifting'"
+        "SELECT count(*) n FROM upcoming_workouts WHERE is_mobility = 0"
     )["rows"] == [{"n": 1}]
 
 
@@ -792,9 +847,10 @@ def test_read_pending_ignores_a_rationale_with_no_items(mcp):
     assert mcp.read_pending_mobility_session()["pending"] is False
 
 
-def test_read_pending_ignores_a_pending_lifting_session(mcp):
-    """`session = 1` is the mobility slot, but lifting numbers its sessions
-    from 1 as well. `kind` is what separates them, not the number."""
+def test_read_pending_ignores_rows_with_no_plan(mcp):
+    """A Liftoscript session shares the table but has no `mobility_plan` row,
+    and the plan is what makes a session one of the agent's. What separates
+    the two was never the session number."""
     mcp.write_next_mobility_session(
         label="Mobility",
         items=[{"exercise": "QL Raise", "reps": 8}], rationale="the mobility one"
@@ -802,9 +858,9 @@ def test_read_pending_ignores_a_pending_lifting_session(mcp):
     with database.SessionLocal() as session:
         session.execute(
             text(
-                "INSERT INTO upcoming_workouts (session, kind, exercise_id, "
+                "INSERT INTO upcoming_workouts (session, is_mobility, exercise_id, "
                 "category_id, reps, created_at) "
-                "VALUES (1, 'lifting', 1, 1, 5, '2026-08-13')"
+                "VALUES (99, 0, 1, 1, 5, '2026-08-13')"
             )
         )
         session.commit()

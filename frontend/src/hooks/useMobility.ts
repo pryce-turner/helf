@@ -1,44 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mobilityApi } from '../lib/api';
 
-export function useMobilityPending() {
+/**
+ * The last mobility session that reached the calendar, with its sets and
+ * their comments — the read-back the next prescription is written from.
+ * Null when no set has ever been flagged.
+ */
+export function useLastMobilitySession() {
   return useQuery({
-    queryKey: ['mobility', 'pending'],
+    queryKey: ['mobility', 'last-session'],
     queryFn: async () => {
-      const response = await mobilityApi.getPending();
+      const response = await mobilityApi.getLastSession();
       return response.data;
-    },
-  });
-}
-
-export function useTransferMobility() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ date, session }: { date: string; session: number }) => {
-      const response = await mobilityApi.transfer(date, session);
-      return response.data;
-    },
-    // No optimistic update, deliberately. Transferring writes rows the user is
-    // about to go and log against, and showing the empty state before the
-    // server has confirmed would invite a second tap and a duplicated session.
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mobility'] });
-      queryClient.invalidateQueries({ queryKey: ['workouts'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar'] });
-    },
-  });
-}
-
-export function useClearMobilityPending() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (session: number) => {
-      await mobilityApi.clearPending(session);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mobility'] });
     },
   });
 }

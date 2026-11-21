@@ -198,13 +198,14 @@ const Progression = () => {
     /* Whether there is anything for this control to include.
        An estimated 1RM is (0.033 x reps x weight) + weight, so a planned set
        without a weight has no 1RM to project and `progression_service` drops
-       it. Every upcoming row in this database is rep-only, which made the
-       checkbox a control that changed nothing, for every exercise, with no
-       indication why. It now reports which of the two reasons applies rather
-       than offering to do something it cannot. */
-    const plannedForExercise = (allUpcoming ?? []).filter(
-        (w) => w.exercise === selectedExercise,
-    );
+       it — along with any set flagged as mobility work, which is not a data
+       point on the curve either. Every upcoming row in this database is
+       rep-only, which made the checkbox a control that changed nothing, for
+       every exercise, with no indication why. It now reports which of the two
+       reasons applies rather than offering to do something it cannot. */
+    const plannedForExercise = (allUpcoming ?? [])
+        .flatMap((session) => session.items)
+        .filter((w) => w.exercise === selectedExercise && !w.is_mobility);
     const projectable = plannedForExercise.filter(
         (w) => w.weight != null && w.weight > 0,
     );

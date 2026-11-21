@@ -58,73 +58,83 @@ def test_upcoming_get_by_exercise_orders_by_session():
 
 
 # --------------------------------------------------------------------------
-# `kind` scoping
+# One queue (9c4e7b21f806)
 #
-# Lifting and mobility share this table (Plan 0012 §2), so every method is
-# scoped and the default is 'lifting'. These are the tests that fail if a
-# `.where(kind == ...)` is dropped — otherwise the two programs silently mix
-# and the symptom appears somewhere else entirely.
+# The `kind` split is gone: lifting and mobility rows list together, and
+# whether a planned set is mobility work is a flag on the row, not a program
+# it belongs to. These pin the unified behaviour — reads return everything,
+# `delete_all` really clears the board, and the progression read still
+# excludes mobility sets.
 # --------------------------------------------------------------------------
 def _one_of_each(repo: UpcomingWorkoutRepository) -> None:
     repo.create(UpcomingWorkoutCreate(session=1, exercise="Bench", category="Push"))
     repo.create(
         UpcomingWorkoutCreate(
-            session=1, kind="mobility", exercise="QL Raise", category="Core"
+            session=2, is_mobility=True, exercise="QL Raise", category="Core"
         )
     )
 
 
-def test_kind_defaults_to_lifting():
+def test_is_mobility_defaults_to_false():
     repo = UpcomingWorkoutRepository()
     created = repo.create(UpcomingWorkoutCreate(session=1, exercise="Bench", category="Push"))
 
-    assert created["kind"] == "lifting"
+    assert created["is_mobility"] is False
 
 
-def test_get_all_returns_one_kind_at_a_time():
+def test_get_all_returns_the_whole_queue():
     repo = UpcomingWorkoutRepository()
     _one_of_each(repo)
 
-    assert [w["exercise"] for w in repo.get_all()] == ["Bench"]
-    assert [w["exercise"] for w in repo.get_all(kind="mobility")] == ["QL Raise"]
+    assert [w["exercise"] for w in repo.get_all()] == ["Bench", "QL Raise"]
 
 
-def test_delete_all_does_not_cross_kinds():
-    """The Liftoscript generator's clear-the-board step. Unscoped, generating a
-    lifting program would destroy the pending mobility session."""
+def test_delete_all_clears_the_whole_queue():
+    """The Liftoscript generator's clear-the-board step really clears it now —
+    the route deletes the plans alongside, and the page warns before
+    confirming (9c4e7b21f806)."""
     repo = UpcomingWorkoutRepository()
     _one_of_each(repo)
 
-    assert repo.delete_all() == 1
-    assert [w["exercise"] for w in repo.get_all(kind="mobility")] == ["QL Raise"]
+    assert repo.delete_all() == 2
+    assert repo.get_all() == []
 
 
-def test_delete_session_does_not_cross_kinds():
-    """Both programs happen to use session 1, so this one is easy to get wrong."""
+def test_delete_session_takes_that_session_whatever_its_flag():
+    """A session is one number in one namespace; deleting it cannot leave a
+    mobility row behind because of a flag the method did not check."""
     repo = UpcomingWorkoutRepository()
-    _one_of_each(repo)
+    repo.create(UpcomingWorkoutCreate(session=1, exercise="Bench", category="Push"))
+    repo.create(
+        UpcomingWorkoutCreate(
+            session=1, is_mobility=True, exercise="QL Raise", category="Core"
+        )
+    )
 
-    assert repo.delete_session(1) == 1
-    assert len(repo.get_by_session(1, kind="mobility")) == 1
+    assert repo.delete_session(1) == 2
+    assert repo.get_by_session(1) == []
 
 
-def test_get_by_exercise_excludes_mobility_by_default():
+def test_get_by_exercise_excludes_mobility_sets():
     """Its caller projects a 1RM curve forward. A prescribed stretch at
     bodyweight is not a point on that curve."""
     repo = UpcomingWorkoutRepository()
     repo.create(
         UpcomingWorkoutCreate(
-            session=1, kind="mobility", exercise="Good Morning", category="Back"
+            session=1, is_mobility=True, exercise="Good Morning", category="Back"
         )
     )
+    repo.create(
+        UpcomingWorkoutCreate(session=2, exercise="Good Morning", category="Back")
+    )
 
-    assert repo.get_by_exercise("Good Morning") == []
+    assert [w["session"] for w in repo.get_by_exercise("Good Morning")] == [2]
 
 
 def test_a_mobility_row_records_nothing_on_the_exercise(db_session):
     """Planning a movement as mobility work says nothing about the movement.
 
-    The kind lives on the planned row and becomes `workouts.is_mobility` at
+    The flag lives on the planned row and becomes `workouts.is_mobility` at
     transfer. The same good morning can be prescribed as a loaded stretch this
     week and pulled heavy the next, and one exercise row serves both.
     """
@@ -132,7 +142,7 @@ def test_a_mobility_row_records_nothing_on_the_exercise(db_session):
 
     UpcomingWorkoutRepository().create(
         UpcomingWorkoutCreate(
-            session=1, kind="mobility", exercise="Copenhagen Raise", category="Core"
+            session=1, is_mobility=True, exercise="Copenhagen Raise", category="Core"
         )
     )
 

@@ -1,8 +1,12 @@
-"""The mobility loop: read the pending session, and copy it into the calendar.
+"""The mobility loop's service half: the shuffle, the write, the read-back.
 
 The loop has four steps and only two of them are code. The agent reads the last
-logged session over MCP and writes the next one; this module is the other half
-— it shows the user what is pending and moves it onto a date when they run it.
+logged session over MCP and writes the next one; this module shows the user
+what came of it and inserts movement-break suggestions. The pending queue
+itself is just the upcoming queue now (9c4e7b21f806) — listing, transferring
+and discarding sessions lives on the upcoming routes, and what remains here is
+what is genuinely mobility's: the movement-break shuffle and the agent's
+write path.
 """
 
 import random
@@ -10,13 +14,8 @@ import random
 from app.models.workout import WorkoutCreate
 from app.repositories.exercise_repo import ExerciseRepository
 from app.repositories.mobility_repo import MobilityRepository
-from app.repositories.upcoming_repo import (
-    MOBILITY,
-    UpcomingWorkoutRepository,
-)
 from app.repositories.workout_repo import WorkoutRepository
 from app.utils.date_helpers import get_current_date
-from app.utils.durations import parse_duration_seconds
 
 #: How many candidates the shuffle draws before picking one. Three and a
 #: least-recently-used tiebreak, not a uniform draw: uniform hands back the
@@ -37,97 +36,24 @@ def _shuffle(pool: list[dict]) -> dict:
 
 
 class MobilityService:
-    """Orchestrates the three tables a mobility session touches."""
+    """The movement-break shuffle, and the agent's session write."""
 
     def __init__(self) -> None:
-        self.upcoming_repo = UpcomingWorkoutRepository()
         self.workout_repo = WorkoutRepository()
         self.mobility_repo = MobilityRepository()
         self.exercise_repo = ExerciseRepository()
 
-    def get_pending(self) -> dict:
-        """Every pending session, and the last one that was run.
+    def get_last_session(self) -> dict | None:
+        """The last mobility session that reached the calendar, with its sets.
 
-        `ready` is still derived and still the page's discriminator, but it now
-        means "any session is pending" rather than "the session is pending".
-        Each entry carries its own label, reasoning and movements, because the
-        page's job changed from showing one routine to choosing between
-        several.
+        Read back on the upcoming page, where the comments it carries are what
+        the next prescription gets written from.
         """
-        plans = self.mobility_repo.get_plans()
-
-        sessions = []
-        for plan in plans:
-            items = self.upcoming_repo.get_by_session(plan["session"], kind=MOBILITY)
-            # A plan whose rows have all been deleted is a heading with nothing
-            # under it. Skipped rather than shown empty, the same way a
-            # rationale with no items was never reported.
-            if not items:
-                continue
-            sessions.append({**plan, "items": items})
-
-        return {
-            "ready": bool(sessions),
-            "sessions": sessions,
-            "last_session": self.mobility_repo.get_latest_logged(),
-        }
+        return self.mobility_repo.get_latest_logged()
 
     def write_pending(self, label: str, rationale: str, items: list[dict]) -> dict:
         """Write one pending session under `label`. See `MobilityRepository.write_session`."""
         return self.mobility_repo.write_session(label, rationale, items)
-
-    def transfer(self, date: str, session_id: int) -> dict:
-        """Copy one pending session onto `date` as mobility sets.
-
-        Which session is now an argument: the page lists several and the user
-        picks. Rows are appended **after** anything already logged that day, so
-        transferring a second session onto the same date stacks under the
-        first rather than interleaving — two prescriptions run back to back are
-        still two sessions' work in one day.
-
-        Each row is written with `is_mobility = True`, which is what makes the
-        day findable afterwards (0013).
-        """
-        plan = self.mobility_repo.get_plan(session_id)
-        items = self.upcoming_repo.get_by_session(session_id, kind=MOBILITY)
-        if not plan or not items:
-            return {"date": date, "count": 0, "message": "No such pending session"}
-
-        existing = self.workout_repo.get_by_date(date)
-        start_order = max((w.get("order") or 0) for w in existing) if existing else 0
-
-        for offset, item in enumerate(items, start=1):
-            self.workout_repo.create(
-                WorkoutCreate(
-                    date=date,
-                    exercise=item["exercise"],
-                    category=item["category"],
-                    weight=item.get("weight"),
-                    reps=item.get("reps"),
-                    distance=item.get("distance"),
-                    distance_unit=item.get("distance_unit"),
-                    # Legacy `time` is read-only (plan 0018); a prescribed hold
-                    # keeps its duration as `work_seconds` on the tile.
-                    work_seconds=parse_duration_seconds(item.get("time")),
-                    # The cue travels with the set. It is also the field the
-                    # user overwrites with feedback afterwards, which is the
-                    # whole read-back channel (Plan 0012 §4) - so a prescription
-                    # cue is written to be replaced, not preserved.
-                    comment=item.get("comment"),
-                    order=start_order + offset,
-                    is_mobility=True,
-                )
-            )
-
-        count = self.upcoming_repo.delete_session(session_id, kind=MOBILITY)
-        self.mobility_repo.record_session_note(session_id, date)
-
-        return {
-            "date": date,
-            "count": count,
-            "label": plan["label"],
-            "message": f"Copied {count} sets from '{plan['label']}' to {date}",
-        }
 
     def suggest_movement_break(self, date: str | None = None) -> dict | None:
         """Insert a suggested, incomplete mobility tile on a day.
@@ -172,14 +98,3 @@ class MobilityService:
                 is_mobility=True,
             )
         )
-
-    def clear_pending(self, session_id: int) -> int:
-        """Discard one pending session without running it.
-
-        Both halves go: the rows and the plan row that names them. Leaving the
-        plan behind would put an empty heading on the page, and leaving the
-        rows behind would orphan them under a session nothing points at.
-        """
-        removed = self.upcoming_repo.delete_session(session_id, kind=MOBILITY)
-        self.mobility_repo.delete_plan(session_id)
-        return removed

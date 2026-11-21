@@ -12,9 +12,11 @@
 > withdrawn entirely). The stale passages are marked in place rather than
 > deleted, because why they were wrong is the useful part.
 >
-> Still current: §2 (`upcoming_workouts.kind`), §4's core claim that set
-> comments are the only feedback channel, §5 (the MCP write exception), §6
-> (the page's two states), §7 and §8.
+> Still current: §4's core claim that set comments are the only feedback
+> channel, §5 (the MCP write exception), §7 and §8. §2 (the
+> `upcoming_workouts.kind` single-table decision) held until
+> [Plan 0019](0019-one-upcoming-queue.md) (`9c4e7b21f806`) merged the queue:
+> mobility is now a flag on the planned set, and the two pages one.
 
 A rolling mobility routine that the agent adjusts one session at a time from
 the user's own feedback. Unlike every other plan here, the interesting part is

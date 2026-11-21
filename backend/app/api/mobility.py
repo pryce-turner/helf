@@ -1,7 +1,15 @@
-"""Mobility session API endpoints.
+"""Mobility API endpoints: the shuffle, the read-back, and the agent's write.
 
-Deliberately small: show the pending sessions, move one onto a date, discard
-one, and write one.
+The queue half of mobility is gone (9c4e7b21f806): pending sessions are listed,
+transferred and discarded through the upcoming routes, because that is what
+they are — upcoming workouts. What stays here is what the upcoming routes know
+nothing about:
+
+`POST /suggest` inserts a shuffled movement-break tile on a date.
+
+`GET /last-session` reads the last mobility session that was run, with the
+comments on its sets — the feedback channel the next prescription is written
+from.
 
 `POST /pending` is the one write, and it is not a form for typing a routine in
 - the prescription is still reasoned about by the agent, and MCP
@@ -21,22 +29,25 @@ day follows from them (d7e4f2a91b83).
 from fastapi import APIRouter, HTTPException
 
 from app.models.mobility import (
-    MobilityPending,
+    MobilityLastSession,
     MobilityPendingWrite,
     MobilityPendingWriteResponse,
     MovementBreakSuggest,
-    MobilityTransferRequest,
-    MobilityTransferResponse,
 )
 from app.models.workout import Workout
 from app.services.mobility_service import MobilityService
 
 router = APIRouter()
 
-@router.get("/pending", response_model=MobilityPending)
-def get_pending_session():
-    """The pending mobility session, or what to do about there not being one."""
-    return MobilityService().get_pending()
+
+@router.get("/last-session", response_model=MobilityLastSession | None)
+def get_last_session():
+    """The last mobility session that reached the calendar, with its sets.
+
+    None when no set has ever been flagged — the upcoming page renders its
+    empty state from that.
+    """
+    return MobilityService().get_last_session()
 
 
 @router.post("/pending", response_model=MobilityPendingWriteResponse)
@@ -47,17 +58,6 @@ def write_pending_session(request: MobilityPendingWrite):
         request.rationale,
         [item.model_dump() for item in request.items],
     )
-
-
-@router.post("/transfer", response_model=MobilityTransferResponse)
-def transfer_pending_session(request: MobilityTransferRequest):
-    """Copy the pending session into the calendar on a date."""
-    result = MobilityService().transfer(request.date, request.session)
-
-    if result["count"] == 0:
-        raise HTTPException(status_code=404, detail="No pending mobility session")
-
-    return MobilityTransferResponse(**result)
 
 
 @router.post("/suggest", response_model=Workout, status_code=201)
@@ -78,15 +78,3 @@ def suggest_movement_break(request: MovementBreakSuggest):
         )
 
     return tile
-
-
-@router.delete("/pending/{session}", status_code=204)
-def clear_pending_session(session: int):
-    """Discard one pending session without running it.
-
-    Takes a session because several can be pending: rehabbing a low back and a
-    shoulder at once means two prescriptions alive, and discarding one must
-    leave the other where it is.
-    """
-    if MobilityService().clear_pending(session) == 0:
-        raise HTTPException(status_code=404, detail="No such pending mobility session")

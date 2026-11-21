@@ -37,18 +37,17 @@ import type {
     StackUpdate,
 } from "../types/stack";
 import type {
+    UpcomingSession,
     UpcomingWorkout,
     UpcomingWorkoutCreate,
+    SessionTransferResponse,
     WendlerCurrentMaxes,
     LiftoscriptGenerateRequest,
     LiftoscriptGenerateResponse,
     PresetInfo,
     PresetContent,
 } from "../types/upcoming";
-import type {
-    MobilityPending,
-    MobilityTransferResponse,
-} from "../types/mobility";
+import type { MobilityLastSession } from "../types/mobility";
 
 // Use relative URL - Vite proxy handles routing to backend in dev
 // In production, requests go to same origin
@@ -185,8 +184,12 @@ export const progressionApi = {
 };
 
 // Upcoming Workouts
+//
+// The queue is one list (9c4e7b21f806): Liftoscript-generated sessions and
+// the agent's mobility prescriptions come back grouped by session, the
+// agent's carrying their label and rationale.
 export const upcomingApi = {
-    getAll: () => api.get<UpcomingWorkout[]>("/api/upcoming/"),
+    getAll: () => api.get<UpcomingSession[]>("/api/upcoming/"),
 
     getSession: (session: number) =>
         api.get<UpcomingWorkout[]>(`/api/upcoming/session/${session}`),
@@ -201,12 +204,10 @@ export const upcomingApi = {
         api.delete(`/api/upcoming/session/${session}`),
 
     transferSession: (session: number, date: string) =>
-        api.post<{
-            session: number;
-            date: string;
-            count: number;
-            message: string;
-        }>(`/api/upcoming/session/${session}/transfer`, { date }),
+        api.post<SessionTransferResponse>(
+            `/api/upcoming/session/${session}/transfer`,
+            { date },
+        ),
 
     getWendlerMaxes: () =>
         api.get<WendlerCurrentMaxes>("/api/upcoming/wendler/maxes"),
@@ -224,19 +225,13 @@ export const upcomingApi = {
 
 // Mobility
 //
-// No create for the pending session: it is written by the agent over MCP. The
-// app shows it and moves it onto a date.
+// What remains is genuinely mobility's: the read-back the next prescription
+// is written from, and the movement-break shuffle. The queue is the upcoming
+// queue; a session is written by the agent over MCP (or POST
+// /api/mobility/pending when the agent's process cannot write the file).
 export const mobilityApi = {
-    getPending: () => api.get<MobilityPending>("/api/mobility/pending"),
-
-    transfer: (date: string, session: number) =>
-        api.post<MobilityTransferResponse>("/api/mobility/transfer", {
-            date,
-            session,
-        }),
-
-    clearPending: (session: number) =>
-        api.delete(`/api/mobility/pending/${session}`),
+    getLastSession: () =>
+        api.get<MobilityLastSession | null>("/api/mobility/last-session"),
 
     /** Insert a suggested, incomplete mobility tile on a date (plan 0018). */
     suggestMovementBreak: (date?: string) =>

@@ -11,6 +11,7 @@ import sqlite3
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app import database
 
@@ -168,7 +169,9 @@ def test_a_failed_backfill_still_restores_the_triggers(tmp_path, monkeypatch):
     version = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
     conn.close()
 
-    assert version == "c4a1e8b93d07"
+    # Head, derived rather than a literal — a literal here was the old head
+    # within one migration of being written and fails on every later one.
+    assert version == ScriptDirectory.from_config(cfg).get_current_head()
     assert triggers == ["audit_workouts_delete", "audit_workouts_update"]
     assert row["completed_reps"] == 3
     assert row["work_seconds"] == 30

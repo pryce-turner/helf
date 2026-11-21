@@ -1,22 +1,17 @@
 """Upcoming workout data models."""
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
-#: Which program a planned row belongs to. A `Literal` here *and* a CHECK in
-#: the database, deliberately (ADR-0002): the agent writes raw SQL over MCP and
-#: never passes through Pydantic, so the constraint is the only rule both
-#: writers obey.
-WorkoutKind = Literal["lifting", "mobility"]
 
 
 class UpcomingWorkoutBase(BaseModel):
     """Base upcoming workout model."""
 
     session: int = Field(..., ge=1)
-    kind: WorkoutKind = "lifting"
+    #: Whether this prescribed set is mobility work. The same fact
+    #: `workouts.is_mobility` records once it is logged; transfer carries it.
+    is_mobility: bool = False
     exercise: str = Field(..., min_length=1)
     category: str = Field(..., min_length=1)
     weight: float | None = None
@@ -49,6 +44,22 @@ class UpcomingWorkoutBulkCreate(BaseModel):
     workouts: list[UpcomingWorkoutCreate]
 
 
+class UpcomingSession(BaseModel):
+    """One session of the upcoming queue, with its plan metadata if it has any.
+
+    The queue is one list (9c4e7b21f806). Sessions written by the agent carry
+    the `label`, `rationale` and `generated_at` that `mobility_plan` holds for
+    them; a Liftoscript-generated session has none, because a script has
+    nothing to say about why — the program editor is right there.
+    """
+
+    session: int
+    label: str | None = None
+    rationale: str | None = None
+    generated_at: str | None = None
+    items: list[UpcomingWorkout] = Field(default_factory=list)
+
+
 class SessionTransferRequest(BaseModel):
     """Request to transfer a session to historical workouts."""
 
@@ -61,6 +72,9 @@ class SessionTransferResponse(BaseModel):
     session: int
     date: str
     count: int
+    #: The agent-written session's label, when the session had a plan. None
+    #: for a Liftoscript-generated session, which has nothing to promote.
+    label: str | None = None
     message: str
 
 

@@ -1,8 +1,10 @@
 """The mobility loop, end to end through the API.
 
-The interesting behaviour is not any one endpoint — it is that a mobility
-session survives everything the lifting planner does, and that transferring one
-leaves a day the agent can find again.
+The queue half of mobility is the upcoming queue now (9c4e7b21f806) — listing,
+transferring and discarding a pending session are covered in
+`test_api_upcoming.py`. What is pinned here is what is genuinely mobility's:
+the read-back the next prescription is written from, the day flagging that
+feeds it, the agent's write path, and the movement-break shuffle.
 """
 
 import pytest
@@ -10,13 +12,9 @@ from sqlalchemy import text
 
 from app import database
 from app.models.upcoming import UpcomingWorkoutCreate
-from app.repositories.mobility_repo import SESSION_KIND, MobilityRepository
+from app.repositories.mobility_repo import MobilityRepository
 from app.utils.date_helpers import get_current_date
-from app.repositories.upcoming_repo import (
-    MOBILITY,
-    MOBILITY_SESSION,
-    UpcomingWorkoutRepository,
-)
+from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 
 pytestmark = pytest.mark.usefixtures("db_engine")
 
@@ -37,115 +35,38 @@ def write_pending(
         [
             UpcomingWorkoutCreate(
                 session=session_id,
-                kind=MOBILITY,
+                is_mobility=True,
                 exercise="Hanging Knee Raise",
                 category="Core",
                 reps=10,
-                comment="tuck the feet behind on extension",
             ),
             UpcomingWorkoutCreate(
                 session=session_id,
-                kind=MOBILITY,
+                is_mobility=True,
                 exercise="Hanging Knee Raise",
                 category="Core",
                 reps=10,
-                comment="tuck the feet behind on extension",
             ),
             UpcomingWorkoutCreate(
                 session=session_id,
-                kind=MOBILITY,
+                is_mobility=True,
                 exercise="Weighted Pigeon Squat",
                 category="Legs",
                 reps=5,
                 weight=30,
-                comment="lead with the right",
             ),
         ]
     )
     return session_id
 
 
-def test_pending_is_empty_before_anything_is_written(client):
-    body = client.get("/api/mobility/pending").json()
-
-    assert body["ready"] is False
-    assert body["sessions"] == []
-    assert body["last_session"] is None
-
-
-def test_pending_returns_the_session_and_its_rationale(client):
-    write_pending()
-
-    body = client.get("/api/mobility/pending").json()
-
-    assert body["ready"] is True
-    assert len(body["sessions"][0]["items"]) == 3
-    assert body["sessions"][0]["rationale"] == "Pigeon leads, right side first."
-    # Insertion order is the prescribed order - the table has no `order`
-    # column, so nothing else carries it.
-    assert [item["exercise"] for item in body["sessions"][0]["items"]] == [
-        "Hanging Knee Raise",
-        "Hanging Knee Raise",
-        "Weighted Pigeon Squat",
-    ]
-
-
-def test_a_rationale_without_items_is_not_reported_as_a_plan(client):
-    """A leftover note would otherwise explain a session that is not there."""
-    MobilityRepository().upsert_plan("Mobility", "orphaned reasoning")
-
-    body = client.get("/api/mobility/pending").json()
-
-    assert body["ready"] is False
-    # A plan row with no items is a heading with nothing under it.
-    assert body["sessions"] == []
-
-
-def test_transfer_writes_sets_and_marks_the_day(client):
-    session_id = write_pending()
-
-    response = client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
-    assert response.status_code == 200
-    assert response.json()["count"] == 3
-
-    # The pending session is consumed, not copied.
-    assert client.get("/api/mobility/pending").json()["ready"] is False
-
-    logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
-    assert len(logged) == 3
-    assert [w["order"] for w in logged] == [1, 2, 3]
-    # The cue travels onto the set, where the user overwrites it with feedback.
-    assert logged[0]["comment"] == "tuck the feet behind on extension"
-
-    with database.SessionLocal() as session:
-        kinds = session.execute(text("SELECT kind, date FROM note")).all()
-    assert kinds == [(SESSION_KIND, "2026-08-11")]
-
-
-def test_transfer_appends_after_work_already_logged_that_day(client):
-    """A mobility session run alongside lifting is still one day's work."""
-    client.post(
-        "/api/workouts/",
-        json={"date": "2026-08-11", "exercise": "Bench", "category": "Push", "reps": 5},
-    )
-    session_id = write_pending()
-
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
-
-    logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
-    assert [w["order"] for w in logged] == [1, 2, 3, 4]
-    assert logged[0]["exercise"] == "Bench"
-
-
-def test_transfer_without_a_pending_session_is_404(client):
-    assert client.post(
-        "/api/mobility/transfer", json={"date": "2026-08-11", "session": 1}
-    ).status_code == 404
+def test_last_session_is_none_before_anything_is_flagged(client):
+    assert client.get("/api/mobility/last-session").json() is None
 
 
 def test_last_session_carries_the_comments_forward(client):
     session_id = write_pending()
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
+    client.post(f"/api/upcoming/session/{session_id}/transfer", json={"date": "2026-08-11"})
 
     logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
     client.put(
@@ -159,52 +80,12 @@ def test_last_session_carries_the_comments_forward(client):
         },
     )
 
-    body = client.get("/api/mobility/pending").json()
+    body = client.get("/api/mobility/last-session").json()
 
-    assert body["ready"] is False
-    assert body["last_session"]["date"] == "2026-08-11"
-    assert body["last_session"]["rationale"] == "Pigeon leads, right side first."
-    comments = [s["comment"] for s in body["last_session"]["sets"]]
+    assert body["date"] == "2026-08-11"
+    assert body["rationale"] == "Pigeon leads, right side first."
+    comments = [s["comment"] for s in body["sets"]]
     assert "right side failed at 4" in comments
-
-
-def test_a_timed_pending_session_keeps_its_duration_on_transfer(client):
-    """A prescribed hold transferred as a legacy `time` string stays timed
-    (plan 0018): the duration parses into `work_seconds` rather than dropping
-    with the legacy column."""
-    client.post(
-        "/api/exercises/",
-        json={"name": "Dead Bug", "category": "Core", "time_enabled": True},
-    )
-    with database.SessionLocal() as session:
-        session.execute(
-            text(
-                "INSERT INTO mobility_plan (session, label, rationale, created_at) "
-                "VALUES (1, 'Core', 'timed holds', '2026-08-10')"
-            )
-        )
-        session.execute(
-            text(
-                "INSERT INTO categories (name, created_at) "
-                "SELECT 'Core2', '2026-08-10' WHERE NOT EXISTS (SELECT 1 FROM categories)"
-            )
-        )
-        session.execute(
-            text(
-                "INSERT INTO upcoming_workouts (session, kind, exercise_id, category_id, "
-                "time, created_at) VALUES (1, 'mobility', 1, 1, '0:01:00', '2026-08-10')"
-            )
-        )
-        session.commit()
-
-    response = client.post(
-        "/api/mobility/transfer", json={"date": "2026-08-11", "session": 1}
-    )
-    assert response.status_code == 200
-
-    day = client.get("/api/workouts/?date=2026-08-11").json()
-    assert day[0]["work_seconds"] == 60
-    assert day[0]["time"] is None
 
 
 def test_last_session_carries_targets_and_actuals(client):
@@ -243,7 +124,7 @@ def test_last_session_carries_targets_and_actuals(client):
         },
     )
 
-    last = client.get("/api/mobility/pending").json()["last_session"]
+    last = client.get("/api/mobility/last-session").json()
     (performed,) = last["sets"]
     # Targets beside what was actually done.
     assert performed["reps"] == 2
@@ -266,7 +147,7 @@ def test_editing_a_comment_does_not_unflag_the_set(client):
     channel. The flag would vanish exactly when the loop needs it.
     """
     session_id = write_pending()
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
+    client.post(f"/api/upcoming/session/{session_id}/transfer", json={"date": "2026-08-11"})
     logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
 
     client.put(
@@ -280,14 +161,14 @@ def test_editing_a_comment_does_not_unflag_the_set(client):
         },
     )
 
-    assert client.get("/api/mobility/pending").json()["last_session"] is not None
+    assert client.get("/api/mobility/last-session").json() is not None
     still = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
     assert still[0]["is_mobility"] is True
 
 
 def test_unflagging_a_set_is_possible_when_actually_asked_for(client):
     session_id = write_pending()
-    client.post("/api/mobility/transfer", json={"date": "2026-08-11", "session": session_id})
+    client.post(f"/api/upcoming/session/{session_id}/transfer", json={"date": "2026-08-11"})
     logged = client.get("/api/workouts/", params={"date": "2026-08-11"}).json()
 
     for row in logged:
@@ -303,65 +184,7 @@ def test_unflagging_a_set_is_possible_when_actually_asked_for(client):
         )
 
     # No mobility set anywhere means no last session, not an empty one.
-    assert client.get("/api/mobility/pending").json()["last_session"] is None
-
-
-def test_clearing_pending_discards_it(client):
-    session_id = write_pending()
-
-    assert client.delete(f"/api/mobility/pending/{session_id}").status_code == 204
-    assert client.get("/api/mobility/pending").json()["ready"] is False
-    assert client.delete(f"/api/mobility/pending/{session_id}").status_code == 404
-
-
-# --------------------------------------------------------------------------
-# The cost of sharing a table with the lifting planner
-# --------------------------------------------------------------------------
-def test_generating_a_lifting_program_leaves_mobility_alone(client):
-    """The regression the single-table decision is one missing filter away from.
-
-    `delete_all()` clears the board before a Liftoscript program is written.
-    Unscoped, it would take the pending mobility session with it and the
-    mobility tab would fall back to "no session ready" for a reason nothing on
-    screen could explain.
-    """
-    write_pending()
-
-    response = client.post(
-        "/api/upcoming/liftoscript/generate",
-        json={"script": "## Day 1\nBench Press / 3x5 135lb", "num_cycles": 1},
-    )
-    assert response.status_code == 200
-    assert response.json()["success"] is True
-
-    assert client.get("/api/mobility/pending").json()["ready"] is True
-
-
-def test_mobility_rows_do_not_appear_in_the_lifting_planner(client):
-    write_pending()
-
-    assert client.get("/api/upcoming/").json() == []
-
-
-def test_lifting_rows_do_not_appear_on_the_mobility_tab(client):
-    UpcomingWorkoutRepository().create(
-        UpcomingWorkoutCreate(session=MOBILITY_SESSION, exercise="Bench", category="Push")
-    )
-
-    assert client.get("/api/mobility/pending").json()["ready"] is False
-
-
-def test_a_label_holds_one_plan_row_not_a_pile(client):
-    """The rationale is superseded per label, never appended to.
-
-    It describes the session that is pending under that name, and only one is.
-    """
-    repo = MobilityRepository()
-    repo.upsert_plan("Mobility", "first")
-    repo.upsert_plan("Mobility", "second")
-
-    plans = repo.get_plans()
-    assert [(p["label"], p["rationale"]) for p in plans] == [("Mobility", "second")]
+    assert client.get("/api/mobility/last-session").json() is None
 
 
 def test_two_labels_are_two_independent_sessions(client):
@@ -370,25 +193,23 @@ def test_two_labels_are_two_independent_sessions(client):
     shoulder = write_pending("Lock 3 daily", label="Shoulder")
     assert low != shoulder
 
-    body = client.get("/api/mobility/pending").json()
-    assert [s["label"] for s in body["sessions"]] == ["Low back", "Shoulder"]
+    queue = client.get("/api/upcoming/").json()
+    assert [s["label"] for s in queue] == ["Low back", "Shoulder"]
 
     # Transferring one leaves the other pending.
-    client.post(
-        "/api/mobility/transfer", json={"date": "2026-08-11", "session": low}
-    )
-    after = client.get("/api/mobility/pending").json()
-    assert [s["label"] for s in after["sessions"]] == ["Shoulder"]
+    client.post(f"/api/upcoming/session/{low}/transfer", json={"date": "2026-08-11"})
+    after = client.get("/api/upcoming/").json()
+    assert [s["label"] for s in after] == ["Shoulder"]
 
 
 def test_discarding_one_session_leaves_the_other(client):
     write_pending("QL first", label="Low back")
     shoulder = write_pending("Lock 3 daily", label="Shoulder")
 
-    assert client.delete(f"/api/mobility/pending/{shoulder}").status_code == 204
+    assert client.delete(f"/api/upcoming/session/{shoulder}").status_code == 204
 
-    body = client.get("/api/mobility/pending").json()
-    assert [s["label"] for s in body["sessions"]] == ["Low back"]
+    queue = client.get("/api/upcoming/").json()
+    assert [s["label"] for s in queue] == ["Low back"]
 
 
 # --------------------------------------------------------------------------
@@ -410,9 +231,7 @@ def test_marking_a_whole_day_flags_every_set(client):
     ).json()
 
     assert (body["changed"], body["total"]) == (2, 2)
-    assert client.get("/api/mobility/pending").json()["last_session"]["date"] == (
-        "2026-08-11"
-    )
+    assert client.get("/api/mobility/last-session").json()["date"] == "2026-08-11"
 
 
 def test_marking_a_day_twice_writes_nothing_the_second_time(client):
@@ -446,7 +265,7 @@ def test_unmarking_a_whole_day_clears_every_set(client):
     ).json()
 
     assert body["changed"] == 2
-    assert client.get("/api/mobility/pending").json()["last_session"] is None
+    assert client.get("/api/mobility/last-session").json() is None
 
 
 def test_marking_a_day_leaves_other_days_alone(client):
@@ -499,10 +318,10 @@ def test_a_hand_flagged_day_reads_back_without_a_rationale(client):
     log_a_set(client, "2026-08-11")
     client.patch("/api/workouts/date/2026-08-11/mobility", json={"is_mobility": True})
 
-    response = client.get("/api/mobility/pending")
+    response = client.get("/api/mobility/last-session")
 
     assert response.status_code == 200
-    assert response.json()["last_session"]["rationale"] is None
+    assert response.json()["rationale"] is None
 
 
 # --------------------------------------------------------------------------
@@ -524,7 +343,7 @@ def session_body(label: str = "Low back", **overrides) -> dict:
 def pending_rows() -> int:
     with database.SessionLocal() as session:
         return session.execute(
-            text("SELECT COUNT(*) FROM upcoming_workouts WHERE kind = 'mobility'")
+            text("SELECT COUNT(*) FROM upcoming_workouts WHERE is_mobility = 1")
         ).scalar()
 
 
@@ -557,13 +376,27 @@ def test_writing_a_label_again_replaces_only_that_session(client):
 
     assert second["session"] == first["session"]
     assert second["replaced_pending_rows"] == 3
-    body = client.get("/api/mobility/pending").json()
-    by_label = {s["label"]: s for s in body["sessions"]}
+    queue = client.get("/api/upcoming/").json()
+    by_label = {s["label"]: s for s in queue}
     assert [i["exercise"] for i in by_label["Low back"]["items"]] == ["Hip Thrust"]
     assert by_label["Low back"]["rationale"] == "revised"
     # The other label is untouched: same session number, same three rows.
     assert by_label["Shoulder"]["session"] == shoulder
     assert len(by_label["Shoulder"]["items"]) == 3
+
+
+def test_a_new_session_numbers_above_the_whole_queue(client):
+    """One namespace now (9c4e7b21f806): a fresh label takes the global max +
+    1, not the next number within mobility, so it can never collide with a
+    Liftoscript session for transfer or delete to hit both."""
+    client.post(
+        "/api/upcoming/",
+        json={"session": 7, "exercise": "Bench", "category": "Push"},
+    )
+
+    body = client.post("/api/mobility/pending", json=session_body()).json()
+
+    assert body["session"] == 8
 
 
 def test_sets_expand_into_one_row_per_set(client):
@@ -577,13 +410,35 @@ def test_sets_expand_into_one_row_per_set(client):
         ),
     )
 
-    items = client.get("/api/mobility/pending").json()["sessions"][0]["items"]
-    assert [(i["exercise"], i["reps"], i["weight"]) for i in items] == [
+    (session,) = client.get("/api/upcoming/").json()
+    assert [(i["exercise"], i["reps"], i["weight"]) for i in session["items"]] == [
         ("Dead Bug", 20, 25.0),
         ("Dead Bug", 15, 25.0),
         ("Dead Bug", 15, 25.0),
     ]
-    assert all(i["comment"] is None for i in items)
+    assert all(i["comment"] is None for i in session["items"])
+
+
+def test_an_item_can_be_prescribed_unflagged(client):
+    """Every workout has a mobility element — not every set in it is one. A
+    session can prescribe lifting sets alongside the mobility work, and the
+    flag travels per item."""
+    client.post(
+        "/api/mobility/pending",
+        json=session_body(
+            items=[
+                {"exercise": "Romanian Deadlift", "reps": 8, "weight_lb": 135,
+                 "mobility": False},
+                {"exercise": "Pigeon Squat", "reps": 5, "weight_lb": 30},
+            ]
+        ),
+    )
+
+    (session,) = client.get("/api/upcoming/").json()
+    assert [(i["exercise"], i["is_mobility"]) for i in session["items"]] == [
+        ("Romanian Deadlift", False),
+        ("Pigeon Squat", True),
+    ]
 
 
 def test_a_per_set_comment_is_rejected_and_nothing_is_written(client):
@@ -630,9 +485,12 @@ def test_exercise_names_match_case_insensitively(client):
     ).json()
 
     assert body["exercises_created"] == []
-    items = client.get("/api/mobility/pending").json()["sessions"][0]["items"]
+    (session,) = client.get("/api/upcoming/").json()
     # The existing movement, under its own name and its own category.
-    assert (items[0]["exercise"], items[0]["category"]) == ("Dead Bug", "Legs")
+    assert (session["items"][0]["exercise"], session["items"][0]["category"]) == (
+        "Dead Bug",
+        "Legs",
+    )
 
 
 def test_a_new_exercise_lands_in_its_category_or_uncategorized(client):
@@ -646,24 +504,24 @@ def test_a_new_exercise_lands_in_its_category_or_uncategorized(client):
         ),
     )
 
-    items = client.get("/api/mobility/pending").json()["sessions"][0]["items"]
-    assert [(i["exercise"], i["category"]) for i in items] == [
+    (session,) = client.get("/api/upcoming/").json()
+    assert [(i["exercise"], i["category"]) for i in session["items"]] == [
         ("Copenhagen Plank", "Core"),
         ("Couch Stretch", "Uncategorized"),
     ]
 
 
-def test_a_written_session_shows_as_pending_and_transfers(client):
+def test_a_written_session_shows_on_the_queue_and_transfers(client):
     session_id = client.post("/api/mobility/pending", json=session_body()).json()[
         "session"
     ]
 
-    pending = client.get("/api/mobility/pending").json()
-    assert pending["ready"] is True
-    assert pending["sessions"][0]["session"] == session_id
+    queue = client.get("/api/upcoming/").json()
+    assert queue[0]["session"] == session_id
+    assert queue[0]["label"] == "Low back"
 
     response = client.post(
-        "/api/mobility/transfer", json={"date": "2026-09-25", "session": session_id}
+        f"/api/upcoming/session/{session_id}/transfer", json={"date": "2026-09-25"}
     )
     assert response.status_code == 200
     assert response.json()["count"] == 3
@@ -675,7 +533,7 @@ def test_a_written_session_shows_as_pending_and_transfers(client):
         "Weighted Pigeon Stretch",
     ]
     assert all(w["is_mobility"] and w["comment"] is None for w in logged)
-    last = client.get("/api/mobility/pending").json()["last_session"]
+    last = client.get("/api/mobility/last-session").json()
     assert last["rationale"].startswith("Dead bug leads.")
 
 

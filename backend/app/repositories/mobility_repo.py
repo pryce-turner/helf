@@ -38,7 +38,6 @@ from app.db.models import (
     UpcomingWorkout,
     Workout,
 )
-from app.repositories.upcoming_repo import MOBILITY
 from app.utils.date_helpers import format_timestamp, get_current_datetime
 
 #: Retired by b6f31a90c4de. Pending plans are rows in `mobility_plan` now,
@@ -56,6 +55,21 @@ UNCATEGORIZED = "Uncategorized"
 #: Notes are dated by `substr(noted_at, 1, 10)`, so the time half only has to
 #: be a valid-looking local timestamp that cannot drift across midnight.
 NOON = "T12:00:00"
+
+
+def _next_session_number(session) -> int:
+    """The session number a new plan takes: the global max + 1.
+
+    The queue is one namespace now (9c4e7b21f806) — a session number must pick
+    out one session no matter which author wrote it, because transfer and
+    delete are keyed by it. The max is taken over both tables that carry a
+    session number: `upcoming_workouts` holds the rows and `mobility_plan` the
+    labels, and either can outnumber the other for a moment (a plan is written
+    before its rows; the Liftoscript generator writes rows with no plan).
+    """
+    rows = session.execute(select(func.max(UpcomingWorkout.session))).scalar() or 0
+    plans = session.execute(select(func.max(MobilityPlan.session))).scalar() or 0
+    return max(rows, plans) + 1
 
 
 class MobilityRepository:
@@ -115,9 +129,8 @@ class MobilityRepository:
         write destroyed whatever was pending.
 
         Returns the plan including its `session`, which is what the caller
-        writes the items against. A new session takes `max + 1` **within
-        mobility**; lifting numbers its own sessions independently and the two
-        never meet, because every query names its kind.
+        writes the items against. A new session takes the **global** max + 1 —
+        see `_next_session_number`.
         """
         with database.SessionLocal() as session:
             plan = session.execute(
@@ -125,9 +138,7 @@ class MobilityRepository:
             ).scalars().first()
 
             if plan is None:
-                highest = session.execute(
-                    select(func.max(MobilityPlan.session))
-                ).scalar()
+                highest = _next_session_number(session) - 1
                 plan = MobilityPlan(
                     session=(highest or 0) + 1,
                     label=label,
@@ -153,11 +164,13 @@ class MobilityRepository:
         whose old rows are gone and whose new ones never landed reads as "no
         session" on the tab, for a reason nothing on screen explains.
 
-        `items` are {exercise, sets, reps, weight_lb, category}. Exercises
-        match by name case-insensitively, the same way `_resolve_exercise`
-        does, so "dead bug" does not become a second Dead Bug with its own
-        history. `category` only places a movement created here; an existing
-        one keeps the category chosen on /exercises.
+        `items` are {exercise, sets, reps, weight_lb, category, mobility}.
+        Exercises match by name case-insensitively, the same way
+        `_resolve_exercise` does, so "dead bug" does not become a second Dead
+        Bug with its own history. `category` only places a movement created
+        here; an existing one keeps the category chosen on /exercises.
+        `mobility` defaults to True — this writer is the mobility loop — but a
+        session can prescribe unflagged sets alongside the mobility work.
 
         `comment` is written NULL. The set's comment is the user's feedback
         field, and the API layer refuses one on the way in.
@@ -182,11 +195,8 @@ class MobilityRepository:
                 select(MobilityPlan).where(MobilityPlan.label == label)
             ).scalars().first()
             if plan is None:
-                highest = session.execute(
-                    select(func.max(MobilityPlan.session))
-                ).scalar()
                 plan = MobilityPlan(
-                    session=(highest or 0) + 1,
+                    session=_next_session_number(session),
                     label=label,
                     rationale=rationale,
                     created_at=format_timestamp(now),
@@ -199,7 +209,6 @@ class MobilityRepository:
 
             replaced = session.execute(
                 delete(UpcomingWorkout).where(
-                    UpcomingWorkout.kind == MOBILITY,
                     UpcomingWorkout.session == plan.session,
                 )
             ).rowcount
@@ -216,7 +225,7 @@ class MobilityRepository:
                     session.add(
                         UpcomingWorkout(
                             session=plan.session,
-                            kind=MOBILITY,
+                            is_mobility=item.get("mobility", True),
                             exercise_id=exercise.id,
                             category_id=exercise.category_id,
                             weight=item.get("weight_lb"),
@@ -278,6 +287,19 @@ class MobilityRepository:
             session.delete(plan)
             session.commit()
             return 1
+
+    def delete_all_plans(self) -> int:
+        """Drop every plan. The rows' half is `UpcomingWorkoutRepository.delete_all`.
+
+        Called from the Liftoscript generator route: generating a program
+        clears the whole queue (9c4e7b21f806), and a plan left behind would
+        lend its label and rationale to whatever session the generator numbers
+        the same.
+        """
+        with database.SessionLocal() as session:
+            count = session.execute(delete(MobilityPlan)).rowcount
+            session.commit()
+            return count
 
     def record_session_note(self, session_id: int, date: str) -> dict | None:
         """Turn a pending plan's reasoning into the record of a session run.

@@ -1,0 +1,96 @@
+// 5/3/1 Core Stability, barebones: the same four days (press, deadlift,
+// bench, squat) and four weeks, the last a deload, cut to three parts. Each
+// day runs: the two-movement core-stability pair, the Leg dynamic stretch
+// block, then the main lift. No accessories, foam rolling or static stretching.
+//
+// The 1RM lines below are TRAINING MAXES, which is what Wendler's
+// percentages are taken from. Edit them before generating; add 5lb (upper) /
+// 10lb (lower) each cycle. The + set is as many good reps as you have.
+//
+// Core pairs (Big 3 variations): press - side plank leg lift, 6-position
+// carry; deadlift - around the worlds, renegade rows; bench - Milco bench
+// press, ab-wheel rollout; squat - cable chops and lifts, stir the pot.
+// Overhead Press 1RM: 120lb
+// Deadlift 1RM: 290lb
+// Flat Barbell Bench Press 1RM: 225lb
+// Barbell Squat 1RM: 245lb
+
+## Week 1 - Press
+[Press core]
+[Leg dynamic stretch]
+Overhead Press / 1x5 65%, 1x5 75%, 1x5+ 85%
+
+## Week 1 - Deadlift
+[Deadlift core]
+[Leg dynamic stretch]
+Deadlift / 1x5 65%, 1x5 75%, 1x5+ 85%
+
+## Week 1 - Bench
+[Bench core]
+[Leg dynamic stretch]
+Flat Barbell Bench Press / 1x5 65%, 1x5 75%, 1x5+ 85%
+
+## Week 1 - Squat
+[Squat core]
+[Leg dynamic stretch]
+Barbell Squat / 1x5 65%, 1x5 75%, 1x5+ 85%
+
+## Week 2 - Press
+[Press core]
+[Leg dynamic stretch]
+Overhead Press / 1x3 70%, 1x3 80%, 1x3+ 90%
+
+## Week 2 - Deadlift
+[Deadlift core]
+[Leg dynamic stretch]
+Deadlift / 1x3 70%, 1x3 80%, 1x3+ 90%
+
+## Week 2 - Bench
+[Bench core]
+[Leg dynamic stretch]
+Flat Barbell Bench Press / 1x3 70%, 1x3 80%, 1x3+ 90%
+
+## Week 2 - Squat
+[Squat core]
+[Leg dynamic stretch]
+Barbell Squat / 1x3 70%, 1x3 80%, 1x3+ 90%
+
+## Week 3 - Press
+[Press core]
+[Leg dynamic stretch]
+Overhead Press / 1x5 75%, 1x3 85%, 1x1+ 95%
+
+## Week 3 - Deadlift
+[Deadlift core]
+[Leg dynamic stretch]
+Deadlift / 1x5 75%, 1x3 85%, 1x1+ 95%
+
+## Week 3 - Bench
+[Bench core]
+[Leg dynamic stretch]
+Flat Barbell Bench Press / 1x5 75%, 1x3 85%, 1x1+ 95%
+
+## Week 3 - Squat
+[Squat core]
+[Leg dynamic stretch]
+Barbell Squat / 1x5 75%, 1x3 85%, 1x1+ 95%
+
+## Week 4 - Press (Deload)
+[Press core]
+[Leg dynamic stretch]
+Overhead Press / 1x5 40%, 1x5 50%, 1x5 60%
+
+## Week 4 - Deadlift (Deload)
+[Deadlift core]
+[Leg dynamic stretch]
+Deadlift / 1x5 40%, 1x5 50%, 1x5 60%
+
+## Week 4 - Bench (Deload)
+[Bench core]
+[Leg dynamic stretch]
+Flat Barbell Bench Press / 1x5 40%, 1x5 50%, 1x5 60%
+
+## Week 4 - Squat (Deload)
+[Squat core]
+[Leg dynamic stretch]
+Barbell Squat / 1x5 40%, 1x5 50%, 1x5 60%

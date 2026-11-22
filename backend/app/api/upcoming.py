@@ -53,6 +53,10 @@ PRESETS = {
         "display_name": "5/3/1 Core Stability",
         "description": "Four-day 5/3/1 (press, deadlift, bench, squat) over four weeks with a deload, each day framed by dynamic stretching, a two-movement core-stability block, accessories, foam rolling and static stretching. The 1RM lines are training maxes.",
     },
+    "core_stability_531_barebones": {
+        "display_name": "5/3/1 Core Stability (Barebones)",
+        "description": "The 5/3/1 Core Stability days and weeks cut to three parts: the two-movement core-stability pair, the Leg dynamic stretch, then the main lift. No accessories or cool-down. The 1RM lines are training maxes.",
+    },
 }
 
 router = APIRouter()

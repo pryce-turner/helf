@@ -72,3 +72,21 @@ def test_the_mobility_blocks_are_flagged_and_the_training_is_not():
         "Pull Up", "Cable Face Pull", "Lateral Dumbbell Raise",
     }
 
+
+
+def test_barebones_531_is_core_then_leg_stretch_then_main_lift():
+    script = (PRESET_DIR / "core_stability_531_barebones.liftoscript").read_text()
+    sets = LiftoscriptParser().parse(script, resolve_block=resolve_block)
+    assert len({s.session for s in sets}) == 16
+
+    week1_press = [s for s in sets if s.session == 1]
+    assert list(dict.fromkeys(s.exercise for s in week1_press)) == [
+        "Side Plank Leg Lift", "6 Position Carry Drill",
+        "Lunging Couch Stretch", "3-Way Hamstring Stretch", "Sweeping Standing Calf Stretch",
+        "Overhead Press",
+    ]
+    assert {s.exercise for s in week1_press if s.is_mobility} == {
+        "Lunging Couch Stretch", "3-Way Hamstring Stretch", "Sweeping Standing Calf Stretch",
+    }
+    press = [s for s in week1_press if s.exercise == "Overhead Press"]
+    assert [s.weight for s in press] == [80, 90, 100]

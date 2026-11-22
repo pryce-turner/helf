@@ -404,3 +404,120 @@ def test_scripted_mobility_reaches_the_day(client):
         ("Pigeon Stretch", True),
         ("Barbell Squat", False),
     ]
+
+
+# --------------------------------------------------------------------------
+# Update remaining: an edit to the running program, applied to what is left
+# --------------------------------------------------------------------------
+GENERATE = "/api/upcoming/liftoscript/generate"
+TWO_DAYS = (
+    "// Barbell Squat SW: 100lb\n"
+    "## Day A\nBarbell Squat / 3x5 progress: lp(5lb)\n"
+    "## Day B\nBench Press / 3x5 100lb"
+)
+
+
+def queue_by_session(client) -> dict[int, dict]:
+    return {s["session"]: s for s in client.get("/api/upcoming/").json()}
+
+
+def test_update_remaining_replaces_only_the_sessions_still_queued(client):
+    """Session 1 was run; the edit reaches 2-4 at their own places, and lp()
+    carries on from the cycle rather than restarting at the start weight."""
+    client.post(GENERATE, json={"script": TWO_DAYS, "num_cycles": 2})
+    client.post("/api/upcoming/session/1/transfer", json={"date": "2026-11-20"})
+
+    edited = TWO_DAYS.replace(
+        "Bench Press / 3x5 100lb", "Bench Press / 3x5 110lb"
+    ).replace(
+        "progress: lp(5lb)\n", "progress: lp(5lb)\nFace Pull / 1x15 20lb\n"
+    )
+    response = client.post(
+        GENERATE, json={"script": edited, "num_cycles": 2, "remaining_only": True}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["deleted_count"] == 9
+    assert body["count"] == 10
+    assert "1 already run" in body["message"]
+
+    queue = queue_by_session(client)
+    assert sorted(queue) == [2, 3, 4]
+    assert {i["weight"] for i in queue[2]["items"]} == {110}
+    assert [(i["exercise"], i["weight"]) for i in queue[3]["items"]] == [
+        ("Barbell Squat", 105)
+    ] * 3 + [("Face Pull", 20)]
+
+    # What was run is history, untouched by the edit.
+    day = client.get("/api/workouts/", params={"date": "2026-11-20"}).json()
+    assert [(w["exercise"], w["weight"]) for w in day] == [("Barbell Squat", 100)] * 3
+    assert client.get("/api/upcoming/liftoscript/last").json()["script"] == edited
+
+
+def test_update_remaining_refuses_a_change_in_days_per_cycle(client):
+    client.post(GENERATE, json={"script": TWO_DAYS, "num_cycles": 2})
+    before = client.get("/api/upcoming/").json()
+
+    response = client.post(
+        GENERATE,
+        json={
+            "script": TWO_DAYS + "\n## Day C\nDeadlift / 1x5 225lb",
+            "num_cycles": 2,
+            "remaining_only": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "3 day(s) per cycle" in response.json()["detail"]
+    assert client.get("/api/upcoming/").json() == before
+    assert client.get("/api/upcoming/liftoscript/last").json()["script"] == TWO_DAYS
+
+
+def test_update_remaining_needs_a_program_behind_the_queue(client):
+    response = client.post(
+        GENERATE,
+        json={"script": "## Day 1\nBench Press / 3x5 135lb", "remaining_only": True},
+    )
+    assert response.status_code == 400
+    assert "Nothing has been generated" in response.json()["detail"]
+
+
+def test_update_remaining_keeps_the_agents_session_moving_it_past_the_program(client):
+    """More cycles want the number the agent's session took; it moves past the
+    program with its plan, rather than being wiped or doubling up."""
+    client.post(GENERATE, json={"script": "## Day 1\nBench Press / 1x5 135lb"})
+    agent = client.post("/api/mobility/pending", json=write_agent_session()).json()
+    assert agent["session"] == 2
+
+    response = client.post(
+        GENERATE,
+        json={
+            "script": "## Day 1\nBench Press / 1x5 140lb",
+            "num_cycles": 3,
+            "remaining_only": True,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert "moved 1 agent-written session" in response.json()["message"]
+    queue = queue_by_session(client)
+    assert sorted(queue) == [1, 2, 3, 4]
+    assert queue[4]["label"] == "Low back"
+    assert [i["exercise"] for i in queue[4]["items"]] == [
+        "Weighted Pigeon Squat", "Weighted Pigeon Squat", "Hanging Knee Raise"
+    ]
+    assert all(i["weight"] == 140 for n in (1, 2, 3) for i in queue[n]["items"])
+
+
+def test_update_remaining_with_every_session_run_is_refused(client):
+    client.post(GENERATE, json={"script": "## Day 1\nBench Press / 1x5 135lb"})
+    client.post("/api/upcoming/session/1/transfer", json={"date": "2026-11-20"})
+
+    response = client.post(
+        GENERATE,
+        json={"script": "## Day 1\nBench Press / 1x5 140lb", "remaining_only": True},
+    )
+    assert response.status_code == 400
+    assert "already been run" in response.json()["detail"]
+    assert client.get("/api/upcoming/").json() == []

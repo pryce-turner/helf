@@ -654,12 +654,13 @@ const Upcoming = () => {
     }
   };
 
-  const performGenerate = async () => {
+  const performGenerate = async (remainingOnly = false) => {
     setEditorError('');
     try {
       await generateLiftoscript.mutateAsync({
         script: scriptContent,
         num_cycles: parseInt(numCycles) || 4,
+        ...(remainingOnly ? { remaining_only: true } : {}),
       });
       setShowEditor(false);
       setShowConfirmDialog(false);
@@ -670,6 +671,11 @@ const Upcoming = () => {
       setShowConfirmDialog(false);
     }
   };
+
+  // An edit to the running program can go to the sessions still queued
+  // without touching the ones run or the agent's (the server refuses it if
+  // the days per cycle changed).
+  const canUpdateRemaining = !!lastProgram && sessions?.some((s) => !s.label);
 
   const totalSets = sessions?.reduce((n, s) => n + s.items.length, 0) ?? 0;
   // Named in the warning: generating wipes these along with everything else.
@@ -800,6 +806,16 @@ const Upcoming = () => {
                     <Button variant="secondary" onClick={() => setShowEditor(false)}>
                       Cancel
                     </Button>
+                    {canUpdateRemaining && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => performGenerate(true)}
+                        disabled={generateLiftoscript.isPending || !scriptContent.trim()}
+                        title="Apply this script to the program's sessions still in the queue. Sessions already run and the agent's are left alone; the number of days per cycle must stay the same."
+                      >
+                        Update remaining
+                      </Button>
+                    )}
                     <Button
                       onClick={handleGenerateClick}
                       disabled={generateLiftoscript.isPending || !scriptContent.trim()}
@@ -865,7 +881,7 @@ const Upcoming = () => {
                       Cancel
                     </Button>
                     <Button
-                      onClick={performGenerate}
+                      onClick={() => performGenerate()}
                       disabled={generateLiftoscript.isPending}
                     >
                       {generateLiftoscript.isPending ? (

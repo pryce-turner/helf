@@ -243,6 +243,37 @@ it("warns before generating, naming the agent-written sessions it wipes", async 
     );
 });
 
+it("updates the remaining sessions without the overwrite warning", async () => {
+    upcoming.getAll.mockResolvedValue({ data: [GENERATED_SESSION, AGENT_SESSION] } as never);
+    upcoming.getLastProgram.mockResolvedValue({
+        data: {
+            script: "## Day 1\nBench Press / 3x5 135lb",
+            num_cycles: 4,
+            generated_at: "2026-11-20 18:00:00",
+        },
+    } as never);
+    upcoming.generateLiftoscript.mockResolvedValue({
+        data: { success: true, message: "ok", count: 3, sessions: 1, deleted_count: 3 },
+    } as never);
+
+    renderPage(<Upcoming />);
+    await waitFor(() => expect(upcoming.getLastProgram).toHaveBeenCalled());
+    await userEvent.click(await screen.findByText("Edit program"));
+    const editor = screen.getByRole("textbox");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "## Day 1\nBench Press / 3x5 140lb");
+    await userEvent.click(screen.getByRole("button", { name: "Update remaining" }));
+
+    await waitFor(() =>
+        expect(upcoming.generateLiftoscript).toHaveBeenCalledWith({
+            script: "## Day 1\nBench Press / 3x5 140lb",
+            num_cycles: 4,
+            remaining_only: true,
+        }),
+    );
+    expect(screen.queryByText("Generate and overwrite")).not.toBeInTheDocument();
+});
+
 it("opens the editor on the last generated program", async () => {
     upcoming.getAll.mockResolvedValue({ data: [] } as never);
     upcoming.getLastProgram.mockResolvedValue({

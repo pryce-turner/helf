@@ -68,6 +68,8 @@ export interface WendlerCurrentMaxes {
 export interface LiftoscriptGenerateRequest {
   script: string;
   num_cycles: number;
+  /** Only the program's sessions still queued; the days per cycle must match. */
+  remaining_only?: boolean;
 }
 
 export interface LiftoscriptGenerateResponse {

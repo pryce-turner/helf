@@ -284,6 +284,9 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
             ),
         )
 
+    if request.remaining_only:
+        return _update_remaining(request, workouts, repo)
+
     deleted_count = repo.delete_all()
     deleted_plans = mobility_repo.delete_all_plans()
     created = repo.create_bulk(workouts)
@@ -301,6 +304,65 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
         count=len(created),
         sessions=sessions,
         deleted_count=deleted_count,
+    )
+
+
+def _update_remaining(
+    request: LiftoscriptGenerateRequest,
+    workouts: list,
+    repo: UpcomingWorkoutRepository,
+) -> LiftoscriptGenerateResponse:
+    """Apply an edited program to the sessions still to run.
+
+    A session keeps its number, and the number is its place in the program
+    (cycle x days + day), so the edit has to keep the days per cycle: with a
+    day added or taken out, "session 8" would name a different workout than
+    the one it replaces. That is refused rather than remapped, on purpose - an
+    edit this mode accepts is a revision of the running program, and a new
+    shape is a new program, which is what Generate is for.
+    """
+    last = repo.last_program()
+    if last is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Nothing has been generated yet, so no sessions remain to update. Use Generate.",
+        )
+    old_days = LiftoscriptParser.count_days(last["script"])
+    new_days = LiftoscriptParser.count_days(request.script)
+    if new_days != old_days:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"The edited program has {new_days} day(s) per cycle and the one "
+                f"behind the queue has {old_days}. Updating the remaining sessions "
+                "keeps each one in its place, so the days have to match - use "
+                "Generate to start over with a different number of days."
+            ),
+        )
+
+    result = repo.replace_remaining(workouts, old_days * last["num_cycles"])
+    if result is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Every session of the program behind the queue has already been "
+                "run, so none remain to update. Use Generate to start a new one."
+            ),
+        )
+    repo.save_program(request.script, request.num_cycles)
+
+    message = (
+        f"Updated {result['sessions']} remaining sessions ({result['created']} sets); "
+        f"{result['left_alone']} already run left as they were"
+    )
+    if result["moved"]:
+        message += f"; moved {result['moved']} agent-written session(s) after the program"
+    return LiftoscriptGenerateResponse(
+        success=True,
+        message=message,
+        count=result["created"],
+        sessions=result["sessions"],
+        deleted_count=result["deleted"],
     )
 
 

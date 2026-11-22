@@ -95,6 +95,14 @@ class LiftoscriptGenerateRequest(BaseModel):
 
     script: str = Field(..., min_length=1, description="Liftoscript program text")
     num_cycles: int = Field(1, ge=1, le=52, description="Number of cycles to repeat the workouts")
+    remaining_only: bool = Field(
+        False,
+        description=(
+            "Apply the script to the sessions of the current program still in "
+            "the queue, leaving the ones already run and the agent's alone. "
+            "Refused unless the days per cycle match the last generated program."
+        ),
+    )
 
 
 class LiftoscriptGenerateResponse(BaseModel):

@@ -3,11 +3,11 @@
 
 import json
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
-from app.db.models import Category, Document, Exercise, UpcomingWorkout
+from app.db.models import Category, Document, Exercise, MobilityPlan, UpcomingWorkout
 from app.models.upcoming import UpcomingWorkoutCreate
 from app.utils.date_helpers import get_current_datetime
 from app.utils.units import CANONICAL_WEIGHT_UNIT
@@ -174,80 +174,152 @@ class UpcomingWorkoutRepository:
             return []
 
         with SessionLocal() as session:
-            categories_cache: dict[str, Category] = {}
-            exercises_cache: dict[str, Exercise] = {}
-            created_here: set[str] = set()
-            created = []
-
-            for workout in workouts:
-                workout_dict = workout.model_dump(exclude_none=False)
-                category_name = workout_dict["category"]
-                exercise_name = workout_dict["exercise"]
-
-                category = categories_cache.get(category_name)
-                if not category:
-                    category = self._get_or_create_category(session, category_name)
-                    categories_cache[category_name] = category
-
-                exercise = exercises_cache.get(exercise_name)
-                if not exercise:
-                    is_new = (
-                        session.execute(
-                            select(Exercise.id).where(Exercise.name == exercise_name)
-                        ).first()
-                        is None
-                    )
-                    exercise = self._get_or_create_exercise(
-                        session, exercise_name, category
-                    )
-                    exercises_cache[exercise_name] = exercise
-                    if is_new:
-                        created_here.add(exercise_name)
-                # A movement this program brings into the catalog takes the
-                # field groups the program gives it: transfer applies the
-                # exercise's configuration (plan 0018), and a new exercise
-                # defaults Time and Distance off, which would drop them.
-                # Existing exercises are never changed here — the generate
-                # route refuses a program that needs a group they have off.
-                if exercise_name in created_here:
-                    if workout_dict.get("work_seconds") is not None:
-                        exercise.time_enabled = True
-                    if workout_dict.get("distance") is not None:
-                        exercise.distance_enabled = True
-
-                # An exercise already in the catalog keeps its own category.
-                # The parser only knows a short built-in list and calls
-                # everything else "Other", which used to land on the queued
-                # set — and from there on the day — whatever the movement's
-                # real category was.
-                row_category_id = (
-                    category.id if exercise_name in created_here else exercise.category_id
-                )
-
-                new_workout = UpcomingWorkout(
-                    session=workout_dict["session"],
-                    is_mobility=workout_dict.get("is_mobility") or False,
-                    exercise_id=exercise.id,
-                    category_id=row_category_id,
-                    weight=workout_dict.get("weight"),
-                    reps=workout_dict.get("reps"),
-                    distance=workout_dict.get("distance"),
-                    distance_unit=workout_dict.get("distance_unit"),
-                    time=workout_dict.get("time"),
-                    comment=workout_dict.get("comment"),
-                    work_seconds=workout_dict.get("work_seconds"),
-                    rest_seconds=workout_dict.get("rest_seconds"),
-                    rest_after_seconds=workout_dict.get("rest_after_seconds"),
-                    created_at=get_current_datetime(),
-                )
-                session.add(new_workout)
-                created.append(new_workout)
-
+            created = self._add_bulk(session, workouts)
             session.commit()
             for workout in created:
                 session.refresh(workout)
 
             return [self._serialize(workout) for workout in created]
+
+    def _add_bulk(
+        self, session, workouts: list[UpcomingWorkoutCreate]
+    ) -> list[UpcomingWorkout]:
+        """Add the rows to `session` without committing."""
+        categories_cache: dict[str, Category] = {}
+        exercises_cache: dict[str, Exercise] = {}
+        created_here: set[str] = set()
+        created = []
+
+        for workout in workouts:
+            workout_dict = workout.model_dump(exclude_none=False)
+            category_name = workout_dict["category"]
+            exercise_name = workout_dict["exercise"]
+
+            category = categories_cache.get(category_name)
+            if not category:
+                category = self._get_or_create_category(session, category_name)
+                categories_cache[category_name] = category
+
+            exercise = exercises_cache.get(exercise_name)
+            if not exercise:
+                is_new = (
+                    session.execute(
+                        select(Exercise.id).where(Exercise.name == exercise_name)
+                    ).first()
+                    is None
+                )
+                exercise = self._get_or_create_exercise(
+                    session, exercise_name, category
+                )
+                exercises_cache[exercise_name] = exercise
+                if is_new:
+                    created_here.add(exercise_name)
+            # A movement this program brings into the catalog takes the
+            # field groups the program gives it: transfer applies the
+            # exercise's configuration (plan 0018), and a new exercise
+            # defaults Time and Distance off, which would drop them.
+            # Existing exercises are never changed here — the generate
+            # route refuses a program that needs a group they have off.
+            if exercise_name in created_here:
+                if workout_dict.get("work_seconds") is not None:
+                    exercise.time_enabled = True
+                if workout_dict.get("distance") is not None:
+                    exercise.distance_enabled = True
+
+            # An exercise already in the catalog keeps its own category.
+            # The parser only knows a short built-in list and calls
+            # everything else "Other", which used to land on the queued
+            # set — and from there on the day — whatever the movement's
+            # real category was.
+            row_category_id = (
+                category.id if exercise_name in created_here else exercise.category_id
+            )
+
+            new_workout = UpcomingWorkout(
+                session=workout_dict["session"],
+                is_mobility=workout_dict.get("is_mobility") or False,
+                exercise_id=exercise.id,
+                category_id=row_category_id,
+                weight=workout_dict.get("weight"),
+                reps=workout_dict.get("reps"),
+                distance=workout_dict.get("distance"),
+                distance_unit=workout_dict.get("distance_unit"),
+                time=workout_dict.get("time"),
+                comment=workout_dict.get("comment"),
+                work_seconds=workout_dict.get("work_seconds"),
+                rest_seconds=workout_dict.get("rest_seconds"),
+                rest_after_seconds=workout_dict.get("rest_after_seconds"),
+                created_at=get_current_datetime(),
+            )
+            session.add(new_workout)
+            created.append(new_workout)
+
+        return created
+
+    def replace_remaining(
+        self, workouts: list[UpcomingWorkoutCreate], program_sessions: int
+    ) -> dict | None:
+        """Swap the program's not-yet-run sessions for the same-numbered ones
+        of `workouts`, in one transaction.
+
+        The queue is the only record of progress: transfer deletes a session,
+        so of the last program's sessions `1..program_sessions`, the ones still
+        queued (and with no `mobility_plan`, which marks the agent's) are what
+        remains, and every other number has been run or dropped. The new
+        program's sessions at those numbers are left out, so what was done
+        stays done and each remaining session keeps its place - `lp()` reads
+        its step off the cycle, so the weights carry on rather than restart.
+        Sessions past the old program's end (more cycles) are new, and kept.
+
+        The agent's sessions are kept as they are. One whose number the new
+        program now needs moves past it, plan and rows together, in order.
+
+        Returns None, writing nothing, when no session would be left.
+        """
+        with SessionLocal() as session:
+            plans = set(session.execute(select(MobilityPlan.session)).scalars())
+            queued = set(
+                session.execute(select(UpcomingWorkout.session).distinct()).scalars()
+            )
+            remaining = {
+                s for s in queued if s not in plans and 1 <= s <= program_sessions
+            }
+            gone = set(range(1, program_sessions + 1)) - remaining
+            kept = [w for w in workouts if w.session not in gone]
+            if not kept:
+                return None
+
+            deleted = (
+                session.execute(
+                    delete(UpcomingWorkout).where(UpcomingWorkout.session.in_(remaining))
+                ).rowcount
+                if remaining
+                else 0
+            )
+
+            numbers = {w.session for w in kept}
+            others = sorted((queued | plans) - remaining)
+            next_free = max(numbers | set(others)) + 1
+            moved = 0
+            for number in others:
+                if number not in numbers:
+                    continue
+                for model in (UpcomingWorkout, MobilityPlan):
+                    session.execute(
+                        update(model).where(model.session == number).values(session=next_free)
+                    )
+                next_free += 1
+                moved += 1
+
+            self._add_bulk(session, kept)
+            session.commit()
+            return {
+                "deleted": deleted,
+                "created": len(kept),
+                "sessions": len(numbers),
+                "left_alone": len(gone),
+                "moved": moved,
+            }
 
     def delete_session(self, session_id: int) -> int:
         """Delete all workouts in a session. Returns count of deleted workouts."""

@@ -642,7 +642,15 @@ docker-compose up -d
   sessions. **Clears the whole queue first** — rows and plans alike
   (9c4e7b21f806); the page warns, naming the agent-written sessions, before
   the confirm is offered. 400 before clearing anything if the script needs a
-  field group an existing exercise has off (plan 0021)
+  field group an existing exercise has off (plan 0021). With
+  `remaining_only: true` (the editor's **Update remaining**) it clears nothing
+  else: of the last generated program's sessions, only the ones still queued
+  are replaced, at the same numbers, so sessions already run stay run and
+  `lp()` carries on from its cycle. The agent's sessions are kept, moved past
+  the program if it now needs their number. **Refused (400) if the days per
+  cycle differ from the last program** — a session's number is its place in
+  the program, and a new shape is a new program, which is what plain generate
+  is for; also 400 if nothing was generated or every session has been run
 - `GET /presets` - List available workout presets
 - `GET /presets/{name}` - Get preset script content
 - `GET /liftoscript/last` - The script and `num_cycles` of the last **successful** generate, or null. Each one is kept as a `document` (`kind = 'liftoscript_program'`), so earlier programs stay readable; the editor reopens on the latest

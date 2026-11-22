@@ -494,6 +494,18 @@ class LiftoscriptParser:
 
         return workouts, current_session
 
+    @classmethod
+    def count_days(cls, script: str) -> int:
+        """How many `## Day` sessions one cycle of the script holds.
+
+        Read off the top-level text alone: a block can hold no day header
+        (`_expand` refuses one), so nothing needs resolving - which also lets
+        the count be taken of an old program whose blocks have since changed.
+        """
+        return sum(
+            1 for raw in script.split("\n") if cls.DAY_HEADER_PATTERN.match(raw.strip())
+        )
+
     def parse(
         self,
         script: str,

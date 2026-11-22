@@ -385,3 +385,22 @@ def test_a_known_exercise_keeps_its_own_category(client):
         ("Bird Dog", "Core"),
         ("Brand New Thing", "Other"),
     ]
+
+
+def test_scripted_mobility_reaches_the_day(client):
+    client.post(
+        "/api/upcoming/liftoscript/generate",
+        json={"script": "## Day 1\nPigeon Stretch / 1x2 60s ~\nBarbell Squat / 1x5 135lb", "num_cycles": 1},
+    )
+    (session,) = client.get("/api/upcoming/").json()
+    assert [i["is_mobility"] for i in session["items"]] == [True, False]
+
+    client.post("/api/upcoming/session/1/transfer", json={"date": "2026-11-23"})
+    day = sorted(
+        client.get("/api/workouts/", params={"date": "2026-11-23"}).json(),
+        key=lambda w: w["order"],
+    )
+    assert [(w["exercise"], w["is_mobility"]) for w in day] == [
+        ("Pigeon Stretch", True),
+        ("Barbell Squat", False),
+    ]

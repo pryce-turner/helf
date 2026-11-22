@@ -54,3 +54,20 @@ def test_each_day_has_its_core_pair():
     for exercises in by_session.values():
         (lift,) = [m for m in pairs if m in exercises]
         assert pairs[lift] <= exercises
+
+
+def test_the_mobility_blocks_are_flagged_and_the_training_is_not():
+    script = (PRESET_DIR / "core_stability_531.liftoscript").read_text()
+    week1_press = [s for s in LiftoscriptParser().parse(script) if s.session == 1]
+    flagged = {s.exercise for s in week1_press if s.is_mobility}
+    unflagged = {s.exercise for s in week1_press if not s.is_mobility}
+    assert flagged == {
+        "Arm Circles", "Cat-Cow", "Standing Thoracic Rotation", "World's Greatest Stretch",
+        "Foam Roll Thoracic Spine", "Foam Roll Lats",
+        "Doorway Pec Stretch", "Thoracic Extension Over Chair",
+    }
+    assert unflagged == {
+        "Side Plank Leg Lift", "6 Position Carry Drill", "Overhead Press",
+        "Pull Up", "Cable Face Pull", "Lateral Dumbbell Raise",
+    }
+

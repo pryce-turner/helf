@@ -23,6 +23,7 @@ export default function LiftoscriptEditor({ value, onChange, error }: Liftoscrip
 // Main Lift
 Barbell Squat / 1x5 65%, 1x5 75%, 1x5+ 85%
 Plank / 3x6 10s rest 5s after 30s
+Pigeon Stretch / 1x2 60s ~
 Rower / 1x1 2000m
 ..."
         style={{
@@ -61,8 +62,8 @@ Rower / 1x1 2000m
       }}>
         <span>{stats.lines} lines, {stats.chars.toLocaleString()} characters</span>
         {!error && (
-          <span title="Timing goes after NxM: work per rep (10s, 2min, 1:30), rest between reps (rest 5s), rest after the set (after 30s). Distance: 400m, 5km, 1mi, 100yd. m is metres; minutes are min or m:ss.">
-            Timing: 10s rest 5s after 30s · distance: 400m
+          <span title="Timing goes after NxM: work per rep (10s, 2min, 1:30), rest between reps (rest 5s), rest after the set (after 30s). Distance: 400m, 5km, 1mi, 100yd. m is metres; minutes are min or m:ss. Add ~ to flag a spec's sets as mobility work. Anything else on a line is an error.">
+            Timing: 10s rest 5s after 30s · distance: 400m · mobility: ~
           </span>
         )}
         {error && (

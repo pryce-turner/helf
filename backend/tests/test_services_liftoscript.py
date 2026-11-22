@@ -369,18 +369,17 @@ Flat Barbell Bench Press / 1x5 77%
 
         assert workouts == []
 
-    def test_parse_line_without_slash_is_ignored(self):
-        """Test that lines without / separator are ignored."""
+    def test_parse_line_without_slash_is_an_error(self):
+        """A line without the / separator used to be skipped, which silently
+        dropped "Barbell Squat 3x5" with its slash missing (plan 0021)."""
         parser = LiftoscriptParser()
         script = """
 ## Day 1
 This line has no slash
 Barbell Squat / 3x5 135lb
 """
-        workouts = parser.parse(script)
-
-        # Should only parse the valid line
-        assert len(workouts) == 3
+        with pytest.raises(LiftoscriptParseError, match="is not a set line"):
+            parser.parse(script)
 
     def test_parse_exercise_with_no_weight(self):
         """Test parsing exercise without weight specification."""
@@ -478,3 +477,61 @@ class TestTimingAndDistance:
     def test_out_of_range_names_the_exercise(self):
         with pytest.raises(LiftoscriptParseError, match="Plank: work time of 7200s"):
             self._one("Plank / 1x1 120min")
+
+    def test_mobility_keyword_flags_the_spec(self):
+        (stretch,) = self._one("Pigeon Stretch / 1x2 60s rest 10s ~")
+        assert stretch.is_mobility is True
+        assert (stretch.reps, stretch.work_seconds, stretch.rest_seconds) == (2, 60, 10)
+
+    def test_mobility_is_per_spec_and_off_by_default(self):
+        flagged, plain = self._one("Leg Swings / 1x2 30s ~, 1x2 45s")
+        assert (flagged.is_mobility, plain.is_mobility) == (True, False)
+        (lift,) = self._one("Barbell Squat / 1x5 135lb")
+        assert lift.is_mobility is False
+
+    def test_mobility_marker_anywhere_after_nxm(self):
+        (s,) = self._one("Cat-Cow / 1x1 ~ 60s")
+        assert (s.is_mobility, s.work_seconds) == (True, 60)
+
+
+class TestStrictParsing:
+    """Anything the parser does not read is an error naming it (plan 0021):
+    a typo used to vanish, taking a rest time or a mobility flag with it."""
+
+    def _parse(self, body):
+        return LiftoscriptParser().parse(f"## Day 1\n{body}")
+
+    @pytest.mark.parametrize(
+        "line, bad",
+        [
+            ("Pigeon Stretch / 1x2 60s mobility", "mobility"),
+            ("Plank / 3x6 10s rest5s", "rest5s"),
+            ("Plank / 3x6 10ss", "10ss"),
+            ("Plank / 3x6 10s 20s", "20s"),
+            ("Barbell Squat / 3x5 135lb 145lb", "145lb"),
+            ("Plank / 3x6 10s `", "`"),
+        ],
+    )
+    def test_leftover_text_is_named(self, line, bad):
+        with pytest.raises(LiftoscriptParseError, match=f"didn't understand '{bad}'"):
+            self._parse(line)
+
+    def test_rpe_is_refused_rather_than_dropped(self):
+        with pytest.raises(LiftoscriptParseError, match="RPE"):
+            self._parse("Barbell Squat / 3x5 135lb @8")
+
+    def test_a_line_missing_its_slash_is_an_error(self):
+        with pytest.raises(LiftoscriptParseError, match="Line 2: 'Barbell Squat 5x5'"):
+            self._parse("Barbell Squat 5x5")
+
+    def test_an_exercise_with_no_sets_is_an_error(self):
+        with pytest.raises(LiftoscriptParseError, match="nothing after the '/'"):
+            self._parse("Barbell Squat /")
+
+    def test_a_name_with_a_slash_is_an_error(self):
+        with pytest.raises(LiftoscriptParseError, match="more than one '/'"):
+            self._parse("Front / Lateral Dumbbell Raise / 3x12 20lb")
+
+    def test_comments_and_single_hash_headings_still_pass(self):
+        sets = LiftoscriptParser().parse("# Week 1\n## Day 1\n// note\nPlank / 1x1 30s\n")
+        assert len(sets) == 1

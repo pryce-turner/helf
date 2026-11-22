@@ -773,10 +773,10 @@ work is a field on the set, written through the normal workout routes
 ### Workout Planning (Liftoscript)
 - Session-based upcoming workout management
 - Custom Liftoscript scripting language for defining programs
-- Built-in programs (the program editor's dropdown; `app/presets/*.liftoscript`, still "presets" in the API and code): Wendler 5/3/1, StrongLifts 5x5, Cutting Rotation, 5/3/1 Core Stability (press/deadlift/bench/squat, each day framed by dynamic stretching, a two-movement core block, accessories, foam rolling and static stretching; its 1RM lines are training maxes). `tests/test_builtin_programs.py` parses every one
+- Built-in programs (the program editor's dropdown; `app/presets/*.liftoscript`, still "presets" in the API and code): Wendler 5/3/1, StrongLifts 5x5, Cutting Rotation, 5/3/1 Core Stability (press/deadlift/bench/squat, each day framed by dynamic stretching, a two-movement core block, accessories, foam rolling and static stretching — those three stretching/rolling blocks marked `~`; its 1RM lines are training maxes). `tests/test_builtin_programs.py` parses every one
 - Percentage-based weights (% of 1RM)
 - Linear progression: `progress: lp(5lb)`
-- Timing and distance after `NxM` (plan 0021): work per rep `10s`/`2min`/`1:30`, `rest 5s` between reps, `after 30s` after the set, distance `400m`/`5km`/`1mi`/`100yd` (`m` is metres; minutes are `min` or `m:ss`). Carried on the queue and onto the day at transfer. Generate refuses a program needing Time/Distance on an existing exercise that has the group off; exercises it creates get the groups switched on
+- Timing and distance after `NxM` (plan 0021): work per rep `10s`/`2min`/`1:30`, `rest 5s` between reps, `after 30s` after the set, distance `400m`/`5km`/`1mi`/`100yd` (`m` is metres; minutes are `min` or `m:ss`). Carried on the queue and onto the day at transfer. `~` in a spec flags its sets as mobility work (`is_mobility`), per spec, and transfer carries the flag. **Strict**: anything else on a set line, a non-blank line that is not a set / `##` header / comment, a missing `/`, or a name containing `/` is a parse error naming it (400 from generate, queue untouched); RPE `@8` is refused, not dropped Generate refuses a program needing Time/Distance on an existing exercise that has the group off; exercises it creates get the groups switched on
 - Multi-cycle generation
 - One-click transfer to historical data
 - The editor reopens on the last generated program (kept server-side, so it follows you across devices); a failed generate never replaces it

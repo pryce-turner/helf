@@ -64,6 +64,26 @@ The parser knows about eighteen lifts' categories and labels the rest
 already in the catalog now keeps its own category; only a new one takes the
 parser's guess.
 
+## 4a. Mobility, and a strict parser (added 2026-11-22)
+
+`~` anywhere after the `NxM` flags that spec's sets as mobility work:
+`Pigeon Stretch / 1x2 60s ~`. Per spec, like timing, and off by default.
+A symbol rather than the word `mobility`, because a misspelt word was the
+obvious failure: the parser ignored anything it did not recognise, so
+`mobilty` left the set unflagged and `rest5s` lost its rest, silently.
+
+So the parser is strict now. Each recognised token is taken out of the spec
+once, and anything left — a typo, a second work time, a second weight — is
+an error naming it. A non-blank line that is not a set, a `##` header or a
+comment (`#` headings still pass), an exercise with nothing after the `/`,
+and a name containing `/` are errors too, where they used to be skipped.
+RPE (`@8`) is refused with its own message instead of being dropped. Generate
+returns these as a 400 before the queue is touched. No new column — `upcoming_workouts.is_mobility` already
+existed (9c4e7b21f806) and transfer already carried it; only the parser could
+not set it. The 5/3/1 Core Stability program marks its dynamic stretching,
+foam rolling and static stretching blocks; the core work and the lifts stay
+training.
+
 ## 5. Not done
 
 - The agent's `write_next_mobility_session` tool still writes sets without

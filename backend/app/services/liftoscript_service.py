@@ -3,7 +3,13 @@
 Supports: exercise name, sets, reps, 1RM percentage, simple weight, ## Day headers,
 comments via //, and linear progression via progress: lp(Xlb). AMRAP indicated by +
 converted to comment. Since plan 0021 a set spec can also carry the set tile's
-timing and a distance: `3x6 10s rest 5s after 30s`, `1x1 400m`.
+timing and a distance: `3x6 10s rest 5s after 30s`, `1x1 400m`, and `~`
+flags its sets as mobility work.
+
+Strict: a set spec may hold only what is listed here, and anything left over
+is an error naming it, as is a line that is not a set, a `##` header or a
+comment. A typo used to be dropped silently - `rest5s` lost its rest, a
+misspelt marker left the set unflagged - and the queue gave no sign.
 
 Required comments for percentage/progression:
 - If using % for weight: must have "// ExerciseName 1RM: Xlb" at top
@@ -62,6 +68,7 @@ class LiftoscriptParser:
         - Rest after the set: "after 30s"
         - Distance: "400m", "5km", "1mi", "100yd" — `m` is metres; minutes
           are always "min" or "m:ss"
+        - "~": the spec's sets are mobility work (`is_mobility`)
 
     Examples:
         ## Day 1
@@ -69,6 +76,7 @@ class LiftoscriptParser:
         Bench Press / 3x8 80%
         Deadlift / 1x5 65%, 1x3 80%, 1x1+ 95%
         Plank / 3x6 10s rest 5s after 30s
+        Pigeon Stretch / 1x2 60s ~
         Rower / 1x1 2000m
 
         // Squat 1RM: 225lb
@@ -91,6 +99,11 @@ class LiftoscriptParser:
     REST_AFTER_PATTERN = re.compile(r"\bafter\s+" + _DURATION, re.IGNORECASE)
     REST_BETWEEN_PATTERN = re.compile(r"\brest\s+" + _DURATION, re.IGNORECASE)
     WORK_PATTERN = re.compile(r"(?<![\w.:])" + _DURATION, re.IGNORECASE)
+    # Marks the spec's sets as mobility work — the same per-set fact
+    # `upcoming_workouts.is_mobility` holds and transfer carries to the day.
+    # A symbol, not a word: nothing to misspell, and with the strict check
+    # below a stray character is an error rather than a silent miss.
+    MOBILITY_PATTERN = re.compile(r"~")
     DISTANCE_PATTERN = re.compile(
         r"(?<![\w.])(\d+(?:\.\d+)?)\s*(km|mi|yd|m)\b", re.IGNORECASE
     )
@@ -253,6 +266,38 @@ class LiftoscriptParser:
                 )
         return work, rest_between, rest_after, distance, distance_unit
 
+    def _check_understood(self, set_spec: str, exercise_name: str) -> None:
+        """Refuse a spec holding anything the parser does not read.
+
+        Each recognised token is taken out once - so a second work time or a
+        second weight is left over too, rather than silently losing to the
+        first - and whatever remains is the error.
+        """
+        rest = set_spec.strip()
+        sets_match = self.SET_PATTERN.match(rest)
+        if sets_match:
+            rest = rest[sets_match.end():]
+        if self.RPE_PATTERN.search(rest):
+            raise LiftoscriptParseError(
+                f"{exercise_name}: RPE ('@8') is not supported - remove it from '{set_spec}'"
+            )
+        for pattern in (
+            self.PROGRESS_LP_PATTERN,
+            self.REST_AFTER_PATTERN,
+            self.REST_BETWEEN_PATTERN,
+            self.WEIGHT_PERCENT_PATTERN,
+            self.WEIGHT_ABSOLUTE_PATTERN,
+            self.DISTANCE_PATTERN,
+            self.WORK_PATTERN,
+            self.MOBILITY_PATTERN,
+        ):
+            rest = pattern.sub(" ", rest, count=1)
+        leftover = " ".join(rest.split())
+        if leftover:
+            raise LiftoscriptParseError(
+                f"{exercise_name}: didn't understand '{leftover}' in '{set_spec}'"
+            )
+
     def _parse_sets_reps(self, sets_reps_str: str) -> tuple[int, int, bool]:
         """Parse sets and reps string. Returns (sets, reps, is_amrap)."""
         match = self.SET_PATTERN.match(sets_reps_str.strip())
@@ -278,7 +323,8 @@ class LiftoscriptParser:
                 i += 1
                 continue
 
-            if line.startswith("//"):
+            if line.startswith("//") or (line.startswith("#") and not line.startswith("##")):
+                # `// comment`, and a single-# heading like "# Week 1".
                 i += 1
                 continue
 
@@ -289,17 +335,27 @@ class LiftoscriptParser:
                 continue
 
             if "/" not in line:
-                i += 1
-                continue
+                # Not skipped: "Barbell Squat 5x5" with the slash missing is a
+                # typo, and dropping it would lose the whole exercise quietly.
+                raise LiftoscriptParseError(
+                    f"Line {i + 1}: '{line}' is not a set line ('Exercise / 3x5 ...'), "
+                    "a '## Day' header or a '// comment'"
+                )
 
             parts = [p.strip() for p in line.split("/")]
             exercise_name = parts[0].strip()
 
+            if len(parts) > 2:
+                raise LiftoscriptParseError(
+                    f"Line {i + 1}: '{line}' has more than one '/' - an exercise "
+                    "name cannot contain one"
+                )
             full_spec = parts[1].strip() if len(parts) > 1 else ""
 
             if not full_spec:
-                i += 1
-                continue
+                raise LiftoscriptParseError(
+                    f"Line {i + 1}: '{exercise_name}' has nothing after the '/'"
+                )
 
             # Determine category from exercise name, default to "Other"
             category = EXERCISE_CATEGORIES.get(exercise_name, "Other")
@@ -312,10 +368,12 @@ class LiftoscriptParser:
                     continue
 
                 sets, reps, is_amrap = self._parse_sets_reps(set_spec)
+                self._check_understood(set_spec, exercise_name)
                 weight, unit = self._parse_weight(set_spec, exercise_name, cycle_num)
                 work, rest, rest_after, distance, distance_unit = self._parse_timing(
                     set_spec, exercise_name
                 )
+                is_mobility = bool(self.MOBILITY_PATTERN.search(set_spec))
 
                 for set_index in range(sets):
                     # AMRAP marks the final set only - "3x5+" is three sets of
@@ -340,6 +398,7 @@ class LiftoscriptParser:
                         rest_after_seconds=rest_after,
                         distance=distance,
                         distance_unit=distance_unit,
+                        is_mobility=is_mobility,
                     )
                     workouts.append(workout)
 

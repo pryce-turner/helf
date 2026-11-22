@@ -16,8 +16,8 @@ interface PresetSelectorProps {
 export default function PresetSelector({ value, onChange, presets }: PresetSelectorProps) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger style={{ maxWidth: '220px' }}>
-        <SelectValue placeholder="Select preset..." />
+      <SelectTrigger style={{ maxWidth: '220px' }} aria-label="Built-in program">
+        <SelectValue placeholder="Select program" />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="custom">Custom</SelectItem>

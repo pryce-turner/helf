@@ -616,11 +616,11 @@ const Upcoming = () => {
               </CardHeader>
               <CardContent>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-                  {/* Preset and Cycles Row */}
+                  {/* Built-in program and cycles row */}
                   <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
                     <div>
                       <Label style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                        Preset
+                        Built-in program
                       </Label>
                       <PresetSelector
                         value={selectedPreset}

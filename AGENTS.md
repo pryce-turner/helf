@@ -771,7 +771,7 @@ work is a field on the set, written through the normal workout routes
 ### Workout Planning (Liftoscript)
 - Session-based upcoming workout management
 - Custom Liftoscript scripting language for defining programs
-- Built-in presets: Wendler 5/3/1, StrongLifts 5x5
+- Built-in programs (the program editor's dropdown; `app/presets/*.liftoscript`, still "presets" in the API and code): Wendler 5/3/1, StrongLifts 5x5, Cutting Rotation
 - Percentage-based weights (% of 1RM)
 - Linear progression: `progress: lp(5lb)`
 - Multi-cycle generation

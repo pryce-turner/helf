@@ -112,3 +112,17 @@ def test_saved_programs_crud_and_builder_detach(client):
 
     assert client.delete(f"/api/programs/{pid}").status_code == 204
     assert client.get(f"/api/programs/{pid}").status_code == 404
+
+
+def test_every_builtin_block_checks_clean(client):
+    from app.services.library_service import BUILTIN_BLOCKS
+
+    for name in BUILTIN_BLOCKS.values():
+        checked = client.post("/api/library/check", json={"script": f"## A\n[{name}]"})
+        assert checked.status_code == 200, (name, checked.text)
+        assert checked.json()["sets"] > 0
+
+
+def test_leg_dynamic_stretch_is_all_mobility(client):
+    checked = client.post("/api/library/check", json={"script": "## A\n[Leg dynamic stretch]"}).json()
+    assert checked["sets"] == checked["mobility_sets"] == 3

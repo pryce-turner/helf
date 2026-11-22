@@ -32,6 +32,7 @@ BUILTIN_BLOCKS: dict[str, str] = {
     "squat_warmup": "Squat warm-up",
     "squat_core": "Squat core",
     "lower_cooldown_squat": "Squat cool-down",
+    "leg_dynamic_stretch": "Leg dynamic stretch",
 }
 BUILTIN_BLOCK_BY_NAME = {name.lower(): stem for stem, name in BUILTIN_BLOCKS.items()}
 

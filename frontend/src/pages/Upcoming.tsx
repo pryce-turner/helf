@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import LiftoscriptEditor from '@/components/LiftoscriptEditor';
 import PresetSelector from '@/components/PresetSelector';
+import WorkoutSectionTabs from '@/components/WorkoutSectionTabs';
 import {
   useUpcomingWorkouts,
   useDeleteUpcomingSession,
@@ -670,6 +671,8 @@ const Upcoming = () => {
               </Button>
             </div>
           </div>
+
+          <WorkoutSectionTabs />
 
           {/* Program Editor */}
           {showEditor && (

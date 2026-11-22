@@ -7,6 +7,7 @@ import WorkoutSession from "./pages/WorkoutSession";
 import Progression from "./pages/Progression";
 import BodyComposition from "./pages/BodyComposition";
 import Upcoming from "./pages/Upcoming";
+import Presets from "./pages/Presets";
 import Exercises from "./pages/Exercises";
 import Food from "./pages/Food";
 import Supplements from "./pages/Supplements";
@@ -73,6 +74,7 @@ function App() {
                         <Route path="/food" element={<Food />} />
                         <Route path="/supplements" element={<Supplements />} />
                         <Route path="/upcoming" element={<Upcoming />} />
+                        <Route path="/presets" element={<Presets />} />
                         {/* The page merged into /upcoming (9c4e7b21f806): one
                             queue, the mobility element flagged per set. The
                             redirect stays for bookmarks. */}

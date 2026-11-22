@@ -76,7 +76,7 @@ const WorkoutFields = ({
         {showWeight && (
           <div className="form-field">
             <Label htmlFor={`${idPrefix}-weight`} className="form-label">
-              <Weight style={{ width: "14px", height: "14px" }} />
+              <Weight style={{ width: "16px", height: "16px" }} />
               Weight
             </Label>
             <div className="stepper">
@@ -90,7 +90,7 @@ const WorkoutFields = ({
                   onChange({ weight: Math.max(0, current - increment) });
                 }}
               >
-                <Minus style={{ width: "18px", height: "18px" }} />
+                <Minus style={{ width: "16px", height: "16px" }} />
               </button>
               <input
                 id={`${idPrefix}-weight`}
@@ -114,7 +114,7 @@ const WorkoutFields = ({
                   onChange({ weight: current + increment });
                 }}
               >
-                <Plus style={{ width: "18px", height: "18px" }} />
+                <Plus style={{ width: "16px", height: "16px" }} />
               </button>
               <span className="stepper__unit">
                 {values.weight_unit || "lbs"}
@@ -126,7 +126,7 @@ const WorkoutFields = ({
         {showReps && (
           <div className="form-field">
             <Label htmlFor={`${idPrefix}-reps`} className="form-label">
-              <Hash style={{ width: "14px", height: "14px" }} />
+              <Hash style={{ width: "16px", height: "16px" }} />
               Reps
             </Label>
             <div className="stepper">
@@ -140,7 +140,7 @@ const WorkoutFields = ({
                   onChange({ reps: next > 0 ? next : null });
                 }}
               >
-                <Minus style={{ width: "18px", height: "18px" }} />
+                <Minus style={{ width: "16px", height: "16px" }} />
               </button>
               <input
                 id={`${idPrefix}-reps`}
@@ -159,7 +159,7 @@ const WorkoutFields = ({
                 aria-label="Increase reps"
                 onClick={() => onChange({ reps: (values.reps || 0) + 1 })}
               >
-                <Plus style={{ width: "18px", height: "18px" }} />
+                <Plus style={{ width: "16px", height: "16px" }} />
               </button>
             </div>
           </div>
@@ -215,7 +215,7 @@ const WorkoutFields = ({
         >
           <div className="form-field">
             <Label htmlFor={`${idPrefix}-work`} className="form-label">
-              <Timer style={{ width: "14px", height: "14px" }} />
+              <Timer style={{ width: "16px", height: "16px" }} />
               Work seconds
             </Label>
             <Input

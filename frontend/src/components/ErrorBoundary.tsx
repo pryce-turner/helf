@@ -55,7 +55,7 @@ export default class ErrorBoundary extends Component<
                     overflowX: "auto",
                 }}
             >
-                <p style={{ color: "#ef4444", fontWeight: 700, marginBottom: 8 }}>
+                <p style={{ color: "#ef4444", fontWeight: 600, marginBottom: 8 }}>
                     Something in this page threw while rendering.
                 </p>
                 <p style={{ marginBottom: 8 }}>{String(error.message || error)}</p>

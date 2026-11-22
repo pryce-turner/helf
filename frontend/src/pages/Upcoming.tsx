@@ -127,10 +127,10 @@ const LastSessionCard = ({ session }: { session: MobilityLastSession }) => {
   const commented = session.sets.filter((s) => s.comment);
 
   return (
-    <Card className="animate-in">
+    <Card className="animate-in" style={{ marginTop: 'var(--space-6)' }}>
       <CardHeader>
         <CardTitle className="font-display text-lg tracking-tight">
-          LAST MOBILITY SESSION
+          Last mobility session
         </CardTitle>
         <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
           {format(new Date(`${session.date}T12:00:00`), 'EEEE, MMMM d')} &middot;{' '}
@@ -145,8 +145,6 @@ const LastSessionCard = ({ session }: { session: MobilityLastSession }) => {
                 fontSize: '12px',
                 fontWeight: 600,
                 color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
               }}
             >
               What you noted
@@ -159,8 +157,8 @@ const LastSessionCard = ({ session }: { session: MobilityLastSession }) => {
               >
                 <MessageSquare
                   style={{
-                    width: '15px',
-                    height: '15px',
+                    width: '16px',
+                    height: '16px',
                     color: 'var(--text-muted)',
                     flexShrink: 0,
                     marginTop: '3px',
@@ -220,7 +218,7 @@ const MovementBreakCard = () => {
   };
 
   return (
-    <Card className="animate-in">
+    <Card className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
       <CardContent
         className="flex items-center justify-between flex-wrap"
         style={{ gap: 'var(--space-4)' }}
@@ -229,12 +227,12 @@ const MovementBreakCard = () => {
           <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
             <Coffee
               style={{
-                width: '18px',
-                height: '18px',
+                width: '16px',
+                height: '16px',
                 color: 'var(--warning)',
               }}
             />
-            <h2 className="font-display text-lg tracking-tight">MOVEMENT BREAK</h2>
+            <h2 className="font-display text-lg tracking-tight">Movement break</h2>
           </div>
           <p
             style={{
@@ -312,7 +310,7 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
             </div>
             <div>
               <CardTitle className="font-display text-xl tracking-tight">
-                {isAgentSession ? session.label!.toUpperCase() : `SESSION ${session.session}`}
+                {isAgentSession ? session.label : `Session ${session.session}`}
               </CardTitle>
               <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
                 {isAgentSession
@@ -383,8 +381,6 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                 fontSize: '12px',
                 fontWeight: 600,
                 color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
                 marginBottom: 'var(--space-4)',
                 textAlign: 'center',
               }}
@@ -402,7 +398,7 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                 onClick={handleTransfer}
                 disabled={!transferDate || transferSession.isPending}
               >
-                <ArrowRight style={{ width: '18px', height: '18px' }} />
+                <ArrowRight style={{ width: '16px', height: '16px' }} />
                 Transfer to {transferDate && format(transferDate, 'MMM d, yyyy')}
               </Button>
             </div>
@@ -468,7 +464,6 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                       style={{
                         fontSize: '13px',
                         color: 'var(--text-secondary)',
-                        fontStyle: 'italic',
                         marginTop: '2px',
                       }}
                     >
@@ -543,7 +538,7 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                       <div className="log-line__chips">
                         {workout.weight && (
                           <div className="workout-chip">
-                            <Weight style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                            <Weight style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                             <span className="workout-chip__value" style={{ fontSize: '13px' }}>
                               {workout.weight} {workout.weight_unit}
                             </span>
@@ -551,7 +546,7 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                         )}
                         {workout.reps && (
                           <div className="workout-chip">
-                            <Hash style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                            <Hash style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                             <span className="workout-chip__value" style={{ fontSize: '13px' }}>
                               {workout.reps} reps
                             </span>
@@ -573,7 +568,7 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                         )}
                         {workout.comment && (
                           <div className="workout-chip">
-                            <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                            <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                             <span className="workout-chip__comment" style={{ fontSize: '13px' }}>
                               {workout.comment}
                             </span>
@@ -666,12 +661,12 @@ const Upcoming = () => {
           <div className="page__header animate-in">
             <div className="flex items-start justify-between flex-wrap" style={{ gap: 'var(--space-4)' }}>
               <div>
-                <h1 className="page__title">UPCOMING WORKOUTS</h1>
+                <h1 className="page__title">Upcoming</h1>
                 <p className="page__subtitle">Plan and manage your future training sessions</p>
               </div>
               <Button onClick={() => setShowEditor(!showEditor)}>
-                <Edit3 style={{ width: '18px', height: '18px' }} />
-                {showEditor ? 'Close Editor' : 'Edit Program'}
+                <Edit3 style={{ width: '16px', height: '16px' }} />
+                {showEditor ? 'Close editor' : 'Edit program'}
               </Button>
             </div>
           </div>
@@ -681,7 +676,7 @@ const Upcoming = () => {
             <Card className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
               <CardHeader>
                 <CardTitle className="font-display text-xl tracking-tight">
-                  PROGRAM EDITOR
+                  Program editor
                 </CardTitle>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
                   Write or select a program template to generate upcoming workouts
@@ -743,7 +738,7 @@ const Upcoming = () => {
                     >
                       {generateLiftoscript.isPending ? (
                         <>
-                          <Loader2 style={{ width: '18px', height: '18px' }} className="animate-spin" />
+                          <Loader2 style={{ width: '16px', height: '16px' }} className="animate-spin" />
                           Generating...
                         </>
                       ) : (
@@ -778,7 +773,7 @@ const Upcoming = () => {
               >
                 <CardHeader>
                   <CardTitle className="font-display text-xl tracking-tight">
-                    Overwrite Upcoming Workouts?
+                    Overwrite upcoming workouts?
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -789,7 +784,7 @@ const Upcoming = () => {
                   </p>
                   {agentLabels.length > 0 && (
                     <p style={{ color: 'var(--warning)', fontSize: '14px', marginBottom: 'var(--space-4)', lineHeight: 1.6 }}>
-                      <Activity style={{ width: '14px', height: '14px', display: 'inline', verticalAlign: '-2px' }} />{' '}
+                      <Activity style={{ width: '16px', height: '16px', display: 'inline', verticalAlign: '-2px' }} />{' '}
                       Including the agent-written {agentLabels.length === 1 ? 'session' : 'sessions'}{' '}
                       {agentLabels.map((l) => `'${l}'`).join(', ')} — generating does not spare it.
                     </p>
@@ -807,11 +802,11 @@ const Upcoming = () => {
                     >
                       {generateLiftoscript.isPending ? (
                         <>
-                          <Loader2 style={{ width: '18px', height: '18px' }} className="animate-spin" />
+                          <Loader2 style={{ width: '16px', height: '16px' }} className="animate-spin" />
                           Generating...
                         </>
                       ) : (
-                        'Confirm Generate'
+                        'Generate and overwrite'
                       )}
                     </Button>
                   </div>
@@ -841,7 +836,7 @@ const Upcoming = () => {
                 <div className="empty-state__icon">
                   <Dumbbell style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
                 </div>
-                <h3 className="empty-state__title">NO UPCOMING WORKOUTS</h3>
+                <h3 className="empty-state__title">No upcoming workouts</h3>
                 <p className="empty-state__text">No upcoming workouts planned.</p>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)' }}>
                   Use the program editor to generate workouts from a template, or ask

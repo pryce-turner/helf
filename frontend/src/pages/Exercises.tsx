@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, Sparkles, ChevronDown, Coffee } from 'lucide-react';
+import { Dumbbell, Plus, Check, X, Trash2, Edit3, Hash, FileText, Lightbulb, ListPlus, ChevronDown, Coffee } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import ExerciseSectionTabs from '@/components/ExerciseSectionTabs';
 import CategoryField from '@/components/CategoryField';
@@ -293,7 +293,7 @@ const Exercises = () => {
           <div className="page__header animate-in">
             <div className="flex items-start justify-between flex-wrap" style={{ gap: 'var(--space-4)' }}>
               <div>
-                <h1 className="page__title">EXERCISES</h1>
+                <h1 className="page__title">Exercises</h1>
                 <p className="page__subtitle">Manage your exercise library</p>
               </div>
               <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
@@ -302,12 +302,12 @@ const Exercises = () => {
                   onClick={handleSeedExercises}
                   disabled={seedExercises.isPending}
                 >
-                  <Sparkles style={{ width: '18px', height: '18px' }} />
-                  {seedExercises.isPending ? 'Seeding...' : 'Seed Presets'}
+                  <ListPlus style={{ width: '16px', height: '16px' }} />
+                  {seedExercises.isPending ? 'Seeding...' : 'Seed presets'}
                 </Button>
                 <Button onClick={() => setShowAddForm(!showAddForm)}>
-                  <Plus style={{ width: '18px', height: '18px' }} />
-                  {showAddForm ? 'Cancel' : 'Add Exercise'}
+                  <Plus style={{ width: '16px', height: '16px' }} />
+                  {showAddForm ? 'Cancel' : 'Add exercise'}
                 </Button>
               </div>
             </div>
@@ -336,7 +336,7 @@ const Exercises = () => {
             <Card className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
               <CardHeader>
                 <CardTitle className="font-display text-xl tracking-tight">
-                  ADD NEW EXERCISE
+                  Add exercise
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -344,7 +344,7 @@ const Exercises = () => {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
                     <div style={{ flex: '1 1 200px' }}>
                       <Label htmlFor="new-name" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                        Exercise Name
+                        Exercise name
                       </Label>
                       <Input
                         id="new-name"
@@ -403,7 +403,7 @@ const Exercises = () => {
                       onClick={handleAddExercise}
                       disabled={createExercise.isPending || !newName.trim() || !newCategory.trim()}
                     >
-                      {createExercise.isPending ? 'Adding...' : 'Add Exercise'}
+                      {createExercise.isPending ? 'Adding...' : 'Add exercise'}
                     </Button>
                   </div>
                 </div>
@@ -455,19 +455,18 @@ const Exercises = () => {
                             color: catColor.text,
                           }}
                         >
-                          <Dumbbell style={{ width: '18px', height: '18px' }} />
+                          <Dumbbell style={{ width: '16px', height: '16px' }} />
                         </div>
                         <div>
                           <span
                             className="font-display"
                             style={{
                               fontSize: '17px',
-                              fontWeight: 700,
-                              letterSpacing: '0.02em',
+                              fontWeight: 600,
                               color: 'var(--text-primary)',
                             }}
                           >
-                            {category.toUpperCase()}
+                            {category}
                           </span>
                           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
                             {categoryExercises.length} exercise{categoryExercises.length !== 1 ? 's' : ''}
@@ -476,8 +475,8 @@ const Exercises = () => {
                       </div>
                       <ChevronDown
                         style={{
-                          width: '20px',
-                          height: '20px',
+                          width: '16px',
+                          height: '16px',
                           color: 'var(--text-muted)',
                           flexShrink: 0,
                           transition: 'transform var(--duration-normal) var(--ease-default)',
@@ -503,7 +502,7 @@ const Exercises = () => {
                               background: 'var(--bg-tertiary)',
                               borderRadius: 'var(--radius-md)',
                               border: '1px solid var(--border-subtle)',
-                              transition: 'all var(--duration-normal) var(--ease-default)',
+                              transition: 'background-color var(--duration-normal) var(--ease-default), border-color var(--duration-normal) var(--ease-default)',
                               overflow: 'hidden',
                             }}
                           >
@@ -772,7 +771,7 @@ const Exercises = () => {
                                           borderLeft: `3px solid ${catColor.border}`,
                                         }}
                                       >
-                                        <FileText style={{ width: '14px', height: '14px', color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
+                                        <FileText style={{ width: '16px', height: '16px', color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
                                         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
                                           {exercise.form}
                                         </p>
@@ -790,7 +789,7 @@ const Exercises = () => {
                                           borderLeft: '3px solid var(--accent)',
                                         }}
                                       >
-                                        <Lightbulb style={{ width: '14px', height: '14px', color: 'var(--accent)', flexShrink: 0, marginTop: '2px' }} />
+                                        <Lightbulb style={{ width: '16px', height: '16px', color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />
                                         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
                                           {exercise.application}
                                         </p>
@@ -799,7 +798,7 @@ const Exercises = () => {
                                     {exercise.use_count > 0 && (
                                       <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
                                         <div className="workout-chip">
-                                          <Hash style={{ width: '14px', height: '14px', color: catColor.text }} />
+                                          <Hash style={{ width: '16px', height: '16px', color: catColor.text }} />
                                           <span className="workout-chip__value" style={{ fontSize: '13px' }}>
                                             {exercise.use_count}
                                           </span>
@@ -832,7 +831,7 @@ const Exercises = () => {
                                     disabled={updateExercise.isPending}
                                     onClick={() => toggleMovementBreak(exercise)}
                                   >
-                                    <Coffee style={{ width: '14px', height: '14px' }} />
+                                    <Coffee style={{ width: '16px', height: '16px' }} />
                                     {exercise.movement_break_enabled
                                       ? exercise.default_work_seconds != null
                                         ? `${exercise.default_work_seconds}s`
@@ -912,14 +911,14 @@ const Exercises = () => {
                 <div className="empty-state__icon">
                   <Dumbbell style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
                 </div>
-                <h3 className="empty-state__title">NO EXERCISES</h3>
+                <h3 className="empty-state__title">No exercises</h3>
                 <p className="empty-state__text">No exercises in the library yet.</p>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
                   Add your first exercise to get started.
                 </p>
                 <Button onClick={() => setShowAddForm(true)}>
-                  <Plus style={{ width: '18px', height: '18px' }} />
-                  Add Exercise
+                  <Plus style={{ width: '16px', height: '16px' }} />
+                  Add exercise
                 </Button>
               </CardContent>
             </Card>

@@ -139,11 +139,11 @@ it("lists both authors' sessions in one queue, each rendered its own way", async
     renderPage(<Upcoming />);
 
     // The generated session: numbered, and every row visible.
-    expect(await screen.findByText("SESSION 7")).toBeInTheDocument();
+    expect(await screen.findByText("Session 7")).toBeInTheDocument();
     expect(screen.getAllByText("Bench Press")).toHaveLength(2);
 
     // The agent's: labelled, reasoned, and folded back into a prescription.
-    expect(screen.getByText("LOW BACK")).toBeInTheDocument();
+    expect(screen.getByText("Low back")).toBeInTheDocument();
     expect(
         screen.getByText("QL holds at 30lb; pigeon leads while you are fresh."),
     ).toBeInTheDocument();
@@ -213,7 +213,7 @@ it("shows the last mobility session's comments below the queue", async () => {
 
     renderPage(<Upcoming />);
 
-    expect(await screen.findByText("LAST MOBILITY SESSION")).toBeInTheDocument();
+    expect(await screen.findByText("Last mobility session")).toBeInTheDocument();
     // The feedback is what the next session gets written from.
     expect(
         screen.getByText("failed on right at 7, hit 8 on left"),
@@ -226,9 +226,9 @@ it("shows the last session beside the empty state when the queue is empty", asyn
 
     renderPage(<Upcoming />);
 
-    expect(await screen.findByText("NO UPCOMING WORKOUTS")).toBeInTheDocument();
+    expect(await screen.findByText("No upcoming workouts")).toBeInTheDocument();
     expect(screen.getByText(/ask the agent to write a mobility session/)).toBeInTheDocument();
-    expect(screen.getByText("LAST MOBILITY SESSION")).toBeInTheDocument();
+    expect(screen.getByText("Last mobility session")).toBeInTheDocument();
 });
 
 it("suggests a movement break onto today and goes to the day", async () => {
@@ -296,7 +296,7 @@ it("warns before generating, naming the agent-written sessions it wipes", async 
 
     renderPage(<Upcoming />);
 
-    await userEvent.click(await screen.findByText("Edit Program"));
+    await userEvent.click(await screen.findByText("Edit program"));
     await userEvent.type(
         screen.getByRole("textbox"),
         "## Day 1\nBench Press / 3x5 135lb",
@@ -307,7 +307,7 @@ it("warns before generating, naming the agent-written sessions it wipes", async 
     expect(await screen.findByText(/Including the agent-written session/)).toBeInTheDocument();
     expect(screen.getByText(/'Low back'/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByText("Confirm Generate"));
+    await userEvent.click(screen.getByText("Generate and overwrite"));
     await waitFor(() =>
         expect(upcoming.generateLiftoscript).toHaveBeenCalledWith({
             script: "## Day 1\nBench Press / 3x5 135lb",

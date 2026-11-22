@@ -426,7 +426,7 @@ const StatCard = ({
         <div className="stat-card animate-in">
             <div className="flex items-center justify-between stat-card__header">
                 <span>{title}</span>
-                <Icon style={{ width: '18px', height: '18px', color: 'var(--text-muted)' }} />
+                <Icon style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
             </div>
             <div className="stat-card__value">
                 {value !== null ? `${value.toFixed(1)} ${unit}` : "N/A"}
@@ -443,9 +443,9 @@ const StatCard = ({
                     }}
                 >
                     {change > 0 ? (
-                        <TrendingUp style={{ width: '14px', height: '14px' }} />
+                        <TrendingUp style={{ width: '16px', height: '16px' }} />
                     ) : (
-                        <TrendingDown style={{ width: '14px', height: '14px' }} />
+                        <TrendingDown style={{ width: '16px', height: '16px' }} />
                     )}
                     {Math.abs(change).toFixed(1)} {unit} from previous
                 </div>
@@ -482,7 +482,7 @@ const BodySpecSync = memo(function BodySpecSync() {
     return (
         <Card className="animate-in section">
             <CardHeader style={{ paddingBottom: 0 }}>
-                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: DEXA_COLOR, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                     Import DEXA scans
                 </CardTitle>
             </CardHeader>
@@ -570,7 +570,7 @@ const ScaleDrain = ({
     return (
         <Card className="animate-in section">
             <CardHeader style={{ paddingBottom: 0 }}>
-                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: SCALE_COLOR, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                     Read scale
                 </CardTitle>
             </CardHeader>
@@ -658,7 +658,7 @@ const ScaleTile = ({
         <div className="stat-card animate-in">
             <div className="flex items-center justify-between stat-card__header">
                 <span>Scale</span>
-                <Bluetooth style={{ width: '18px', height: '18px', color: 'var(--text-muted)' }} />
+                <Bluetooth style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
             </div>
             <Button
                 onClick={() =>
@@ -744,8 +744,6 @@ const MeasurementLog = memo(function MeasurementLog() {
     const head: React.CSSProperties = {
         ...cell,
         fontSize: "11px",
-        letterSpacing: "0.04em",
-        textTransform: "uppercase",
         color: "var(--text-muted)",
         textAlign: "left",
         // The body scrolls under this now, so it has to stay put — and it
@@ -762,7 +760,7 @@ const MeasurementLog = memo(function MeasurementLog() {
         <Card className="animate-in section">
             <CardHeader style={{ paddingBottom: 0 }}>
                 <div className="flex items-center justify-between" style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                         All measurements
                     </CardTitle>
                     {stats && (
@@ -1052,7 +1050,7 @@ const BodyComposition = () => {
                 <div className="page__content">
                     {/* Header */}
                     <div className="page__header animate-in">
-                        <h1 className="page__title">BODY</h1>
+                        <h1 className="page__title">Body composition</h1>
                         <p className="page__subtitle">Track your weight, body fat, and muscle mass over time</p>
                     </div>
 
@@ -1068,7 +1066,7 @@ const BodyComposition = () => {
                             <div className="grid grid-cols-2 lg:grid-cols-4 section" style={{ gap: 'var(--space-3)' }}>
                                 {/* Weight is stored in lbs (ADR-0003) - no conversion. */}
                                 <StatCard
-                                    title="Current Weight"
+                                    title="Current weight"
                                     value={stats.latest_weight}
                                     unit="lbs"
                                     change={stats.weight_change}
@@ -1076,7 +1074,7 @@ const BodyComposition = () => {
                                     trendDirection="neutral"
                                 />
                                 <StatCard
-                                    title="Body Fat %"
+                                    title="Body fat %"
                                     value={stats.latest_body_fat}
                                     unit="%"
                                     change={stats.body_fat_change}
@@ -1129,7 +1127,7 @@ const BodyComposition = () => {
 
                             {/* Period selector */}
                             <div className="flex items-center justify-between animate-in" style={{ marginBottom: 'var(--space-4)' }}>
-                                <h2 className="page__title page__title--compact" style={{ fontSize: '20px' }}>TRENDS</h2>
+                                <h2 className="page__title page__title--compact" style={{ fontSize: '20px' }}>Trends</h2>
                                 <div style={{ width: '130px' }}>
                                     <Select
                                         value={String(trendDays)}
@@ -1186,7 +1184,7 @@ const BodyComposition = () => {
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
                                                 <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
-                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--chart-2)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                                         Weight
                                                     </CardTitle>
                                                     <TrendChange change={changes.weight} unit=" lbs" />
@@ -1256,8 +1254,8 @@ const BodyComposition = () => {
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
                                                 <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
-                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--error)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-                                                        Body Fat %
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                        Body fat %
                                                     </CardTitle>
                                                     <TrendChange change={changes.bodyFat} unit="%" trendDirection="down-good" />
                                                 </div>
@@ -1294,7 +1292,7 @@ const BodyComposition = () => {
                                                             }}
                                                             labelFormatter={formatTooltipDate}
                                                             formatter={(value, name) =>
-                                                                formatChartValue(value, "%", (name as string) ?? "Body Fat")
+                                                                formatChartValue(value, "%", (name as string) ?? "Body fat")
                                                             }
                                                         />
                                                         {/* The two disagree by several points and
@@ -1326,7 +1324,7 @@ const BodyComposition = () => {
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
                                                 <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
-                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                                         Muscle %
                                                     </CardTitle>
                                                     <TrendChange change={changes.muscle} unit="%" trendDirection="up-good" />
@@ -1391,7 +1389,7 @@ const BodyComposition = () => {
                                         <Card className="animate-in">
                                             <CardHeader style={{ paddingBottom: 0 }}>
                                                 <div className="flex items-start justify-between" style={{ gap: 'var(--space-3)' }}>
-                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--info)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                                                    <CardTitle style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                                         Water %
                                                     </CardTitle>
                                                     <TrendChange change={changes.water} unit="%" />
@@ -1493,7 +1491,7 @@ const BodyComposition = () => {
                                 <div className="empty-state__icon">
                                     <Weight style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
                                 </div>
-                                <h3 className="empty-state__title">NO DATA YET</h3>
+                                <h3 className="empty-state__title">No data yet</h3>
                                 <p className="empty-state__text">
                                     No body composition data available.
                                 </p>

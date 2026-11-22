@@ -78,7 +78,7 @@ beforeEach(() => {
 
 /** Categories collapse by default; the controls live inside one. */
 const openCategory = async (user: ReturnType<typeof userEvent.setup>) => {
-    await user.click(await screen.findByRole("button", { name: /ARMS/ }));
+    await user.click(await screen.findByRole("button", { name: /Arms/ }));
 };
 
 describe("Exercises: rating", () => {
@@ -156,7 +156,7 @@ describe("Exercises: choosing a category", () => {
         const user = userEvent.setup();
         renderPage(<ExercisesPage />, "/exercises");
 
-        await user.click(await screen.findByRole("button", { name: /Add Exercise/ }));
+        await user.click(await screen.findByRole("button", { name: /Add exercise/ }));
         await user.click(screen.getByRole("combobox"));
 
         expect(
@@ -174,7 +174,7 @@ describe("Exercises: choosing a category", () => {
         const user = userEvent.setup();
         renderPage(<ExercisesPage />, "/exercises");
 
-        await user.click(await screen.findByRole("button", { name: /Add Exercise/ }));
+        await user.click(await screen.findByRole("button", { name: /Add exercise/ }));
         await user.click(screen.getByRole("combobox"));
         await user.click(await screen.findByRole("option", { name: /New category/ }));
 

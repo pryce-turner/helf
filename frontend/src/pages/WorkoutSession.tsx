@@ -160,8 +160,7 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
             marginTop: "var(--space-5)",
             padding: "var(--space-5)",
             borderTop: "1px solid var(--border-subtle)",
-            background:
-              "linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)",
+            background: "var(--bg-tertiary)",
             borderRadius: "var(--radius-md)",
           }}
         >
@@ -182,7 +181,7 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
 
             <div className="form-field">
               <Label htmlFor="comment-edit" className="form-label">
-                <MessageSquare style={{ width: "14px", height: "14px" }} />
+                <MessageSquare style={{ width: "16px", height: "16px" }} />
                 Comment
               </Label>
               <Input
@@ -210,7 +209,7 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
                 onClick={() => setShowRecentWeights(!showRecentWeights)}
                 className="w-full justify-center"
               >
-                <History style={{ width: "18px", height: "18px" }} />
+                <History style={{ width: "16px", height: "16px" }} />
                 Recent
               </Button>
               <Button
@@ -219,7 +218,7 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
                 onClick={handleDuplicate}
                 className="w-full justify-center"
               >
-                <Copy style={{ width: "18px", height: "18px" }} />
+                <Copy style={{ width: "16px", height: "16px" }} />
                 Duplicate
               </Button>
               <Button
@@ -228,11 +227,11 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
                 onClick={onClose}
                 className="w-full justify-center"
               >
-                <X style={{ width: "18px", height: "18px" }} />
+                <X style={{ width: "16px", height: "16px" }} />
                 Cancel
               </Button>
               <Button type="submit" className="w-full justify-center">
-                <Check style={{ width: "18px", height: "18px" }} />
+                <Check style={{ width: "16px", height: "16px" }} />
                 Save
               </Button>
             </div>
@@ -281,7 +280,7 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
                             border: "1px solid var(--border-subtle)",
                             borderRadius: "var(--radius-sm)",
                             cursor: "pointer",
-                            transition: "all 0.15s ease",
+                            transition: "background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease",
                             textAlign: "left",
                           }}
                           onMouseOver={(e) => {
@@ -327,7 +326,6 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
                   style={{
                     fontSize: "13px",
                     color: "var(--text-muted)",
-                    fontStyle: "italic",
                   }}
                 >
                   No previous entries for this exercise
@@ -499,7 +497,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             height: "36px",
           }}
         >
-          <X style={{ width: "20px", height: "20px" }} />
+          <X style={{ width: "16px", height: "16px" }} />
         </button>
       )}
       {!isEditing && (
@@ -666,9 +664,9 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             <div className="workout-chip">
               <Weight
                 style={{
-                  width: "14px",
-                  height: "14px",
-                  color: "var(--accent)",
+                  width: "16px",
+                  height: "16px",
+                  color: "var(--text-muted)",
                 }}
               />
               <span className="workout-chip__value" style={{ fontSize: "14px" }}>
@@ -680,9 +678,9 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             <div className="workout-chip">
               <Hash
                 style={{
-                  width: "14px",
-                  height: "14px",
-                  color: "var(--accent)",
+                  width: "16px",
+                  height: "16px",
+                  color: "var(--text-muted)",
                 }}
               />
               <span className="workout-chip__value" style={{ fontSize: "14px" }}>
@@ -700,9 +698,9 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             <div className="workout-chip">
               <Timer
                 style={{
-                  width: "14px",
-                  height: "14px",
-                  color: "var(--accent)",
+                  width: "16px",
+                  height: "16px",
+                  color: "var(--text-muted)",
                 }}
               />
               <span className="workout-chip__value" style={{ fontSize: "14px" }}>
@@ -728,9 +726,9 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             <div className="workout-chip">
               <Timer
                 style={{
-                  width: "14px",
-                  height: "14px",
-                  color: "var(--accent)",
+                  width: "16px",
+                  height: "16px",
+                  color: "var(--text-muted)",
                 }}
               />
               <span className="workout-chip__value" style={{ fontSize: "14px" }}>
@@ -742,8 +740,8 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
             <div className="workout-chip">
               <MessageSquare
                 style={{
-                  width: "14px",
-                  height: "14px",
+                  width: "16px",
+                  height: "16px",
                   color: "var(--text-muted)",
                 }}
               />
@@ -1094,11 +1092,11 @@ const WorkoutSession = () => {
                 onClick={() => navigate("/")}
                 className="icon-btn"
               >
-                <ArrowLeft style={{ width: "20px", height: "20px" }} />
+                <ArrowLeft style={{ width: "16px", height: "16px" }} />
               </Button>
               <div>
                 <h1 className="page__title page__title--compact">
-                  {formattedDate.toUpperCase()}
+                  {formattedDate}
                 </h1>
                 <p className="page__subtitle">
                   {/* Performed tiles only: a planned tile — a suggestion —
@@ -1219,8 +1217,6 @@ const WorkoutSession = () => {
                     fontSize: "14px",
                     color: "var(--text-secondary)",
                     marginBottom: "var(--space-4)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
                   }}
                 >
                   Select target date
@@ -1247,7 +1243,7 @@ const WorkoutSession = () => {
                       !targetDate || format(targetDate, "yyyy-MM-dd") === date
                     }
                   >
-                    <ArrowRight style={{ width: "18px", height: "18px" }} />
+                    <ArrowRight style={{ width: "16px", height: "16px" }} />
                     Move to {targetDate && format(targetDate, "MMM d, yyyy")}
                   </Button>
                 </div>
@@ -1271,8 +1267,6 @@ const WorkoutSession = () => {
                     fontSize: "14px",
                     color: "var(--text-secondary)",
                     marginBottom: "var(--space-4)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
                   }}
                 >
                   Select target date
@@ -1303,7 +1297,7 @@ const WorkoutSession = () => {
                       format(copyTargetDate, "yyyy-MM-dd") === date
                     }
                   >
-                    <Copy style={{ width: "18px", height: "18px" }} />
+                    <Copy style={{ width: "16px", height: "16px" }} />
                     Copy to{" "}
                     {copyTargetDate && format(copyTargetDate, "MMM d, yyyy")}
                   </Button>
@@ -1318,15 +1312,11 @@ const WorkoutSession = () => {
               className="animate-in"
               style={{
                 marginBottom: "var(--space-6)",
-                border: "1px solid var(--accent-muted)",
-                boxShadow: "0 0 20px var(--accent-glow)",
               }}
             >
               <CardHeader
                 className="flex items-center"
                 style={{
-                  background:
-                    "linear-gradient(135deg, var(--accent-glow) 0%, transparent 100%)",
                   borderBottom: "1px solid var(--border-subtle)",
                   flexDirection: "row",
                   justifyContent: "space-between",
@@ -1345,21 +1335,21 @@ const WorkoutSession = () => {
                   {editingId !== null ? (
                     <Pencil
                       style={{
-                        width: "20px",
-                        height: "20px",
+                        width: "16px",
+                        height: "16px",
                         color: "var(--accent)",
                       }}
                     />
                   ) : (
                     <Dumbbell
                       style={{
-                        width: "20px",
-                        height: "20px",
+                        width: "16px",
+                        height: "16px",
                         color: "var(--accent)",
                       }}
                     />
                   )}
-                  {editingId !== null ? "EDIT EXERCISE" : "ADD EXERCISE"}
+                  {editingId !== null ? "Edit exercise" : "Add exercise"}
                 </CardTitle>
                 {/* Closing lives here rather than as a third footer button.
                     Three buttons on one justify-end row do not fit a phone,
@@ -1378,7 +1368,7 @@ const WorkoutSession = () => {
                     color: "var(--text-secondary)",
                   }}
                 >
-                  <X style={{ width: "20px", height: "20px" }} />
+                  <X style={{ width: "16px", height: "16px" }} />
                 </button>
               </CardHeader>
               <CardContent style={{ padding: "var(--space-6)" }}>
@@ -1386,7 +1376,7 @@ const WorkoutSession = () => {
                 {recentExercises && recentExercises.length > 0 && (
                   <div style={{ marginBottom: "var(--space-6)" }}>
                     <Label className="form-label" style={{ marginBottom: "var(--space-3)" }}>
-                      <History style={{ width: "14px", height: "14px" }} />
+                      <History style={{ width: "16px", height: "16px" }} />
                       Recents
                     </Label>
                     <div
@@ -1426,7 +1416,7 @@ const WorkoutSession = () => {
                               fontSize: "13px",
                               fontWeight: 500,
                               cursor: "pointer",
-                              transition: "all 0.15s ease",
+                              transition: "background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease",
                               fontFamily: "var(--font-body)",
                             }}
                           >
@@ -1452,7 +1442,7 @@ const WorkoutSession = () => {
                   >
                     <div className="form-field">
                       <Label htmlFor="category" className="form-label">
-                        <Hash style={{ width: "14px", height: "14px" }} />
+                        <Hash style={{ width: "16px", height: "16px" }} />
                         Category
                       </Label>
                       <Select
@@ -1474,7 +1464,7 @@ const WorkoutSession = () => {
 
                     <div className="form-field">
                       <Label htmlFor="exercise" className="form-label">
-                        <Dumbbell style={{ width: "14px", height: "14px" }} />
+                        <Dumbbell style={{ width: "16px", height: "16px" }} />
                         Exercise
                       </Label>
                       <Select
@@ -1520,7 +1510,7 @@ const WorkoutSession = () => {
                   <div className="form-field" style={{ overflow: "hidden" }}>
                     <Label htmlFor="comment" className="form-label">
                       <MessageSquare
-                        style={{ width: "14px", height: "14px" }}
+                        style={{ width: "16px", height: "16px" }}
                       />
                       Comment
                     </Label>
@@ -1551,7 +1541,7 @@ const WorkoutSession = () => {
                         variant={showAddRecent ? "default" : "secondary"}
                         onClick={() => setShowAddRecent(!showAddRecent)}
                       >
-                        <History style={{ width: "18px", height: "18px" }} />
+                        <History style={{ width: "16px", height: "16px" }} />
                         Recent
                       </Button>
                     )}
@@ -1560,11 +1550,11 @@ const WorkoutSession = () => {
                       disabled={!formData.exercise || !formData.category}
                     >
                       {editingId !== null ? (
-                        <Pencil style={{ width: "20px", height: "20px" }} />
+                        <Pencil style={{ width: "16px", height: "16px" }} />
                       ) : (
-                        <Plus style={{ width: "20px", height: "20px" }} />
+                        <Plus style={{ width: "16px", height: "16px" }} />
                       )}
-                      {editingId !== null ? "Save" : "Add Workout"}
+                      {editingId !== null ? "Save" : "Add workout"}
                     </Button>
                   </div>
 
@@ -1612,7 +1602,7 @@ const WorkoutSession = () => {
                                   border: "1px solid var(--border-subtle)",
                                   borderRadius: "var(--radius-sm)",
                                   cursor: "pointer",
-                                  transition: "all 0.15s ease",
+                                  transition: "background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease",
                                   textAlign: "left",
                                 }}
                                 onMouseOver={(e) => {
@@ -1659,7 +1649,6 @@ const WorkoutSession = () => {
                         style={{
                           fontSize: "13px",
                           color: "var(--text-muted)",
-                          fontStyle: "italic",
                         }}
                       >
                         No previous entries for this exercise
@@ -1786,13 +1775,13 @@ const WorkoutSession = () => {
                     }}
                   />
                 </div>
-                <h3 className="empty-state__title">NO WORKOUTS YET</h3>
+                <h3 className="empty-state__title">No workouts yet</h3>
                 <p className="empty-state__text">
                   Start your training session by adding your first exercise
                 </p>
                 <Button onClick={() => setShowForm(true)}>
-                  <Plus style={{ width: "20px", height: "20px" }} />
-                  Add Your First Exercise
+                  <Plus style={{ width: "16px", height: "16px" }} />
+                  Add your first exercise
                 </Button>
               </CardContent>
             </Card>

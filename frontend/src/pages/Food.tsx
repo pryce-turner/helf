@@ -450,7 +450,7 @@ const EntryRow = ({ entry }: { entry: FoodLogEntry }) => {
                 disabled={remove.isPending}
                 onClick={() => remove.mutate(entry.doc_id)}
             >
-                <Trash2 style={{ width: "15px", height: "15px" }} />
+                <Trash2 style={{ width: "16px", height: "16px" }} />
             </button>
         </div>
     );
@@ -491,7 +491,7 @@ const FoodPage = () => {
             <div className="page">
                 <div className="page__content page__content--narrow">
                     <div className="page__header animate-in">
-                        <h1 className="page__title">BODY</h1>
+                        <h1 className="page__title">Food</h1>
                         <p className="page__subtitle">
                             What went in, against what the last scan says you burn
                         </p>
@@ -512,7 +512,7 @@ const FoodPage = () => {
                             aria-label="Previous day"
                             onClick={() => shift(-1)}
                         >
-                            <ChevronLeft style={{ width: "18px", height: "18px" }} />
+                            <ChevronLeft style={{ width: "16px", height: "16px" }} />
                         </button>
                         <div style={{ textAlign: "center" }}>
                             <div
@@ -541,7 +541,7 @@ const FoodPage = () => {
                             disabled={date >= todayISO()}
                             onClick={() => shift(1)}
                         >
-                            <ChevronRight style={{ width: "18px", height: "18px" }} />
+                            <ChevronRight style={{ width: "16px", height: "16px" }} />
                         </button>
                     </div>
 

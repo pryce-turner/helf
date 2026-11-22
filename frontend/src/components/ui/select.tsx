@@ -117,8 +117,6 @@ const SelectLabel = React.forwardRef<
     style={{
       color: 'var(--text-muted)',
       fontSize: '12px',
-      textTransform: 'uppercase',
-      letterSpacing: '0.05em',
     }}
     {...props}
   />

@@ -76,7 +76,7 @@ export function InstallPrompt() {
         <div className="install-prompt animate-in" role="dialog" aria-label="Install Helf">
             <div className="flex items-start" style={{ gap: 'var(--space-3)' }}>
                 <div style={{ flexShrink: 0, marginTop: '2px' }}>
-                    <Download style={{ width: '20px', height: '20px', color: 'var(--accent)' }} />
+                    <Download style={{ width: '16px', height: '16px', color: 'var(--text-secondary)' }} />
                 </div>
                 <div style={{ flex: 1 }}>
                     <h3 style={{

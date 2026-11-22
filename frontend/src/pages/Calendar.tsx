@@ -147,7 +147,7 @@ const Calendar = () => {
 
                             <div className="text-center">
                                 <h2 className="page__title page__title--compact">
-                                    {monthName.toUpperCase()}
+                                    {monthName}
                                 </h2>
                                 <p className="page__subtitle">Your workout calendar</p>
                             </div>
@@ -169,8 +169,6 @@ const Calendar = () => {
                                             fontWeight: 600,
                                             color: index === 0 || index === 6 ? 'var(--text-secondary)' : 'var(--text-muted)',
                                             padding: 'var(--space-2)',
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.05em',
                                         }}
                                     >
                                         <span className="hidden sm:inline">{day}</span>
@@ -232,17 +230,17 @@ const Calendar = () => {
                     <div className="grid grid-cols-3" style={{ gap: 'var(--space-3)' }}>
                         <div className="stat-card animate-in">
                             <div className="stat-card__header">
-                                This Month
+                                This month
                             </div>
                             <div className="stat-card__value">
                                 {Object.values(workoutCounts).reduce((a, b) => a + b, 0)}
                             </div>
-                            <div className="stat-card__label">Total Sets</div>
+                            <div className="stat-card__label">Total sets</div>
                         </div>
 
                         <div className="stat-card animate-in">
                             <div className="stat-card__header">
-                                Active Days
+                                Active days
                             </div>
                             <div className="stat-card__value">
                                 {Object.values(workoutCounts).filter((c) => c > 0).length}

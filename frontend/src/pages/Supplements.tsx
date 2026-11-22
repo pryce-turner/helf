@@ -149,7 +149,7 @@ const ItemRow = ({
                 aria-label={`Remove ${draft.name || "item"}`}
                 onClick={onRemove}
             >
-                <X style={{ width: "15px", height: "15px" }} />
+                <X style={{ width: "16px", height: "16px" }} />
             </button>
         </div>
     );
@@ -235,7 +235,7 @@ const StackEditor = ({
                         className="section"
                         onClick={() => setDrafts([...drafts, blankDraft()])}
                     >
-                        <Plus style={{ width: "15px", height: "15px", marginRight: "var(--space-2)" }} />
+                        <Plus style={{ width: "16px", height: "16px", marginRight: "var(--space-2)" }} />
                         Add supplement
                     </Button>
 
@@ -315,7 +315,7 @@ const StackCard = ({ stack }: { stack: Stack }) => {
                             aria-label={`Edit ${stack.name}`}
                             onClick={() => setEditing(true)}
                         >
-                            <Pencil style={{ width: "15px", height: "15px" }} />
+                            <Pencil style={{ width: "16px", height: "16px" }} />
                         </button>
                         <button
                             type="button"
@@ -323,7 +323,7 @@ const StackCard = ({ stack }: { stack: Stack }) => {
                             aria-label={`Delete ${stack.name}`}
                             onClick={() => setConfirmDelete(true)}
                         >
-                            <Trash2 style={{ width: "15px", height: "15px" }} />
+                            <Trash2 style={{ width: "16px", height: "16px" }} />
                         </button>
                     </div>
                 </div>
@@ -438,7 +438,7 @@ const Catalog = () => {
                                 aria-label={`Edit ${food.name}`}
                                 onClick={() => setEditing(food)}
                             >
-                                <Pencil style={{ width: "15px", height: "15px" }} />
+                                <Pencil style={{ width: "16px", height: "16px" }} />
                             </button>
                         </div>
                     ))}
@@ -476,8 +476,6 @@ const SupplementLog = () => {
     const head: React.CSSProperties = {
         ...cell,
         fontSize: "11px",
-        letterSpacing: "0.04em",
-        textTransform: "uppercase",
         color: "var(--text-muted)",
         textAlign: "left",
     };
@@ -585,7 +583,7 @@ const SupplementLog = () => {
                                                     onClick={() => setConfirming(entry.doc_id)}
                                                 >
                                                     <Trash2
-                                                        style={{ width: "15px", height: "15px" }}
+                                                        style={{ width: "16px", height: "16px" }}
                                                     />
                                                 </button>
                                             )}
@@ -611,7 +609,7 @@ const Supplements = () => {
             <div className="page">
                 <div className="page__content page__content--narrow">
                     <div className="page__header animate-in">
-                        <h1 className="page__title">BODY</h1>
+                        <h1 className="page__title">Supplements</h1>
                         <p className="page__subtitle">
                             Groups you take together, logged in one tap
                         </p>

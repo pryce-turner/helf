@@ -160,7 +160,7 @@ const SupplementEditor = ({
                         warning nobody reads. */}
                     {rewrites > 0 && (
                         <p className="retro-warning section">
-                            <AlertTriangle style={{ width: "15px", height: "15px", flexShrink: 0 }} />
+                            <AlertTriangle style={{ width: "16px", height: "16px", flexShrink: 0 }} />
                             <span>
                                 Changing macros rewrites <strong>{rewrites}</strong>{" "}
                                 logged {rewrites === 1 ? "entry" : "entries"}

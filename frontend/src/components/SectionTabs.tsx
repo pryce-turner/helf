@@ -32,7 +32,7 @@ const SectionTabs = ({ tabs }: { tabs: SectionTab[] }) => {
                         aria-selected={active}
                         className={`section-tab ${active ? "section-tab--active" : ""}`}
                     >
-                        <Icon style={{ width: "15px", height: "15px" }} />
+                        <Icon style={{ width: "16px", height: "16px" }} />
                         {label}
                     </Link>
                 );

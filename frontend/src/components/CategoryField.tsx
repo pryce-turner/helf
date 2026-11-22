@@ -94,7 +94,7 @@ export function CategoryField({
                         className="flex items-center"
                         style={{ gap: "var(--space-2)", color: "var(--accent)" }}
                     >
-                        <Plus style={{ width: "14px", height: "14px" }} />
+                        <Plus style={{ width: "16px", height: "16px" }} />
                         New category
                     </span>
                 </SelectItem>

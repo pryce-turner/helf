@@ -69,7 +69,6 @@
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
         --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
         --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-        --shadow-glow: 0 0 20px var(--accent-glow);
 
         /* Font families */
         --font-display: "Clash Display", sans-serif;
@@ -189,7 +188,7 @@
     h5,
     h6 {
         font-family: var(--font-display);
-        font-weight: 700;
+        font-weight: 600;
         color: var(--text-primary);
     }
 
@@ -202,14 +201,13 @@
     h2 {
         font-size: 24px;
         line-height: 1.3;
-        letter-spacing: -0.01em;
-        font-weight: 600;
+        font-weight: 500;
     }
 
     h3 {
         font-size: 18px;
         line-height: 1.4;
-        font-weight: 600;
+        font-weight: 500;
     }
 
     /* Monospace for numbers and data */
@@ -283,6 +281,11 @@
         padding: 0 var(--space-4) var(--space-4);
     }
 
+    /* A card with no header still needs its top inset. */
+    .card__content:first-child {
+        padding-top: var(--space-4);
+    }
+
     .card__footer {
         display: flex;
         align-items: center;
@@ -298,6 +301,10 @@
             padding: 0 var(--space-6) var(--space-6);
         }
 
+        .card__content:first-child {
+            padding-top: var(--space-6);
+        }
+
         .card__footer {
             padding: 0 var(--space-6) var(--space-6);
         }
@@ -305,7 +312,10 @@
 
     .card-hover {
         cursor: pointer;
-        transition: all var(--duration-normal) var(--ease-default);
+        transition: background-color var(--duration-normal) var(--ease-default),
+            color var(--duration-normal) var(--ease-default),
+            border-color var(--duration-normal) var(--ease-default),
+            box-shadow var(--duration-normal) var(--ease-default);
     }
 
     .card-hover:hover {
@@ -322,7 +332,10 @@
         font-weight: 600;
         padding: 12px 20px;
         border-radius: var(--radius-sm);
-        transition: all var(--duration-normal) var(--ease-default);
+        transition: background-color var(--duration-normal) var(--ease-default),
+            color var(--duration-normal) var(--ease-default),
+            border-color var(--duration-normal) var(--ease-default),
+            box-shadow var(--duration-normal) var(--ease-default);
         border: none;
         cursor: pointer;
         font-family: var(--font-body);
@@ -331,7 +344,6 @@
     .btn-primary:hover {
         background: var(--accent-hover);
         transform: translateY(-1px);
-        box-shadow: var(--shadow-glow);
     }
 
     .btn-primary:focus-visible {
@@ -346,7 +358,10 @@
         font-weight: 600;
         padding: 12px 20px;
         border-radius: var(--radius-sm);
-        transition: all var(--duration-normal) var(--ease-default);
+        transition: background-color var(--duration-normal) var(--ease-default),
+            color var(--duration-normal) var(--ease-default),
+            border-color var(--duration-normal) var(--ease-default),
+            box-shadow var(--duration-normal) var(--ease-default);
         cursor: pointer;
         font-family: var(--font-body);
     }
@@ -369,7 +384,10 @@
         border-radius: var(--radius-sm);
         color: var(--text-primary);
         font-family: var(--font-body);
-        transition: all var(--duration-normal) var(--ease-default);
+        transition: background-color var(--duration-normal) var(--ease-default),
+            color var(--duration-normal) var(--ease-default),
+            border-color var(--duration-normal) var(--ease-default),
+            box-shadow var(--duration-normal) var(--ease-default);
     }
 
     .select-trigger:hover {
@@ -386,7 +404,10 @@
         color: var(--text-primary);
         font-family: var(--font-body);
         border-radius: var(--radius-sm);
-        transition: all var(--duration-fast) var(--ease-default);
+        transition: background-color var(--duration-fast) var(--ease-default),
+            color var(--duration-fast) var(--ease-default),
+            border-color var(--duration-fast) var(--ease-default),
+            box-shadow var(--duration-fast) var(--ease-default);
     }
 
     .select-item:hover,
@@ -406,8 +427,6 @@
         font-size: 12px;
         font-weight: 600;
         color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -424,7 +443,10 @@
            does not zoom back out, which is what left every form off-centre on
            a phone. One pixel is not worth that. */
         font-size: 16px;
-        transition: all var(--duration-normal) var(--ease-default);
+        transition: background-color var(--duration-normal) var(--ease-default),
+            color var(--duration-normal) var(--ease-default),
+            border-color var(--duration-normal) var(--ease-default),
+            box-shadow var(--duration-normal) var(--ease-default);
         font-family: var(--font-body);
         box-sizing: border-box;
         width: 100%;
@@ -464,7 +486,7 @@
     .stat-card__value {
         font-family: var(--font-mono);
         font-size: 28px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--text-primary);
         line-height: 1;
     }
@@ -479,8 +501,6 @@
         font-size: 12px;
         font-weight: 600;
         color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
         margin-bottom: var(--space-3);
     }
 
@@ -521,21 +541,6 @@
     }
     .stagger-children > *:nth-child(7) {
         animation-delay: 300ms;
-    }
-
-    /* Pulse animation for active elements */
-    @keyframes pulse-glow {
-        0%,
-        100% {
-            box-shadow: 0 0 10px var(--accent-glow);
-        }
-        50% {
-            box-shadow: 0 0 20px var(--accent-glow);
-        }
-    }
-
-    .pulse-glow {
-        animation: pulse-glow 2s ease-in-out infinite;
     }
 
     /* Navigation styles */
@@ -597,7 +602,7 @@
     .nav-logo__text {
         font-family: var(--font-display);
         font-size: 18px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--text-primary);
         letter-spacing: -0.01em;
     }
@@ -618,7 +623,10 @@
         font-size: 13px;
         font-weight: 500;
         text-decoration: none;
-        transition: all var(--duration-normal);
+        transition: background-color var(--duration-normal),
+            color var(--duration-normal),
+            border-color var(--duration-normal),
+            box-shadow var(--duration-normal);
     }
 
     @media (hover: hover) {
@@ -955,8 +963,6 @@
         gap: 3px;
         font-size: 10px;
         font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
         color: var(--info);
         background: color-mix(in srgb, var(--info) 14%, transparent);
         border-radius: var(--radius-sm);
@@ -1004,8 +1010,6 @@
         flex: 0 0 auto;
         font-size: 10px;
         font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
         color: var(--accent);
         background: var(--accent-subtle);
         border-radius: var(--radius-sm);
@@ -1019,7 +1023,6 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         font-size: 12px;
-        font-style: italic;
         color: var(--text-secondary);
     }
 
@@ -1078,8 +1081,6 @@
         justify-content: space-between;
         font-size: 12px;
         color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
     }
 
     .trend-slider__value {
@@ -1151,7 +1152,10 @@
 
     /* Interactive item styles */
     .interactive-item {
-        transition: all var(--duration-normal) var(--ease-default);
+        transition: background-color var(--duration-normal) var(--ease-default),
+            color var(--duration-normal) var(--ease-default),
+            border-color var(--duration-normal) var(--ease-default),
+            box-shadow var(--duration-normal) var(--ease-default);
     }
 
     .interactive-item:hover {
@@ -1178,7 +1182,10 @@
         font-weight: 600;
         padding: 8px 14px;
         border-radius: var(--radius-sm);
-        transition: all var(--duration-normal);
+        transition: background-color var(--duration-normal),
+            color var(--duration-normal),
+            border-color var(--duration-normal),
+            box-shadow var(--duration-normal);
         cursor: pointer;
         font-family: var(--font-body);
         font-size: 13px;
@@ -1201,7 +1208,10 @@
         font-weight: 500;
         padding: 8px 14px;
         border-radius: var(--radius-sm);
-        transition: all var(--duration-normal);
+        transition: background-color var(--duration-normal),
+            color var(--duration-normal),
+            border-color var(--duration-normal),
+            box-shadow var(--duration-normal);
         cursor: pointer;
         font-family: var(--font-body);
     }
@@ -1250,7 +1260,10 @@
         cursor: pointer;
         display: flex;
         flex-direction: column;
-        transition: all var(--duration-normal) var(--ease-default);
+        transition: background-color var(--duration-normal) var(--ease-default),
+            color var(--duration-normal) var(--ease-default),
+            border-color var(--duration-normal) var(--ease-default),
+            box-shadow var(--duration-normal) var(--ease-default);
     }
 
     /* A square cell is a phone's answer: at 402px it is 48px across and 48px
@@ -1294,12 +1307,11 @@
     .calendar-day--today {
         border-width: 2px;
         border-color: var(--accent);
-        box-shadow: var(--shadow-glow);
     }
 
     .calendar-day__number {
         font-family: var(--font-mono);
-        font-weight: 700;
+        font-weight: 600;
         font-size: 14px;
         color: var(--text-secondary);
     }
@@ -1343,7 +1355,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all var(--duration-normal);
+        transition: background-color var(--duration-normal),
+            color var(--duration-normal),
+            border-color var(--duration-normal),
+            box-shadow var(--duration-normal);
     }
 
     .icon-btn:hover {
@@ -1386,7 +1401,7 @@
         width: fit-content;
         gap: var(--space-1);
         padding: 3px;
-        border-radius: var(--radius-full);
+        border-radius: var(--radius-md);
         background: var(--bg-secondary);
         border: 1px solid var(--border-subtle);
         margin-bottom: var(--space-5);
@@ -1400,7 +1415,7 @@
            read as primary navigation. */
         height: 40px;
         padding: 0 var(--space-4);
-        border-radius: var(--radius-full);
+        border-radius: var(--radius-sm);
         font-size: 13px;
         font-weight: 600;
         letter-spacing: 0.02em;
@@ -1459,14 +1474,14 @@
         font-family: var(--font-display);
         font-size: 14px;
         font-weight: 600;
-        letter-spacing: 0.24em;
+        letter-spacing: 0.08em;
         opacity: 0.85;
     }
 
     .timer-hero__clock {
         font-family: var(--font-mono);
         font-size: clamp(72px, 22vw, 112px);
-        font-weight: 700;
+        font-weight: 600;
         line-height: 1;
         letter-spacing: -0.03em;
         font-variant-numeric: tabular-nums;
@@ -1782,7 +1797,7 @@
     .movement-break-retry {
         padding: var(--space-2) var(--space-4);
         border: 1px solid var(--error);
-        border-radius: var(--radius-full);
+        border-radius: var(--radius-sm);
         background: transparent;
         color: var(--error);
         font-family: var(--font-body);
@@ -1840,8 +1855,6 @@
         font-size: 12px;
         font-weight: 600;
         color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
     }
 
     .field-config__group {
@@ -1898,7 +1911,6 @@
         outline: 2px solid var(--accent);
         outline-offset: 2px;
         border-radius: var(--radius-md);
-        box-shadow: 0 0 18px var(--accent-glow);
     }
 
     .set-row--active .action-btn:disabled {
@@ -1981,9 +1993,7 @@
 
     .meal-group__label {
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        font-weight: 600;
         color: var(--text-muted);
         margin-bottom: var(--space-2);
     }
@@ -2036,7 +2046,7 @@
         align-items: center;
         gap: 4px;
         padding: 2px var(--space-2);
-        border-radius: var(--radius-full);
+        border-radius: var(--radius-sm);
         background: var(--success-subtle);
         color: var(--success);
         font-family: var(--font-body);
@@ -2074,9 +2084,7 @@
         display: none;
         gap: var(--space-2);
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-weight: 600;
         color: var(--text-muted);
         margin-bottom: var(--space-2);
     }
@@ -2135,9 +2143,7 @@
 
     .section-heading {
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        font-weight: 600;
         color: var(--text-muted);
         margin: var(--space-8) 0 var(--space-3);
     }
@@ -2236,7 +2242,10 @@
         border: 1px solid var(--border);
         color: var(--text-secondary);
         cursor: pointer;
-        transition: all var(--duration-fast);
+        transition: background-color var(--duration-fast),
+            color var(--duration-fast),
+            border-color var(--duration-fast),
+            box-shadow var(--duration-fast);
     }
 
     .stepper__btn:hover {
@@ -2304,14 +2313,13 @@
 
     .workout-chip__comment {
         color: var(--text-secondary);
-        font-style: italic;
     }
 
     /* Workout order badge */
     .workout-order {
         background: var(--accent-subtle);
         color: var(--accent);
-        font-weight: 700;
+        font-weight: 600;
         font-size: 16px;
         width: 40px;
         height: 40px;
@@ -2327,7 +2335,7 @@
     .workout-order-compact {
         background: var(--accent-subtle);
         color: var(--accent);
-        font-weight: 700;
+        font-weight: 600;
         font-size: 13px;
         min-width: 28px;
         height: 28px;
@@ -2343,7 +2351,7 @@
     /* Category badge */
     .category-badge {
         padding: 4px 12px;
-        border-radius: var(--radius-full);
+        border-radius: var(--radius-sm);
         font-size: 12px;
         font-weight: 600;
     }
@@ -2351,7 +2359,7 @@
     /* Compact category badge */
     .category-badge-compact {
         padding: 2px 8px;
-        border-radius: var(--radius-full);
+        border-radius: var(--radius-sm);
         font-size: 11px;
         font-weight: 600;
     }
@@ -2369,7 +2377,10 @@
         border-radius: var(--radius-sm);
         color: var(--text-secondary);
         cursor: pointer;
-        transition: all var(--duration-fast);
+        transition: background-color var(--duration-fast),
+            color var(--duration-fast),
+            border-color var(--duration-fast),
+            box-shadow var(--duration-fast);
     }
 
     .action-btn:hover {
@@ -2451,7 +2462,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: all 0.2s;
+        transition: background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
         flex-shrink: 0;
     }
 

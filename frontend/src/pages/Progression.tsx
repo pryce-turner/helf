@@ -224,7 +224,7 @@ const Progression = () => {
                 <div className="page__content">
                     {/* Header */}
                     <div className="page__header animate-in">
-                        <h1 className="page__title">PROGRESSION TRACKING</h1>
+                        <h1 className="page__title">Progression</h1>
                         <p className="page__subtitle">Track your strength gains over time</p>
                     </div>
 
@@ -317,7 +317,7 @@ const Progression = () => {
                             <Card className="animate-in section">
                                 <CardHeader>
                                     <CardTitle className="font-display text-xl tracking-tight">
-                                        ESTIMATED 1RM OVER TIME
+                                        Estimated 1RM over time
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
@@ -459,7 +459,7 @@ const Progression = () => {
                                 <Card className="animate-in">
                                     <CardHeader>
                                         <CardTitle className="font-display text-xl tracking-tight">
-                                            HISTORICAL DATA
+                                            History
                                         </CardTitle>
                                         <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
                                             {progressionData.historical.length} completed session{progressionData.historical.length !== 1 ? 's' : ''}
@@ -524,7 +524,7 @@ const Progression = () => {
                                     <Card className="animate-in">
                                         <CardHeader>
                                             <CardTitle className="font-display text-xl tracking-tight">
-                                                UPCOMING WORKOUTS
+                                                Upcoming workouts
                                             </CardTitle>
                                             <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
                                                 {progressionData.upcoming.length} planned session{progressionData.upcoming.length !== 1 ? 's' : ''}
@@ -581,7 +581,7 @@ const Progression = () => {
                                                                 <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
                                                                     {point.weight && (
                                                                         <div className="workout-chip">
-                                                                            <Weight style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                                                            <Weight style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                                                                             <span className="workout-chip__value" style={{ fontSize: '13px' }}>
                                                                                 {point.weight} {point.weight_unit}
                                                                             </span>
@@ -589,21 +589,21 @@ const Progression = () => {
                                                                     )}
                                                                     {point.reps && (
                                                                         <div className="workout-chip">
-                                                                            <Hash style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                                                            <Hash style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                                                                             <span className="workout-chip__value" style={{ fontSize: '13px' }}>
                                                                                 {point.reps} reps
                                                                             </span>
                                                                         </div>
                                                                     )}
                                                                     <div className="workout-chip">
-                                                                        <TrendingUp style={{ width: '14px', height: '14px', color: 'var(--warning)' }} />
+                                                                        <TrendingUp style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                                                                         <span className="workout-chip__value" style={{ fontSize: '13px', color: 'var(--warning)' }}>
                                                                             {point.estimated_1rm.toFixed(1)} 1RM
                                                                         </span>
                                                                     </div>
                                                                     {point.comment && (
                                                                         <div className="workout-chip">
-                                                                            <MessageSquare style={{ width: '14px', height: '14px', color: 'var(--text-muted)' }} />
+                                                                            <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                                                                             <span className="workout-chip__comment" style={{ fontSize: '13px' }}>
                                                                                 {point.comment}
                                                                             </span>
@@ -626,7 +626,7 @@ const Progression = () => {
                                 <div className="empty-state__icon">
                                     <TrendingUp style={{ width: '40px', height: '40px', color: 'var(--text-muted)' }} />
                                 </div>
-                                <h3 className="empty-state__title">NO PROGRESSION DATA</h3>
+                                <h3 className="empty-state__title">No progression data</h3>
                                 <p className="empty-state__text">
                                     No progression data available for this exercise.
                                 </p>

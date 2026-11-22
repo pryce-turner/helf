@@ -153,6 +153,13 @@ export function usePreset(name: string) {
   });
 }
 
+export function useLastLiftoscriptProgram() {
+  return useQuery({
+    queryKey: ['liftoscript', 'last'],
+    queryFn: async () => (await upcomingApi.getLastProgram()).data,
+  });
+}
+
 export function useLiftoscriptGenerate() {
   const queryClient = useQueryClient();
 
@@ -164,6 +171,7 @@ export function useLiftoscriptGenerate() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['progression'] });
+      queryClient.invalidateQueries({ queryKey: ['liftoscript', 'last'] });
     },
   });
 }

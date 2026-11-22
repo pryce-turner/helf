@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException
 from app.models.upcoming import (
     LiftoscriptGenerateRequest,
     LiftoscriptGenerateResponse,
+    LiftoscriptProgram,
     PresetContent,
     PresetInfo,
     SessionTransferRequest,
@@ -203,6 +204,12 @@ def get_wendler_current_maxes():
     )
 
 
+@router.get("/liftoscript/last", response_model=LiftoscriptProgram | None)
+def get_last_liftoscript_program():
+    """The script and cycle count the last successful generate ran, or null."""
+    return UpcomingWorkoutRepository().last_program()
+
+
 @router.post("/liftoscript/generate", response_model=LiftoscriptGenerateResponse)
 def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
     """Generate upcoming workouts from Liftoscript program.
@@ -249,6 +256,9 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
     deleted_plans = mobility_repo.delete_all_plans()
     created = repo.create_bulk(workouts)
     sessions = len(set(w.session for w in workouts))
+    # Only a program that produced a queue is kept: a script that failed to
+    # parse, or generated nothing, never reaches this line.
+    repo.save_program(request.script, request.num_cycles)
 
     message = f"Generated {len(created)} workouts across {sessions} sessions"
     if deleted_plans:

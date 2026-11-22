@@ -111,6 +111,14 @@ class PresetInfo(BaseModel):
     description: str
 
 
+class LiftoscriptProgram(BaseModel):
+    """The program a generate last ran, so the editor can reopen with it."""
+
+    script: str
+    num_cycles: int
+    generated_at: str
+
+
 class PresetContent(BaseModel):
     """Full preset content including script."""
 

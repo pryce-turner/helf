@@ -73,6 +73,14 @@ export interface LiftoscriptGenerateResponse {
   deleted_count: number;
 }
 
+/** The program the last successful generate ran — what the editor reopens on. */
+export interface LiftoscriptProgram {
+  script: string;
+  num_cycles: number;
+  /** SQLite `datetime('now')`: UTC, "YYYY-MM-DD HH:MM:SS". */
+  generated_at: string;
+}
+
 export interface PresetInfo {
   name: string;
   display_name: string;

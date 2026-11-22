@@ -17,6 +17,7 @@ import {
   usePresets,
   usePreset,
   useLiftoscriptGenerate,
+  useLastLiftoscriptProgram,
 } from '@/hooks/useUpcoming';
 import { useLastMobilitySession } from '@/hooks/useMobility';
 import type { UpcomingSession, UpcomingWorkout } from '@/types/upcoming';
@@ -521,6 +522,7 @@ const Upcoming = () => {
   const { data: sessions, isLoading } = useUpcomingWorkouts();
   const { data: lastSession } = useLastMobilitySession();
   const { data: presets } = usePresets();
+  const { data: lastProgram } = useLastLiftoscriptProgram();
   const generateLiftoscript = useLiftoscriptGenerate();
 
   const [showEditor, setShowEditor] = useState(false);
@@ -542,10 +544,28 @@ const Upcoming = () => {
   const handlePresetChange = (presetName: string) => {
     setSelectedPreset(presetName);
     if (presetName === 'custom') {
-      setScriptContent('');
+      // Custom is the program behind the queue, when there is one.
+      setScriptContent(lastProgram?.script ?? '');
     }
     setEditorError('');
   };
+
+  // The editor opens on the last generated program rather than an empty box.
+  // Only into an empty Custom editor: anything typed this visit, or a
+  // built-in program picked, is left alone.
+  const toggleEditor = () => {
+    if (!showEditor && selectedPreset === 'custom' && !scriptContent && lastProgram) {
+      setScriptContent(lastProgram.script);
+      setNumCycles(String(lastProgram.num_cycles));
+    }
+    setShowEditor(!showEditor);
+  };
+
+  const showingLastProgram =
+    selectedPreset === 'custom' && !!lastProgram && scriptContent === lastProgram.script;
+  const lastGeneratedOn = lastProgram
+    ? format(new Date(`${lastProgram.generated_at.replace(' ', 'T')}Z`), 'MMM d, yyyy')
+    : '';
 
   const handleGenerateClick = () => {
     if (!scriptContent.trim()) {
@@ -594,7 +614,7 @@ const Upcoming = () => {
                 <h1 className="page__title">Upcoming</h1>
                 <p className="page__subtitle">Plan and manage your future training sessions</p>
               </div>
-              <Button onClick={() => setShowEditor(!showEditor)}>
+              <Button onClick={toggleEditor}>
                 <Edit3 style={{ width: '16px', height: '16px' }} />
                 {showEditor ? 'Close editor' : 'Edit program'}
               </Button>
@@ -611,7 +631,9 @@ const Upcoming = () => {
                   Program editor
                 </CardTitle>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
-                  Write or select a program template to generate upcoming workouts
+                  {showingLastProgram
+                    ? `The program last generated, on ${lastGeneratedOn}`
+                    : 'Write or select a program template to generate upcoming workouts'}
                 </p>
               </CardHeader>
               <CardContent>

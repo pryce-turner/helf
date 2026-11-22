@@ -44,6 +44,7 @@ import type {
     WendlerCurrentMaxes,
     LiftoscriptGenerateRequest,
     LiftoscriptGenerateResponse,
+    LiftoscriptProgram,
     PresetInfo,
     PresetContent,
 } from "../types/upcoming";
@@ -227,6 +228,10 @@ export const upcomingApi = {
 
     generateLiftoscript: (request: LiftoscriptGenerateRequest) =>
         api.post<LiftoscriptGenerateResponse>("/api/upcoming/liftoscript/generate", request),
+
+    /** The last generated program, or null if nothing has been generated. */
+    getLastProgram: () =>
+        api.get<LiftoscriptProgram | null>("/api/upcoming/liftoscript/last"),
 };
 
 // Mobility

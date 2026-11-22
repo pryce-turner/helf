@@ -1,11 +1,13 @@
 """Upcoming workout repository for database operations."""
 
 
+import json
+
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
-from app.db.models import Category, Exercise, UpcomingWorkout
+from app.db.models import Category, Document, Exercise, UpcomingWorkout
 from app.models.upcoming import UpcomingWorkoutCreate
 from app.utils.date_helpers import get_current_datetime
 from app.utils.units import CANONICAL_WEIGHT_UNIT
@@ -276,3 +278,38 @@ class UpcomingWorkoutRepository:
 
             session.commit()
             return count
+
+    # The program behind the queue. Each successful generate keeps its script
+    # as a `document` — the raw payload, kept whole — so the editor reopens on
+    # the last one instead of an empty box, and earlier ones stay readable.
+    # A document rather than a table of its own: it is a payload, not a shape,
+    # and nothing queries inside it.
+    PROGRAM_KIND = "liftoscript_program"
+
+    def save_program(self, script: str, num_cycles: int) -> None:
+        with SessionLocal() as session:
+            session.add(
+                Document(
+                    kind=self.PROGRAM_KIND,
+                    source="program_editor",
+                    raw=json.dumps({"script": script, "num_cycles": num_cycles}),
+                )
+            )
+            session.commit()
+
+    def last_program(self) -> dict | None:
+        with SessionLocal() as session:
+            document = session.execute(
+                select(Document)
+                .where(Document.kind == self.PROGRAM_KIND)
+                .order_by(Document.id.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if document is None:
+                return None
+            raw = json.loads(document.raw)
+            return {
+                "script": raw["script"],
+                "num_cycles": raw["num_cycles"],
+                "generated_at": document.imported_at,
+            }

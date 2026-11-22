@@ -25,6 +25,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
             getPresets: vi.fn(),
             getPreset: vi.fn(),
             generateLiftoscript: vi.fn(),
+            getLastProgram: vi.fn(),
         },
         mobilityApi: {
             getLastSession: vi.fn(),
@@ -103,6 +104,7 @@ beforeEach(() => {
     mobility.getLastSession.mockResolvedValue({ data: null } as never);
     upcoming.getPresets.mockResolvedValue({ data: [] } as never);
     upcoming.getPreset.mockResolvedValue({ data: null } as never);
+    upcoming.getLastProgram.mockResolvedValue({ data: null } as never);
     // One test mocks the clock to pin down the timezone bug. Reset here rather
     // than at the end of that test, so a failure part-way through cannot leave
     // every later test running in August 2026.
@@ -237,4 +239,25 @@ it("warns before generating, naming the agent-written sessions it wipes", async 
             num_cycles: 4,
         }),
     );
+});
+
+it("opens the editor on the last generated program", async () => {
+    upcoming.getAll.mockResolvedValue({ data: [] } as never);
+    upcoming.getLastProgram.mockResolvedValue({
+        data: {
+            script: "## Day 1\nBarbell Squat / 5x5 185lb",
+            num_cycles: 6,
+            generated_at: "2026-11-20 18:00:00",
+        },
+    } as never);
+    renderPage(<Upcoming />);
+
+    // Wait for the program to arrive before opening the editor.
+    await waitFor(() => expect(upcoming.getLastProgram).toHaveBeenCalled());
+    await screen.findByText("No upcoming workouts");
+    await userEvent.click(screen.getByText("Edit program"));
+
+    expect(screen.getByRole("textbox")).toHaveValue("## Day 1\nBarbell Squat / 5x5 185lb");
+    expect(screen.getByLabelText("Cycles")).toHaveValue(6);
+    expect(screen.getByText(/The program last generated, on Nov 20, 2026/)).toBeInTheDocument();
 });

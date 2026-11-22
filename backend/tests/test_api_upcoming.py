@@ -300,3 +300,30 @@ def test_generating_a_program_replaces_the_whole_queue(client):
     assert all(i["exercise"] == "Bench Press" for s in queue for i in s["items"])
     with database.SessionLocal() as db:
         assert db.execute(text("SELECT COUNT(*) FROM mobility_plan")).scalar() == 0
+
+
+def test_the_last_generated_program_is_kept_for_the_editor(client):
+    """The editor reopens on the program behind the queue rather than an empty
+    box: each successful generate keeps its script and cycle count."""
+    assert client.get("/api/upcoming/liftoscript/last").json() is None
+
+    first = "## Day 1\nBench Press / 3x5 135lb"
+    second = "## Day 1\nBarbell Squat / 5x5 185lb"
+    client.post("/api/upcoming/liftoscript/generate", json={"script": first, "num_cycles": 2})
+    client.post("/api/upcoming/liftoscript/generate", json={"script": second, "num_cycles": 3})
+
+    last = client.get("/api/upcoming/liftoscript/last").json()
+    assert last["script"] == second
+    assert last["num_cycles"] == 3
+    assert last["generated_at"]
+
+
+def test_a_program_that_fails_to_generate_is_not_kept(client):
+    good = "## Day 1\nBench Press / 3x5 135lb"
+    client.post("/api/upcoming/liftoscript/generate", json={"script": good, "num_cycles": 1})
+
+    # Parses to nothing: no queue was produced, so it does not replace the
+    # program the queue came from.
+    client.post("/api/upcoming/liftoscript/generate", json={"script": "just words", "num_cycles": 1})
+
+    assert client.get("/api/upcoming/liftoscript/last").json()["script"] == good

@@ -626,6 +626,7 @@ docker-compose up -d
   the confirm is offered
 - `GET /presets` - List available workout presets
 - `GET /presets/{name}` - Get preset script content
+- `GET /liftoscript/last` - The script and `num_cycles` of the last **successful** generate, or null. Each one is kept as a `document` (`kind = 'liftoscript_program'`), so earlier programs stay readable; the editor reopens on the latest
 
 ### Body Composition (`/api/body-composition`)
 - `GET /` - List measurements (optional date range filter)
@@ -776,6 +777,7 @@ work is a field on the set, written through the normal workout routes
 - Linear progression: `progress: lp(5lb)`
 - Multi-cycle generation
 - One-click transfer to historical data
+- The editor reopens on the last generated program (kept server-side, so it follows you across devices); a failed generate never replaces it
 
 ### Hand-built presets
 - A workout built once on the day editor and applied to any day as planned

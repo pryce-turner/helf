@@ -9,6 +9,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { usePresetTileSource } from '@/hooks/useTileSource';
+import { formatDuration, timedWorkSeconds } from '@/lib/setTiles';
 import {
   useApplyWorkoutPreset,
   useDeleteWorkoutPreset,
@@ -107,6 +108,7 @@ const PresetEditor = () => {
   }
 
   const setCount = preset?.items.length ?? 0;
+  const timedSeconds = timedWorkSeconds(source.tiles ?? []);
 
   const title = editingName ? (
     <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
@@ -149,7 +151,8 @@ const PresetEditor = () => {
   const subtitle = nameError ? (
     <span style={{ color: 'var(--error)' }}>{nameError}</span>
   ) : (
-    `${setCount} set${setCount !== 1 ? 's' : ''}`
+    `${setCount} set${setCount !== 1 ? 's' : ''}` +
+    (timedSeconds > 0 ? ` · ${formatDuration(timedSeconds)} timed` : '')
   );
 
   const extraActions = (

@@ -207,3 +207,16 @@ it("takes two taps to delete the preset", async () => {
 
     await waitFor(() => expect(presets.delete).toHaveBeenCalledWith(3));
 });
+
+it("totals the timed work beside the set count", async () => {
+    presets.getById.mockResolvedValue({
+        data: preset([
+            item({ doc_id: 1, reps: 6, work_seconds: 10, rest_seconds: 5 }),
+            item({ doc_id: 2, order: 2, reps: 4, work_seconds: 10 }),
+            item({ doc_id: 3, order: 3, reps: 5 }),
+        ]),
+    } as never);
+    renderEditor();
+
+    expect(await screen.findByText("3 sets · 1:40 timed")).toBeInTheDocument();
+});

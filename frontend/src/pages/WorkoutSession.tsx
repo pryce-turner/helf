@@ -56,7 +56,12 @@ import RestDivider from "@/components/RestDivider";
 import WorkoutFields from "@/components/WorkoutFields";
 import WorkoutPlayerControls from "@/components/WorkoutPlayerControls";
 import { useWorkoutPlayer } from "@/hooks/useWorkoutPlayer";
-import { defaultsFromExercise, formatSeconds } from "@/lib/setTiles";
+import {
+  defaultsFromExercise,
+  formatDuration,
+  formatSeconds,
+  timedWorkSeconds,
+} from "@/lib/setTiles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -1828,6 +1833,8 @@ const WorkoutSession = () => {
   // are named as such rather than counted into the log (plan 0018).
   const performedCount = (workouts ?? []).filter((w) => w.completed_at).length;
   const plannedCount = (workouts?.length ?? 0) - performedCount;
+  // Every timed set on the day, performed or planned (plan 0018 totals).
+  const timedSeconds = timedWorkSeconds(workouts ?? []);
 
   return (
     <DayEditor
@@ -1841,6 +1848,7 @@ const WorkoutSession = () => {
           {performedCount} exercise
           {performedCount !== 1 ? "s" : ""} logged
           {plannedCount > 0 ? ` · ${plannedCount} planned` : ""}
+          {timedSeconds > 0 ? ` · ${formatDuration(timedSeconds)} timed` : ""}
         </>
       }
       onBack={() => navigate("/")}

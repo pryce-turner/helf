@@ -54,3 +54,35 @@ export const derivedActuals = (tile: {
     ended_early: false,
   };
 };
+
+/**
+ * The timed work a workout holds, in seconds: every tile with a work time,
+ * counted as a total across its reps (`derivedActuals`' rule — 6 × 10s holds
+ * are 60s). A performed tile counts what was measured, so a stopped set adds
+ * what was actually done rather than its target. Rests are not work and are
+ * left out.
+ */
+export const timedWorkSeconds = (
+  tiles: {
+    reps: number | null;
+    work_seconds: number | null;
+    rest_seconds: number | null;
+    completed_at: string | null;
+    actual_work_seconds: number | null;
+  }[],
+): number =>
+  tiles.reduce((total, tile) => {
+    if (tile.completed_at && tile.actual_work_seconds != null) {
+      return total + tile.actual_work_seconds;
+    }
+    return total + (derivedActuals(tile).actual_work_seconds ?? 0);
+  }, 0);
+
+/** A duration total: `m:ss`, or `h:mm:ss` from an hour up. */
+export const formatDuration = (seconds: number): string => {
+  const whole = Math.round(seconds);
+  if (whole < 3600) return formatSeconds(whole);
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  return `${h}:${String(m).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
+};

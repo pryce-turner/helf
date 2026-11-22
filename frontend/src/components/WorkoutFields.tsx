@@ -208,18 +208,29 @@ const WorkoutFields = ({
         </div>
       )}
 
+      {/* One group label, like Weight and Reps above, then three short
+          one-line sub-labels. Three full labels wrapped to different heights
+          on a phone and left the boxes at three different heights. The
+          inputs keep their full names for assistive tech. */}
       {showTime && (
-        <div
-          className="grid grid-cols-3"
-          style={{ gap: "var(--space-3)" }}
-        >
-          <div className="form-field">
-            <Label htmlFor={`${idPrefix}-work`} className="form-label">
+        <div className="form-field">
+          <Label asChild className="form-label">
+            <span>
               <Timer style={{ width: "16px", height: "16px" }} />
-              Work seconds
+              Time · seconds
+            </span>
+          </Label>
+          <div
+            className="grid grid-cols-3"
+            style={{ gap: "var(--space-3)" }}
+          >
+          <div className="form-field time-field">
+            <Label htmlFor={`${idPrefix}-work`} className="time-field__label">
+              Work
             </Label>
             <Input
               id={`${idPrefix}-work`}
+              aria-label="Work seconds"
               type="number"
               inputMode="numeric"
               className="input--mono"
@@ -232,12 +243,13 @@ const WorkoutFields = ({
               }
             />
           </div>
-          <div className="form-field">
-            <Label htmlFor={`${idPrefix}-rest`} className="form-label">
-              Rest seconds
+          <div className="form-field time-field">
+            <Label htmlFor={`${idPrefix}-rest`} className="time-field__label">
+              Rest
             </Label>
             <Input
               id={`${idPrefix}-rest`}
+              aria-label="Rest seconds"
               type="number"
               inputMode="numeric"
               className="input--mono"
@@ -250,12 +262,13 @@ const WorkoutFields = ({
               }
             />
           </div>
-          <div className="form-field">
-            <Label htmlFor={`${idPrefix}-rest-after`} className="form-label">
-              Rest after set seconds
+          <div className="form-field time-field">
+            <Label htmlFor={`${idPrefix}-rest-after`} className="time-field__label">
+              After set
             </Label>
             <Input
               id={`${idPrefix}-rest-after`}
+              aria-label="Rest after set seconds"
               type="number"
               inputMode="numeric"
               className="input--mono"
@@ -269,6 +282,7 @@ const WorkoutFields = ({
                 })
               }
             />
+          </div>
           </div>
         </div>
       )}

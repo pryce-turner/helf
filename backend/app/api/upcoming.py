@@ -30,6 +30,7 @@ from app.models.workout import WorkoutCreate
 from app.repositories.mobility_repo import MobilityRepository
 from app.repositories.upcoming_repo import UpcomingWorkoutRepository
 from app.repositories.workout_repo import WorkoutRepository
+from app.services.library_service import resolve_block
 from app.services.liftoscript_service import LiftoscriptParseError, LiftoscriptParser
 from app.services.wendler_service import WendlerService
 from app.utils.durations import parse_duration_seconds
@@ -249,6 +250,8 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
         workouts = parser.parse(
             script=request.script,
             num_cycles=request.num_cycles,
+            # `[Block]` lines: built-in blocks, then yours (plan 0022).
+            resolve_block=resolve_block,
         )
     except LiftoscriptParseError as e:
         raise HTTPException(status_code=400, detail=str(e))

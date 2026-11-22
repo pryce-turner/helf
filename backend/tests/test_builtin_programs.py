@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.api.upcoming import PRESETS
+from app.services.library_service import resolve_block
 from app.services.liftoscript_service import LiftoscriptParser
 
 PRESET_DIR = Path(__file__).resolve().parents[1] / "app" / "presets"
@@ -13,12 +14,12 @@ PRESET_DIR = Path(__file__).resolve().parents[1] / "app" / "presets"
 @pytest.mark.parametrize("name", sorted(PRESETS))
 def test_every_builtin_program_parses(name):
     script = (PRESET_DIR / f"{name}.liftoscript").read_text()
-    assert LiftoscriptParser().parse(script)
+    assert LiftoscriptParser().parse(script, resolve_block=resolve_block)
 
 
 def test_core_stability_531_runs_each_day_in_order():
     script = (PRESET_DIR / "core_stability_531.liftoscript").read_text()
-    sets = LiftoscriptParser().parse(script)
+    sets = LiftoscriptParser().parse(script, resolve_block=resolve_block)
     sessions = sorted({s.session for s in sets})
     assert len(sessions) == 16  # 4 days x 4 weeks
 
@@ -41,7 +42,7 @@ def test_core_stability_531_runs_each_day_in_order():
 
 def test_each_day_has_its_core_pair():
     script = (PRESET_DIR / "core_stability_531.liftoscript").read_text()
-    sets = LiftoscriptParser().parse(script)
+    sets = LiftoscriptParser().parse(script, resolve_block=resolve_block)
     by_session: dict[int, set[str]] = {}
     for s in sets:
         by_session.setdefault(s.session, set()).add(s.exercise)
@@ -58,7 +59,7 @@ def test_each_day_has_its_core_pair():
 
 def test_the_mobility_blocks_are_flagged_and_the_training_is_not():
     script = (PRESET_DIR / "core_stability_531.liftoscript").read_text()
-    week1_press = [s for s in LiftoscriptParser().parse(script) if s.session == 1]
+    week1_press = [s for s in LiftoscriptParser().parse(script, resolve_block=resolve_block) if s.session == 1]
     flagged = {s.exercise for s in week1_press if s.is_mobility}
     unflagged = {s.exercise for s in week1_press if not s.is_mobility}
     assert flagged == {

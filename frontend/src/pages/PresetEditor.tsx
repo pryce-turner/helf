@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowRight, Calendar as CalendarIcon, Check, Pencil, Trash2, X } from 'lucide-react';
+import { ArrowRight, Calendar as CalendarIcon, Check, FileCode, Pencil, Trash2, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { presetsApi } from '@/lib/api';
 import { DayEditor } from './WorkoutSession';
 import Navigation from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
@@ -18,7 +20,9 @@ import {
 } from '@/hooks/useWorkoutPresets';
 
 /**
- * One preset on the day editor (plan 0020).
+ * One block of yours on the day editor (plans 0020, 0022) - a block is what
+ * was a preset: part of a day, applied to one or pulled into a program with
+ * `[Its name]`. "Script" shows exactly what that line puts in.
  *
  * Tiles save as they are added, edited, reordered or deleted — the same as a
  * day — so there is no Save for them; the name is the one thing saved here.
@@ -44,6 +48,12 @@ const PresetEditor = () => {
   const [nameError, setNameError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [showApply, setShowApply] = useState(false);
+  const [showScript, setShowScript] = useState(false);
+  const script = useQuery({
+    queryKey: ['workout-presets', presetId, 'script', preset?.updated_at],
+    queryFn: async () => (await presetsApi.getScript(presetId)).data.script,
+    enabled: showScript && !!preset,
+  });
   const [applyDate, setApplyDate] = useState<Date | undefined>(new Date());
 
   // A two-tap delete, disarmed after a moment, like a tile's.
@@ -63,7 +73,7 @@ const PresetEditor = () => {
     if (!preset) return;
     const trimmed = (draftName ?? preset.name).trim();
     if (!trimmed) {
-      setNameError('A preset needs a name');
+      setNameError('A block needs a name');
       return;
     }
     if (trimmed !== preset.name) {
@@ -71,7 +81,7 @@ const PresetEditor = () => {
         await renamePreset.mutateAsync({ id: preset.doc_id, name: trimmed });
       } catch (error: unknown) {
         const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-        setNameError(typeof detail === 'string' ? detail : 'Could not rename the preset');
+        setNameError(typeof detail === 'string' ? detail : 'Could not rename the block');
         return;
       }
     }
@@ -88,7 +98,7 @@ const PresetEditor = () => {
   const handleDelete = async () => {
     if (!preset) return;
     await deletePreset.mutateAsync(preset.doc_id);
-    navigate('/presets');
+    navigate('/library');
   };
 
   if (isError || Number.isNaN(presetId)) {
@@ -97,9 +107,9 @@ const PresetEditor = () => {
         <Navigation />
         <div className="page">
           <div className="page__content page__content--narrow">
-            <p style={{ color: 'var(--text-muted)' }}>This preset does not exist.</p>
-            <Button variant="secondary" onClick={() => navigate('/presets')} style={{ marginTop: 'var(--space-4)' }}>
-              Back to presets
+            <p style={{ color: 'var(--text-muted)' }}>This block does not exist.</p>
+            <Button variant="secondary" onClick={() => navigate('/library')} style={{ marginTop: 'var(--space-4)' }}>
+              Back to the library
             </Button>
           </div>
         </div>
@@ -113,7 +123,7 @@ const PresetEditor = () => {
   const title = editingName ? (
     <span className="flex items-center" style={{ gap: 'var(--space-2)' }}>
       <Input
-        aria-label="Preset name"
+        aria-label="Block name"
         value={draftName ?? preset?.name ?? ''}
         autoFocus
         onFocus={(e) => isNew && e.currentTarget.select()}
@@ -139,7 +149,7 @@ const PresetEditor = () => {
           type="button"
           className="action-btn"
           onClick={() => setEditingName(true)}
-          aria-label="Rename preset"
+          aria-label="Rename block"
           title="Rename"
         >
           <Pencil style={{ width: '16px', height: '16px' }} />
@@ -157,6 +167,10 @@ const PresetEditor = () => {
 
   const extraActions = (
     <>
+      <Button variant="secondary" size="sm" onClick={() => setShowScript(!showScript)}>
+        <FileCode style={{ width: '16px', height: '16px' }} />
+        Script
+      </Button>
       {setCount > 0 && (
         <Button variant="secondary" size="sm" onClick={() => setShowApply(!showApply)}>
           <CalendarIcon style={{ width: '16px', height: '16px' }} />
@@ -167,9 +181,9 @@ const PresetEditor = () => {
         <>
           <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deletePreset.isPending}>
             <Check style={{ width: '16px', height: '16px' }} />
-            Delete preset
+            Delete block
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)} aria-label="Keep preset">
+          <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)} aria-label="Keep block">
             <X style={{ width: '16px', height: '16px' }} />
           </Button>
         </>
@@ -182,7 +196,18 @@ const PresetEditor = () => {
     </>
   );
 
-  const extraPanels = showApply ? (
+  const scriptPanel = showScript ? (
+    <Card className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
+      <CardContent>
+        <p className="library-description" style={{ marginBottom: 'var(--space-3)' }}>
+          What <code>[{preset?.name}]</code> puts into a program:
+        </p>
+        <pre className="script-view">{script.data ?? ''}</pre>
+      </CardContent>
+    </Card>
+  ) : null;
+
+  const applyPanel = showApply ? (
     <Card className="animate-in" style={{ marginBottom: 'var(--space-6)', border: '1px solid var(--border)' }}>
       <CardContent style={{ padding: 'var(--space-5)' }}>
         <p
@@ -214,16 +239,23 @@ const PresetEditor = () => {
     </Card>
   ) : null;
 
+  const extraPanels = (
+    <>
+      {scriptPanel}
+      {applyPanel}
+    </>
+  );
+
   return (
     <DayEditor
       source={source}
       title={title}
       subtitle={subtitle}
-      onBack={() => navigate('/presets')}
+      onBack={() => navigate('/library')}
       extraActions={extraActions}
       extraPanels={extraPanels}
       emptyTitle="No sets yet"
-      emptyText="Add the exercises this preset should put on a day"
+      emptyText="Add the exercises this block should put on a day"
     />
   );
 };

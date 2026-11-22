@@ -247,6 +247,16 @@ applied to a date as ordinary planned rows. Nothing points back, so editing a
 preset never rewrites a day; not audited, like the queue. Not the Liftoscript
 presets, which are program templates for the queue.
 
+**The library is all script: blocks and programs, yours and built-in** (plan
+0022). A *block* is part of a day — your presets above, or a built-in file in
+`app/presets/blocks/` (names in `library_service.BUILTIN_BLOCKS`, reserved). A
+*program* is days and weeks — built-in `app/presets/*.liftoscript`, or yours in
+`workout_program` (name, script, and the builder's JSON model when the builder
+wrote it; a script-only update detaches the builder). A program pulls a block in
+with a `[Block name]` line, expanded at generate time (built-in names first,
+then yours), so editing a block changes future generates, never the queue.
+Your blocks stay rows; `preset_to_script` is the lossless script view.
+
 **Everything measured is tall.** An `observation` is one act of measuring — an
 instant and an instrument — carrying `metric` rows whose names come from a fixed
 vocabulary in `metric_def`. Adding a *quantity* is a row. Adding a *name* is a
@@ -687,6 +697,23 @@ templates.
 - `PATCH /{id}/reorder` - `item_ids` in order; another preset's ids are ignored
 - `POST /{id}/apply` - Copy the tiles onto `date` as **planned** rows after the
   day's own; 422 for an empty preset
+- `GET /{id}/script` - The block as script: what `[Its name]` puts into a
+  program (plan 0022). A name a built-in block uses is refused (409)
+
+### Programs (`/api/programs`)
+Programs of yours, as script (plan 0022).
+- `GET /` / `POST /` (`name`, `script`, optional `builder`) / `GET /{id}` /
+  `DELETE /{id}`
+- `PUT /{id}` - any of `name`, `script`, `builder`. `script` **without**
+  `builder` is a hand edit and sets `builder` to null; send both to keep them
+
+### Library (`/api/library`)
+- `GET /` - `blocks` and `programs`, each entry `source: mine | builtin`
+- `GET /blocks/builtin/{key}` - a built-in block's script
+- `POST /blocks/builtin/{key}/duplicate` - a built-in block as a block of
+  yours ("Name (mine)", numbered if taken), editable set by set
+- `POST /check` - parse a script, blocks and all, without touching the queue:
+  `{sets, sessions, mobility_sets}` or a 400 naming the problem
 
 ### Mobility (`/api/mobility`)
 The queue half of mobility moved to `/api/upcoming` (plan 0019) — pending
@@ -754,8 +781,10 @@ work is a field on the set, written through the normal workout routes
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Nutrition section |
 | `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 1 of the Nutrition section (the default) |
 | `/upcoming` | Upcoming | The one queue: generated program sessions and the agent's labelled mobility sessions in one list, Liftoscript editor, last mobility session (plan 0019) — tab 1 of the Workouts section |
-| `/presets` | Presets | Hand-built presets, and **Add preset** — tab 2 of the Workouts section (plan 0020) |
-| `/presets/:id` | PresetEditor | One preset on the day editor (`DayEditor` fed a preset tile source): rename, add/edit/reorder tiles, apply to a day, delete |
+| `/library` | Library | Programs and blocks, yours and built-in — tab 2 of the Workouts section (plan 0022); `/presets` redirects here |
+| `/library/programs/:id` | ProgramEditor | A program of yours: the builder (weeks; days of blocks, 5/3/1 lifts, lines; live check) when the builder wrote it, the script editor otherwise |
+| `/library/programs/builtin/:key`, `/library/blocks/:key` | LibraryItemView | A built-in program or block, read-only: its script, Duplicate to edit, Use in Upcoming |
+| `/presets/:id` | PresetEditor | One block of yours on the day editor (`DayEditor` fed a preset tile source): rename, add/edit/reorder tiles, Script view, apply to a day, delete |
 | `/mobility` | — | Redirects to `/upcoming`; the separate page is retired (plan 0019) |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category — tab 1 of the Exercises section |
 
@@ -789,7 +818,19 @@ work is a field on the set, written through the normal workout routes
 - One-click transfer to historical data
 - The editor reopens on the last generated program (kept server-side, so it follows you across devices); a failed generate never replaces it
 
-### Hand-built presets
+### The library: programs and blocks
+- One list of programs and blocks, yours and built-in (plan 0022). Built-ins are
+  read-only — Duplicate to edit. A program uses a block with `[Block name]`;
+  Upcoming's Program dropdown lists built-in and saved programs, and Save as
+  program keeps what is in the editor
+- The program builder writes script from weeks and days of blocks, 5/3/1 wave
+  lifts (training max per lift; the wave repeats every four weeks) and plain
+  lines; Edit as script detaches it. Built-in programs can be built from
+  built-in blocks — 5/3/1 Core Stability is
+- Script syntax gained `[Block]` includes (errors say "Line N of block 'X'",
+  self-inclusion refused) and `"quoted comments"` (they land on the sets)
+
+### Hand-built presets (blocks)
 - A workout built once on the day editor and applied to any day as planned
   sets (plan 0020)
 - The day editor is `DayEditor`, shared by `/day/:date` and `/presets/:id`

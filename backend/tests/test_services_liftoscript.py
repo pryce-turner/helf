@@ -535,3 +535,68 @@ class TestStrictParsing:
     def test_comments_and_single_hash_headings_still_pass(self):
         sets = LiftoscriptParser().parse("# Week 1\n## Day 1\n// note\nPlank / 1x1 30s\n")
         assert len(sets) == 1
+
+
+class TestBlocksAndComments:
+    """Plan 0022: `[Block]` includes and `"quoted comments"`."""
+
+    BLOCKS = {
+        "Warm-up": "Cat-Cow / 1x1 60s ~\nLeg Swings / 1x2 30s ~",
+        "Core": "[Warm-up]\nPlank / 3x1 30s",
+        "Loop A": "[Loop B]",
+        "Loop B": "[Loop A]",
+        "Has days": "## Day\nPlank / 1x1 30s",
+        "Broken": "Plank / 1x1 30s\nPlank 3x1",
+    }
+
+    def _parse(self, script):
+        return LiftoscriptParser().parse(script, resolve_block=self.BLOCKS.get)
+
+    def test_a_block_is_inlined_where_it_stands(self):
+        sets = self._parse("## Day 1\n[Warm-up]\nBarbell Squat / 1x5 135lb")
+        assert [s.exercise for s in sets] == ["Cat-Cow", "Leg Swings", "Barbell Squat"]
+        assert [s.is_mobility for s in sets] == [True, True, False]
+
+    def test_blocks_can_include_blocks(self):
+        sets = self._parse("## Day 1\n[Core]")
+        assert [s.exercise for s in sets] == ["Cat-Cow", "Leg Swings", "Plank", "Plank", "Plank"]
+
+    def test_a_block_cannot_include_itself(self):
+        with pytest.raises(LiftoscriptParseError, match="includes itself"):
+            self._parse("## Day 1\n[Loop A]")
+
+    def test_an_unknown_block_is_named(self):
+        with pytest.raises(LiftoscriptParseError, match="Line 2: there is no block named 'Nope'"):
+            self._parse("## Day 1\n[Nope]")
+
+    def test_a_block_with_day_headers_is_refused(self):
+        with pytest.raises(LiftoscriptParseError, match="has '## Day' headers"):
+            self._parse("## Day 1\n[Has days]")
+
+    def test_an_error_inside_a_block_says_where(self):
+        with pytest.raises(LiftoscriptParseError, match="Line 2 of block 'Broken'"):
+            self._parse("## Day 1\n[Broken]")
+
+    def test_without_a_resolver_an_include_is_an_error(self):
+        with pytest.raises(LiftoscriptParseError, match="no block named"):
+            LiftoscriptParser().parse("## Day 1\n[Warm-up]")
+
+    def test_a_quoted_comment_lands_on_the_sets(self):
+        (left, right) = self._parse('## Day 1\nSide Plank / 1x1 30s "left", 1x1 30s "right"')
+        assert (left.comment, right.comment, left.work_seconds) == ("left", "right", 30)
+
+    def test_quoted_text_is_never_read_as_tokens(self):
+        (s,) = self._parse('## Day 1\nPlank / 1x1 30s "slow, 10s holds / no sag ~"')
+        assert (s.work_seconds, s.is_mobility, s.comment) == (30, False, "slow, 10s holds / no sag ~")
+
+    def test_amrap_and_a_comment_combine(self):
+        (s,) = self._parse('## Day 1\nBarbell Squat / 1x5+ 135lb "belt"')
+        assert s.comment == "AMRAP, belt"
+
+    def test_an_unclosed_quote_is_an_error(self):
+        with pytest.raises(LiftoscriptParseError, match="didn't understand"):
+            self._parse('## Day 1\nPlank / 1x1 30s "left')
+
+    def test_pound_weights_keep_their_half_pounds(self):
+        (s,) = self._parse("## Day 1\nLateral Raise / 1x12 17.5lb")
+        assert s.weight == 17.5

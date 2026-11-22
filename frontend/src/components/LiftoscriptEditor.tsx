@@ -52,10 +52,12 @@ Rower / 1x1 2000m
           e.target.style.boxShadow = 'none';
         }}
       />
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
         alignItems: 'center',
+        gap: 'var(--space-1) var(--space-4)',
         fontSize: '12px',
         color: 'var(--text-muted)',
         fontFamily: 'var(--font-mono)',

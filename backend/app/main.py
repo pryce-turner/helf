@@ -13,9 +13,11 @@ from app.api import (
     body_comp,
     exercises,
     food,
+    library,
     mobility,
     notes,
     presets,
+    programs,
     progression,
     stacks,
     upcoming,
@@ -89,6 +91,8 @@ app.include_router(food.router, prefix="/api/food", tags=["food"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(stacks.router, prefix="/api/stacks", tags=["stacks"])
 app.include_router(presets.router, prefix="/api/presets", tags=["presets"])
+app.include_router(programs.router, prefix="/api/programs", tags=["programs"])
+app.include_router(library.router, prefix="/api/library", tags=["library"])
 
 
 @app.get("/api/health")

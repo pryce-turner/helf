@@ -175,8 +175,8 @@ it("renames the preset", async () => {
     presets.rename.mockResolvedValue({ data: { ...preset(), name: "Legs A" } } as never);
     renderEditor();
 
-    await userEvent.click(await screen.findByRole("button", { name: /rename preset/i }));
-    const field = screen.getByLabelText("Preset name");
+    await userEvent.click(await screen.findByRole("button", { name: /rename block/i }));
+    const field = screen.getByLabelText("Block name");
     await userEvent.clear(field);
     await userEvent.type(field, "Legs A{Enter}");
 
@@ -186,12 +186,12 @@ it("renames the preset", async () => {
 it("will not save a blank name", async () => {
     renderEditor();
 
-    await userEvent.click(await screen.findByRole("button", { name: /rename preset/i }));
-    const field = screen.getByLabelText("Preset name");
+    await userEvent.click(await screen.findByRole("button", { name: /rename block/i }));
+    const field = screen.getByLabelText("Block name");
     await userEvent.clear(field);
     await userEvent.type(field, "{Enter}");
 
-    expect(await screen.findByText("A preset needs a name")).toBeInTheDocument();
+    expect(await screen.findByText("A block needs a name")).toBeInTheDocument();
     expect(presets.rename).not.toHaveBeenCalled();
 });
 
@@ -201,7 +201,7 @@ it("takes two taps to delete the preset", async () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
     expect(presets.delete).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: /delete preset/i }));
+    await userEvent.click(screen.getByRole("button", { name: /delete block/i }));
 
     await waitFor(() => expect(presets.delete).toHaveBeenCalledWith(3));
 });

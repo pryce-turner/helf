@@ -46,6 +46,7 @@ table.
 | 0019 | [One upcoming queue](0019-one-upcoming-queue.md) | Implemented 2026-11-21 | `9c4e7b21f806` | Retires 0012 §2's `kind` split: mobility is a flag on the planned set, and `/mobility` merged into `/upcoming` |
 | 0020 | [Hand-built presets](0020-hand-built-presets.md) | Implemented 2026-11-22 | `ef7567caec16` | — |
 | 0021 | [Liftoscript timing and distance](0021-liftoscript-timing-and-distance.md) | Implemented 2026-11-22 | `842c1976c18a` | The agent's mobility write tool still writes no timing; RPE still has no column |
+| 0022 | [The library: blocks and programs](0022-library-blocks-and-programs.md) | Implemented 2026-11-22 | `47920bce115b` | Built-in blocks are applied by duplicating; renaming a block does not rewrite programs that include it |
 
 ## Where things stand
 

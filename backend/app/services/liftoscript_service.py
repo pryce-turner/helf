@@ -6,6 +6,11 @@ converted to comment. Since plan 0021 a set spec can also carry the set tile's
 timing and a distance: `3x6 10s rest 5s after 30s`, `1x1 400m`, and `~`
 flags its sets as mobility work.
 
+Blocks (plan 0022): a line `[Block name]` is replaced by that block's lines
+before anything else is read, so a program is days made of blocks. A block has
+no `## Day` headers of its own; it may include other blocks, never itself.
+A `"quoted comment"` in a spec lands on its sets' `comment`.
+
 Strict: a set spec may hold only what is listed here, and anything left over
 is an error naming it, as is a line that is not a set, a `##` header or a
 comment. A typo used to be dropped silently - `rest5s` lost its rest, a
@@ -17,8 +22,16 @@ Required comments for percentage/progression:
 """
 
 import re
+from collections.abc import Callable
 
 from app.models.upcoming import UpcomingWorkoutCreate
+
+#: Resolves a block name to its script text, or None if there is no such block.
+BlockResolver = Callable[[str], str | None]
+
+#: How deep blocks may include blocks. Real nesting is one or two levels; the
+#: bound is for the error message, not the cycle check, which is exact.
+MAX_INCLUDE_DEPTH = 8
 
 # Exercise to category mapping (matches PRESET_EXERCISES in api/exercises.py)
 EXERCISE_CATEGORIES = {
@@ -108,6 +121,8 @@ class LiftoscriptParser:
         r"(?<![\w.])(\d+(?:\.\d+)?)\s*(km|mi|yd|m)\b", re.IGNORECASE
     )
     DAY_HEADER_PATTERN = re.compile(r"^##\s+(.+)$")
+    INCLUDE_PATTERN = re.compile(r"^\[([^\[\]]+)\]$")
+    QUOTED_PATTERN = re.compile(r'"([^"]*)"')
     REQUIRED_1RM_PATTERN = re.compile(r"^//\s+(.+?)\s+1RM:\s*(\d+(?:\.\d+)?)\s*(lb|kg)$")
     REQUIRED_SW_PATTERN = re.compile(r"^//\s+(.+?)\s+SW:\s*(\d+(?:\.\d+)?)\s*(lb|kg)$")
 
@@ -210,8 +225,10 @@ class LiftoscriptParser:
             value = float(absolute_match.group(1))
             unit = absolute_match.group(2)
             if unit == "kg":
-                value = self._convert_kg_to_lbs(value)
-            return round(value), "lbs"
+                # A conversion has no meaningful decimals; a pound value is
+                # kept as written, so a 2.5lb step survives (plan 0022).
+                return round(self._convert_kg_to_lbs(value)), "lbs"
+            return value, "lbs"
 
         return None, "lbs"
 
@@ -298,6 +315,70 @@ class LiftoscriptParser:
                 f"{exercise_name}: didn't understand '{leftover}' in '{set_spec}'"
             )
 
+    @staticmethod
+    def _split_outside_quotes(text: str, sep: str) -> list[str]:
+        """Split on `sep`, except inside a "quoted comment"."""
+        parts, current, quoted = [], [], False
+        for ch in text:
+            if ch == '"':
+                quoted = not quoted
+            if ch == sep and not quoted:
+                parts.append("".join(current))
+                current = []
+            else:
+                current.append(ch)
+        parts.append("".join(current))
+        return parts
+
+    def _expand(
+        self,
+        lines: list[str],
+        resolve_block: BlockResolver | None,
+        where: Callable[[int], str] = lambda n: f"Line {n}",
+        stack: tuple[str, ...] = (),
+    ) -> list[tuple[str, str]]:
+        """Inline every `[Block]` line, keeping where each line came from.
+
+        The label travels with the line so an error inside a block says
+        "Line 3 of block 'Press core'" rather than a line number that exists
+        nowhere the user can see.
+        """
+        out: list[tuple[str, str]] = []
+        for number, raw in enumerate(lines, start=1):
+            line = raw.strip()
+            include = self.INCLUDE_PATTERN.match(line)
+            if not include:
+                out.append((line, where(number)))
+                continue
+            name = include.group(1).strip()
+            if name in stack:
+                chain = " -> ".join((*stack, name))
+                raise LiftoscriptParseError(
+                    f"{where(number)}: block '{name}' includes itself ({chain})"
+                )
+            if len(stack) >= MAX_INCLUDE_DEPTH:
+                raise LiftoscriptParseError(
+                    f"{where(number)}: blocks nested more than {MAX_INCLUDE_DEPTH} deep"
+                )
+            text = resolve_block(name) if resolve_block else None
+            if text is None:
+                raise LiftoscriptParseError(f"{where(number)}: there is no block named '{name}'")
+            block_lines = text.strip().split("\n")
+            if any(self.DAY_HEADER_PATTERN.match(b.strip()) for b in block_lines):
+                raise LiftoscriptParseError(
+                    f"{where(number)}: block '{name}' has '## Day' headers - a block "
+                    "is part of a day, not a program"
+                )
+            out.extend(
+                self._expand(
+                    block_lines,
+                    resolve_block,
+                    lambda n, name=name: f"Line {n} of block '{name}'",
+                    (*stack, name),
+                )
+            )
+        return out
+
     def _parse_sets_reps(self, sets_reps_str: str) -> tuple[int, int, bool]:
         """Parse sets and reps string. Returns (sets, reps, is_amrap)."""
         match = self.SET_PATTERN.match(sets_reps_str.strip())
@@ -309,15 +390,15 @@ class LiftoscriptParser:
         return sets, reps, is_amrap
 
     def _parse_script(
-        self, lines: list[str], cycle_num: int, session_offset: int
+        self, lines: list[tuple[str, str]], cycle_num: int, session_offset: int
     ) -> tuple[list[UpcomingWorkoutCreate], int]:
-        """Parse the full script and return workouts."""
+        """Parse the expanded script and return workouts."""
         workouts = []
         current_session = 0
 
         i = 0
         while i < len(lines):
-            line = lines[i].strip()
+            line, where = lines[i]
 
             if not line:
                 i += 1
@@ -338,34 +419,39 @@ class LiftoscriptParser:
                 # Not skipped: "Barbell Squat 5x5" with the slash missing is a
                 # typo, and dropping it would lose the whole exercise quietly.
                 raise LiftoscriptParseError(
-                    f"Line {i + 1}: '{line}' is not a set line ('Exercise / 3x5 ...'), "
-                    "a '## Day' header or a '// comment'"
+                    f"{where}: '{line}' is not a set line ('Exercise / 3x5 ...'), "
+                    "a '## Day' header, a '[Block]' or a '// comment'"
                 )
 
-            parts = [p.strip() for p in line.split("/")]
+            parts = [p.strip() for p in self._split_outside_quotes(line, "/")]
             exercise_name = parts[0].strip()
 
             if len(parts) > 2:
                 raise LiftoscriptParseError(
-                    f"Line {i + 1}: '{line}' has more than one '/' - an exercise "
+                    f"{where}: '{line}' has more than one '/' - an exercise "
                     "name cannot contain one"
                 )
             full_spec = parts[1].strip() if len(parts) > 1 else ""
 
             if not full_spec:
                 raise LiftoscriptParseError(
-                    f"Line {i + 1}: '{exercise_name}' has nothing after the '/'"
+                    f"{where}: '{exercise_name}' has nothing after the '/'"
                 )
 
             # Determine category from exercise name, default to "Other"
             category = EXERCISE_CATEGORIES.get(exercise_name, "Other")
 
             # Split by comma to handle multiple set specifications (e.g., "1x5 65%, 1x5 75%, 1x5+ 85%")
-            set_specs = [spec.strip() for spec in full_spec.split(",")]
+            set_specs = [spec.strip() for spec in self._split_outside_quotes(full_spec, ",")]
 
-            for set_spec in set_specs:
-                if not set_spec:
+            for raw_spec in set_specs:
+                if not raw_spec:
                     continue
+                # The quoted comment comes out first: its text is the user's,
+                # and "left side, 10s slow" must not be read as a work time.
+                quoted = self.QUOTED_PATTERN.search(raw_spec)
+                note = quoted.group(1).strip() if quoted else ""
+                set_spec = self.QUOTED_PATTERN.sub(" ", raw_spec, count=1).strip()
 
                 sets, reps, is_amrap = self._parse_sets_reps(set_spec)
                 self._check_understood(set_spec, exercise_name)
@@ -382,6 +468,8 @@ class LiftoscriptParser:
                     comment_parts = []
                     if is_amrap and is_last_set:
                         comment_parts.append("AMRAP")
+                    if note:
+                        comment_parts.append(note)
 
                     comment = ", ".join(comment_parts) if comment_parts else None
 
@@ -410,12 +498,15 @@ class LiftoscriptParser:
         self,
         script: str,
         num_cycles: int = 1,
+        resolve_block: BlockResolver | None = None,
     ) -> list[UpcomingWorkoutCreate]:
         """Parse a Liftoscript program and generate upcoming workouts.
 
         Args:
             script: The Liftoscript program text
             num_cycles: Number of times to repeat the program
+            resolve_block: Looks up `[Block]` lines; without it any include
+                is an error
 
         Returns:
             List of UpcomingWorkoutCreate objects
@@ -425,7 +516,7 @@ class LiftoscriptParser:
         """
         self._parse_required_comments(script)
 
-        lines = script.strip().split("\n")
+        lines = self._expand(script.strip().split("\n"), resolve_block)
         all_workouts = []
         sessions_per_cycle = 0
 

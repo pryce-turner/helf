@@ -7,7 +7,9 @@ import WorkoutSession from "./pages/WorkoutSession";
 import Progression from "./pages/Progression";
 import BodyComposition from "./pages/BodyComposition";
 import Upcoming from "./pages/Upcoming";
-import Presets from "./pages/Presets";
+import Library from "./pages/Library";
+import LibraryItemView from "./pages/LibraryItemView";
+import ProgramEditor from "./pages/ProgramEditor";
 import PresetEditor from "./pages/PresetEditor";
 import Exercises from "./pages/Exercises";
 import Food from "./pages/Food";
@@ -75,7 +77,12 @@ function App() {
                         <Route path="/food" element={<Food />} />
                         <Route path="/supplements" element={<Supplements />} />
                         <Route path="/upcoming" element={<Upcoming />} />
-                        <Route path="/presets" element={<Presets />} />
+                        {/* The Preset tab became the library (plan 0022). */}
+                        <Route path="/presets" element={<Navigate to="/library" replace />} />
+                        <Route path="/library" element={<Library />} />
+                        <Route path="/library/blocks/:key" element={<LibraryItemView kind="block" />} />
+                        <Route path="/library/programs/builtin/:key" element={<LibraryItemView kind="program" />} />
+                        <Route path="/library/programs/:id" element={<ProgramEditor />} />
                         <Route path="/presets/:id" element={<PresetEditor />} />
                         {/* The page merged into /upcoming (9c4e7b21f806): one
                             queue, the mobility element flagged per set. The

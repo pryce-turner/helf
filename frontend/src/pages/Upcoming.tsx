@@ -1,6 +1,7 @@
 import { Fragment, useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2, Activity, Timer } from 'lucide-react';
+import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2, Activity, Timer, BookmarkPlus } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
@@ -22,6 +23,7 @@ import {
   useLastLiftoscriptProgram,
 } from '@/hooks/useUpcoming';
 import { useLastMobilitySession } from '@/hooks/useMobility';
+import { useCreateProgram, usePrograms } from '@/hooks/useLibrary';
 import type { UpcomingSession, UpcomingWorkout } from '@/types/upcoming';
 import type { MobilityLastSession } from '@/types/mobility';
 
@@ -556,15 +558,36 @@ const Upcoming = () => {
   const { data: lastProgram } = useLastLiftoscriptProgram();
   const generateLiftoscript = useLiftoscriptGenerate();
 
-  const [showEditor, setShowEditor] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+  const location = useLocation();
+  // Arriving from the library's "Use in Upcoming" opens the editor on that
+  // program: a built-in one by key, one of yours by id (plan 0022).
+  const arrival = (location.state ?? {}) as { programKey?: string; programId?: number };
+  const { data: myPrograms } = usePrograms();
+  const createProgram = useCreateProgram();
+
+  const [showEditor, setShowEditor] = useState(Boolean(arrival.programKey || arrival.programId));
+  const [selectedPreset, setSelectedPreset] = useState<string>(arrival.programKey ?? 'custom');
+  const [pendingProgramId, setPendingProgramId] = useState<number | undefined>(arrival.programId);
+  const [saveAsName, setSaveAsName] = useState<string | null>(null);
+  const [saveAsMessage, setSaveAsMessage] = useState('');
   const [scriptContent, setScriptContent] = useState<string>('');
   const [numCycles, setNumCycles] = useState('4');
   const [editorError, setEditorError] = useState<string>('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [lastAppliedPreset, setLastAppliedPreset] = useState<string>('');
 
-  const { data: presetContent } = usePreset(selectedPreset !== 'custom' ? selectedPreset : '');
+  const isBuiltin = selectedPreset !== 'custom' && !selectedPreset.startsWith('mine:');
+  const { data: presetContent } = usePreset(isBuiltin ? selectedPreset : '');
+
+  // One of yours, asked for before the list had loaded.
+  if (pendingProgramId !== undefined && myPrograms) {
+    const program = myPrograms.find((p) => p.doc_id === pendingProgramId);
+    setPendingProgramId(undefined);
+    if (program) {
+      setSelectedPreset(`mine:${program.doc_id}`);
+      setScriptContent(program.script);
+    }
+  }
 
   // Update script content when preset content is loaded
   if (presetContent?.script && presetContent.name !== lastAppliedPreset) {
@@ -577,8 +600,27 @@ const Upcoming = () => {
     if (presetName === 'custom') {
       // Custom is the program behind the queue, when there is one.
       setScriptContent(lastProgram?.script ?? '');
+    } else if (presetName.startsWith('mine:')) {
+      const program = myPrograms?.find((p) => `mine:${p.doc_id}` === presetName);
+      if (program) setScriptContent(program.script);
     }
     setEditorError('');
+    setSaveAsMessage('');
+  };
+
+  // Keep what is in the editor: it becomes a program of yours, in the library.
+  const saveAsProgram = async () => {
+    const name = (saveAsName ?? '').trim();
+    if (!name) return;
+    try {
+      const program = await createProgram.mutateAsync({ name, script: scriptContent });
+      setSelectedPreset(`mine:${program.doc_id}`);
+      setSaveAsName(null);
+      setSaveAsMessage(`Saved to the library as '${program.name}'`);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setSaveAsMessage(typeof detail === 'string' ? detail : 'Could not save the program');
+    }
   };
 
   // The editor opens on the last generated program rather than an empty box.
@@ -673,12 +715,13 @@ const Upcoming = () => {
                   <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
                     <div>
                       <Label style={{ marginBottom: 'var(--space-2)', display: 'block' }}>
-                        Built-in program
+                        Program
                       </Label>
                       <PresetSelector
                         value={selectedPreset}
                         onChange={handlePresetChange}
                         presets={presets || []}
+                        programs={myPrograms ?? []}
                       />
                     </div>
                     <div>
@@ -712,8 +755,48 @@ const Upcoming = () => {
                     error={editorError}
                   />
 
+                  {/* Save as program: what is in the editor, kept in the library. */}
+                  {saveAsName !== null && (
+                    <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
+                      <Input
+                        aria-label="Program name"
+                        placeholder="Program name"
+                        autoFocus
+                        value={saveAsName}
+                        onChange={(e) => {
+                          setSaveAsName(e.target.value);
+                          setSaveAsMessage('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveAsProgram();
+                          if (e.key === 'Escape') setSaveAsName(null);
+                        }}
+                      />
+                      <Button onClick={saveAsProgram} disabled={!saveAsName.trim() || createProgram.isPending}>
+                        Save
+                      </Button>
+                      <Button variant="secondary" onClick={() => setSaveAsName(null)} aria-label="Cancel saving">
+                        <X style={{ width: '16px', height: '16px' }} />
+                      </Button>
+                    </div>
+                  )}
+                  {saveAsMessage && (
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>{saveAsMessage}</p>
+                  )}
+
                   {/* Actions */}
-                  <div className="flex" style={{ gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                  <div className="flex flex-wrap" style={{ gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                    {saveAsName === null && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => setSaveAsName('')}
+                        disabled={!scriptContent.trim()}
+                        style={{ marginRight: 'auto' }}
+                      >
+                        <BookmarkPlus style={{ width: '16px', height: '16px' }} />
+                        Save as program
+                      </Button>
+                    )}
                     <Button variant="secondary" onClick={() => setShowEditor(false)}>
                       Cancel
                     </Button>

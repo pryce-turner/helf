@@ -15,9 +15,11 @@ from app.api import (
     body_comp,
     exercises,
     food,
+    library,
     mobility,
     notes,
     presets,
+    programs,
     progression,
     stacks,
     upcoming,
@@ -107,4 +109,6 @@ def client(db_engine):
     app.include_router(notes.router, prefix="/api/notes")
     app.include_router(stacks.router, prefix="/api/stacks")
     app.include_router(presets.router, prefix="/api/presets")
+    app.include_router(programs.router, prefix="/api/programs")
+    app.include_router(library.router, prefix="/api/library")
     return TestClient(app)

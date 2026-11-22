@@ -461,6 +461,34 @@ class WorkoutPresetItem(Base):
     category: Mapped[Category] = relationship("Category")
 
 
+class WorkoutProgram(Base):
+    """A program of yours, kept as script (plan 0022).
+
+    The library's other half from `workout_preset`: a preset is a block, part
+    of a day; this is days and weeks, the thing Generate turns into the
+    upcoming queue. Built-in programs stay files in `app/presets/`; these are
+    the ones you saved, duplicated or built.
+
+    `builder` holds the program builder's own model when the builder wrote the
+    script, so it can be reopened as blocks and waves rather than text. Editing
+    the script by hand detaches it - set to NULL - because the builder cannot
+    read a script back. Not audited: a plan, not history.
+    """
+
+    __tablename__ = "workout_program"
+    __table_args__ = (
+        CheckConstraint("trim(name) <> ''", name="ck_workout_program_name"),
+        CheckConstraint("builder IS NULL OR json_valid(builder)", name="ck_workout_program_builder"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    script: Mapped[str] = mapped_column(Text, nullable=False)
+    builder: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Document(Base):
     """A raw imported payload, kept whole.
 

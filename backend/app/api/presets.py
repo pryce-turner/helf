@@ -18,6 +18,7 @@ from app.models.preset import (
     PresetUpdate,
 )
 from app.repositories.preset_repo import PresetNameTakenError, PresetRepository
+from app.services.library_service import is_reserved_block_name, preset_to_script
 
 router = APIRouter()
 
@@ -33,6 +34,8 @@ def get_presets():
 @router.post("/", response_model=Preset, status_code=201)
 def create_preset(payload: PresetCreate | None = None):
     """Create an empty preset. With no name it is "New preset", numbered if taken."""
+    if payload and payload.name and is_reserved_block_name(payload.name):
+        raise HTTPException(status_code=409, detail=f"'{payload.name}' is a built-in block's name")
     try:
         return PresetRepository().create(payload.name if payload else None)
     except PresetNameTakenError as exc:
@@ -47,8 +50,19 @@ def get_preset(preset_id: int):
     return preset
 
 
+@router.get("/{preset_id}/script")
+def get_preset_script(preset_id: int):
+    """The block as script - what `[Its name]` puts into a program."""
+    preset = PresetRepository().get_by_id(preset_id)
+    if preset is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return {"name": preset["name"], "script": preset_to_script(preset)}
+
+
 @router.put("/{preset_id}", response_model=Preset)
 def rename_preset(preset_id: int, payload: PresetUpdate):
+    if is_reserved_block_name(payload.name):
+        raise HTTPException(status_code=409, detail=f"'{payload.name}' is a built-in block's name")
     try:
         preset = PresetRepository().rename(preset_id, payload.name)
     except PresetNameTakenError as exc:

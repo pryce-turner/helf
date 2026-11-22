@@ -55,6 +55,7 @@ import type {
     PresetItemCreate,
     PresetApplyResponse,
 } from "../types/preset";
+import type { Library, Program, BuilderModel, ScriptCheck } from "../types/library";
 
 // Use relative URL - Vite proxy handles routing to backend in dev
 // In production, requests go to same origin
@@ -413,6 +414,37 @@ export const presetsApi = {
 
     apply: (presetId: number, date: string) =>
         api.post<PresetApplyResponse>(`/api/presets/${presetId}/apply`, { date }),
+
+    /** The block as script: what `[Its name]` puts into a program. */
+    getScript: (presetId: number) =>
+        api.get<{ name: string; script: string }>(`/api/presets/${presetId}/script`),
+};
+
+// The library (plan 0022): blocks and programs, yours and built-in.
+export const libraryApi = {
+    get: () => api.get<Library>("/api/library/"),
+
+    getBuiltinBlock: (key: string) =>
+        api.get<{ key: string; name: string; script: string }>(`/api/library/blocks/builtin/${key}`),
+
+    duplicateBuiltinBlock: (key: string) =>
+        api.post<WorkoutPreset>(`/api/library/blocks/builtin/${key}/duplicate`, {}),
+
+    /** Parse a script, blocks and all, without touching the queue. */
+    check: (script: string, numCycles = 1) =>
+        api.post<ScriptCheck>("/api/library/check", { script, num_cycles: numCycles }),
+};
+
+// Programs of yours, kept as script (plan 0022).
+export const programsApi = {
+    getAll: () => api.get<Program[]>("/api/programs/"),
+    getById: (id: number) => api.get<Program>(`/api/programs/${id}`),
+    create: (program: { name: string; script?: string; builder?: BuilderModel | null }) =>
+        api.post<Program>("/api/programs/", program),
+    /** `script` without `builder` is a hand edit, and detaches the builder. */
+    update: (id: number, changes: { name?: string; script?: string; builder?: BuilderModel | null }) =>
+        api.put<Program>(`/api/programs/${id}`, changes),
+    delete: (id: number) => api.delete(`/api/programs/${id}`),
 };
 
 export const systemApi = {

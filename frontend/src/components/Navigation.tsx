@@ -11,7 +11,7 @@ const Navigation = () => {
     const sectionAliases: Record<string, string[]> = {
         "/supplements": ["/food"],
         "/exercises": ["/progression"],
-        "/upcoming": ["/presets"],
+        "/upcoming": ["/presets", "/library"],
     };
 
     const isActive = (path: string) => {

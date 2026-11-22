@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { renderPage } from "@/test/renderPage";
 import Upcoming from "./Upcoming";
-import { mobilityApi, upcomingApi } from "@/lib/api";
+import { mobilityApi, programsApi, upcomingApi } from "@/lib/api";
 
 vi.mock("@/lib/api", async (importOriginal) => {
     const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -27,6 +27,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
             generateLiftoscript: vi.fn(),
             getLastProgram: vi.fn(),
         },
+        programsApi: { ...actual.programsApi, getAll: vi.fn(), create: vi.fn() },
         mobilityApi: {
             getLastSession: vi.fn(),
         },
@@ -105,6 +106,7 @@ beforeEach(() => {
     upcoming.getPresets.mockResolvedValue({ data: [] } as never);
     upcoming.getPreset.mockResolvedValue({ data: null } as never);
     upcoming.getLastProgram.mockResolvedValue({ data: null } as never);
+    vi.mocked(programsApi.getAll).mockResolvedValue({ data: [] } as never);
     // One test mocks the clock to pin down the timezone bug. Reset here rather
     // than at the end of that test, so a failure part-way through cannot leave
     // every later test running in August 2026.
@@ -284,3 +286,20 @@ it("shows a generated set's timing and the rest after it", async () => {
     // The rest after the set is a divider between rows, not a chip.
     expect(screen.getByRole("separator", { name: "Rest 0:30" })).toBeInTheDocument();
 });
+
+it("saves what is in the editor as a program of yours", async () => {
+    upcoming.getAll.mockResolvedValue({ data: [] } as never);
+    vi.mocked(programsApi.create).mockResolvedValue({ data: { doc_id: 3, name: "Mine", script: "x" } } as never);
+    renderPage(<Upcoming />);
+
+    await userEvent.click(await screen.findByText("Edit program"));
+    await userEvent.type(screen.getByRole("textbox"), "## Day 1\nPlank / 1x1 30s");
+    await userEvent.click(screen.getByRole("button", { name: /save as program/i }));
+    await userEvent.type(screen.getByLabelText("Program name"), "Mine{Enter}");
+
+    await waitFor(() =>
+        expect(programsApi.create).toHaveBeenCalledWith({ name: "Mine", script: "## Day 1\nPlank / 1x1 30s" }),
+    );
+    expect(await screen.findByText("Saved to the library as 'Mine'")).toBeInTheDocument();
+});
+

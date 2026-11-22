@@ -70,6 +70,22 @@ const REST_START: BeepSpec[] = [
     { frequency: 587, durationMs: 280, delayMs: 180, gain: 0.35 },
 ];
 
+/** The rest after a set: the set is over and a longer rest begins. A slower,
+ *  lower falling chime on a softer tone, so it reads apart from the short
+ *  two-note cue between reps without looking at the screen. */
+const REST_AFTER_START: BeepSpec[] = [
+    { frequency: 659, durationMs: 260, type: "triangle", gain: 0.4 },
+    { frequency: 523, durationMs: 260, delayMs: 240, type: "triangle", gain: 0.4 },
+    { frequency: 392, durationMs: 520, delayMs: 480, type: "triangle", gain: 0.45 },
+];
+
+/** The cue that a phase has begun. */
+const PHASE_START: Partial<Record<PlayerPhase["kind"], BeepSpec[]>> = {
+    work: WORK_START,
+    rest: REST_START,
+    restAfter: REST_AFTER_START,
+};
+
 const SESSION_DONE: BeepSpec[] = [
     { frequency: 880, durationMs: 120, gain: 0.4 },
     { frequency: 1108, durationMs: 120, delayMs: 150, gain: 0.4 },
@@ -278,10 +294,7 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
                 setRemainingMs(next.durationMs - overshootMs);
                 setStatus("running");
                 if (audioRef.current) {
-                    playBeeps(
-                        audioRef.current,
-                        next.kind === "work" ? WORK_START : REST_START,
-                    );
+                    playBeeps(audioRef.current, PHASE_START[next.kind] ?? REST_START);
                 }
             };
 
@@ -509,10 +522,7 @@ export function useWorkoutPlayer(incomplete: PlayerTile[] = []) {
             setRemainingMs(next.durationMs);
             setStatus("running");
             if (audioRef.current) {
-                playBeeps(
-                    audioRef.current,
-                    next.kind === "work" ? WORK_START : REST_START,
-                );
+                playBeeps(audioRef.current, PHASE_START[next.kind] ?? REST_START);
             }
         });
     }, [status, phase, phaseIndex, phases, saveTile, finish]);

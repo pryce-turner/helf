@@ -607,3 +607,45 @@ it("skip is a no-op on a manual tile — Complete set is the only way through", 
     await settle();
     expect(perform).not.toHaveBeenCalled();
 });
+
+it("plays its own chime when the rest after a set begins", async () => {
+    // Record every tone the player starts.
+    const played: number[] = [];
+    vi.stubGlobal(
+        "AudioContext",
+        class {
+            state = "running";
+            currentTime = 0;
+            destination = {};
+            resume = vi.fn(() => Promise.resolve());
+            close = vi.fn(() => Promise.resolve());
+            createGain = vi.fn(() => ({
+                gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
+                connect: vi.fn(),
+            }));
+            createOscillator = vi.fn(() => {
+                const frequency = {
+                    set value(hz: number) {
+                        played.push(hz);
+                    },
+                };
+                return { type: "", frequency, connect: vi.fn((node: unknown) => node), start: vi.fn(), stop: vi.fn() };
+            });
+        },
+    );
+    const { result } = mount();
+    play(result, [tile(), tile({ doc_id: 2 })]);
+
+    // Work, rest between reps, work: the between-reps cue, never the chime.
+    tick(40_100);
+    tick(20_100);
+    expect(result.current.phase?.kind).toBe("work");
+    expect(played).not.toContain(392);
+
+    tick(40_100);
+    await settle();
+    expect(result.current.phase?.kind).toBe("restAfter");
+    // The falling chime: 659, 523, 392.
+    expect(played.slice(-3)).toEqual([659, 523, 392]);
+});
+

@@ -292,6 +292,18 @@ export function useBulkReorderWorkouts() {
     });
 }
 
+/** Clear a Stop: the set stays done and records its full targets. */
+export function useCountFull() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: number) => (await workoutsApi.countFull(id)).data,
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["workouts"] });
+            queryClient.invalidateQueries({ queryKey: ["calendar"] });
+        },
+    });
+}
+
 export function useToggleComplete() {
     const queryClient = useQueryClient();
 

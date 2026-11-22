@@ -93,6 +93,10 @@ export const workoutsApi = {
     toggleComplete: (id: number, completed: boolean) =>
         api.patch<Workout>(`/api/workouts/${id}/complete`, { completed }),
 
+    /** Clear an "ended early": the completed set counts as run to the end. */
+    countFull: (id: number) =>
+        api.post<Workout>(`/api/workouts/${id}/count-full`),
+
     /** Write one tile's performance as measured by the day player. */
     perform: (id: number, performance: WorkoutPerform) =>
         api.post<Workout>(`/api/workouts/${id}/perform`, performance),

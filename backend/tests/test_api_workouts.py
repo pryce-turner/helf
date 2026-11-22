@@ -313,3 +313,53 @@ def test_a_comment_edit_preserves_legacy_time_and_the_new_fields(client):
     ).json()
     assert edited_timed["work_seconds"] == 30
     assert edited_timed["comment"] == "shaking by 25"
+
+
+def _stopped_tile(client):
+    tile = client.post(
+        "/api/workouts/",
+        json={"date": "2026-11-23", "exercise": "Plank", "category": "Core", "reps": 6},
+    ).json()
+    # Time on for Plank, then give the tile its timing.
+    client.put("/api/exercises/" + str(client.get("/api/exercises/Plank").json()["doc_id"]),
+               json={"time_enabled": True})
+    client.put(f"/api/workouts/{tile['doc_id']}", json={
+        "date": "2026-11-23", "exercise": "Plank", "category": "Core",
+        "reps": 6, "work_seconds": 10, "rest_seconds": 5,
+    })
+    stopped = client.post(f"/api/workouts/{tile['doc_id']}/perform", json={
+        "ended_early": True, "completed_reps": 3,
+        "actual_work_seconds": 30, "actual_rest_seconds": 10,
+    }).json()
+    assert stopped["ended_early"] is True
+    return stopped
+
+
+def test_count_full_clears_ended_early_and_derives_the_targets(client):
+    stopped = _stopped_tile(client)
+
+    counted = client.post(f"/api/workouts/{stopped['doc_id']}/count-full")
+    assert counted.status_code == 200
+    body = counted.json()
+    assert body["ended_early"] is False
+    assert body["completed_at"] == stopped["completed_at"]
+    assert (body["completed_reps"], body["actual_work_seconds"], body["actual_rest_seconds"]) == (6, 60, 25)
+
+
+def test_reset_clears_a_stopped_set_back_to_planned(client):
+    stopped = _stopped_tile(client)
+
+    reset = client.patch(f"/api/workouts/{stopped['doc_id']}/complete", json={"completed": False}).json()
+    assert reset["completed_at"] is None
+    assert reset["ended_early"] is False
+    assert reset["completed_reps"] is None
+
+
+def test_count_full_needs_a_completed_set(client):
+    tile = client.post(
+        "/api/workouts/",
+        json={"date": "2026-11-23", "exercise": "Plank", "category": "Core", "reps": 6},
+    ).json()
+    assert client.post(f"/api/workouts/{tile['doc_id']}/count-full").status_code == 409
+    assert client.post("/api/workouts/99999/count-full").status_code == 404
+

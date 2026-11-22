@@ -43,6 +43,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
             setDayMobility: vi.fn(),
             perform: vi.fn(),
             recordRestAfter: vi.fn(),
+            countFull: vi.fn(),
         },
         exercisesApi: {
             getAll: vi.fn(),
@@ -533,6 +534,51 @@ it("shows the shortfall on a stopped tile", async () => {
     expect(screen.getByText(/ended early/i)).toBeInTheDocument();
 });
 
+const stoppedTile = () =>
+    set({
+        completed_at: `${DATE}T10:00:00`,
+        reps: 5,
+        completed_reps: 2,
+        work_seconds: 40,
+        actual_work_seconds: 85,
+        ended_early: true,
+    });
+
+it("counts a stopped set as full from its edit form", async () => {
+    workouts.getAll.mockResolvedValue({ data: [stoppedTile()] } as never);
+    workouts.countFull.mockResolvedValue({ data: {} } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByText("Weighted Pigeon Squat"));
+    expect(screen.getByText("Ended early at 2 / 5 reps")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /count as full/i }));
+
+    await waitFor(() => expect(workouts.countFull).toHaveBeenCalledWith(1));
+    expect(workouts.toggleComplete).not.toHaveBeenCalled();
+});
+
+it("resets a stopped set to not done from its edit form", async () => {
+    workouts.getAll.mockResolvedValue({ data: [stoppedTile()] } as never);
+    workouts.toggleComplete.mockResolvedValue({ data: {} } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByText("Weighted Pigeon Squat"));
+    await userEvent.click(screen.getByRole("button", { name: /reset to not done/i }));
+
+    await waitFor(() => expect(workouts.toggleComplete).toHaveBeenCalledWith(1, false));
+    expect(workouts.countFull).not.toHaveBeenCalled();
+});
+
+it("offers no ended-early actions on a set that ran to the end", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [set({ completed_at: `${DATE}T10:00:00`, completed_reps: 5 })],
+    } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByText("Weighted Pigeon Squat"));
+    expect(screen.queryByRole("button", { name: /count as full/i })).not.toBeInTheDocument();
+});
+
 // --- The day player (plan 0018) ----------------------------------------------
 
 it("counts only performed tiles as logged", async () => {
@@ -665,7 +711,7 @@ it("re-arms Play when a suggestion lands after a finished run", async () => {
             );
             return { data: {} };
         }) as never);
-        suggest.mockResolvedValue({ data: set({ doc_id: 9 }) } as never);
+        suggest.mockResolvedValue({ data: set({ doc_id: 9, work_seconds: 40 }) } as never);
 
         renderDay();
         await settle();
@@ -674,14 +720,16 @@ it("re-arms Play when a suggestion lands after a finished run", async () => {
         tick(5100); // the single work rep
         await settle();
 
-        expect(screen.getByText("DONE")).toBeInTheDocument();
-        // Nothing incomplete: no Play, and no reset yet.
+        // A finished run closes the player rather than showing a done screen.
+        expect(screen.queryByText("DONE")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+        // Nothing timed left: no Play.
         expect(screen.queryByRole("button", { name: /^play$/i })).not.toBeInTheDocument();
 
         // The suggestion lands: the player re-arms and Play returns.
         stored = [
             ...stored,
-            set({ doc_id: 9, exercise: "Deep Squat Hold", is_mobility: true, order: 2 }),
+            set({ doc_id: 9, exercise: "Deep Squat Hold", is_mobility: true, order: 2, work_seconds: 40 }),
         ];
         fireEvent.click(screen.getByRole("button", { name: /movement break/i }));
         await settle();
@@ -813,25 +861,54 @@ it("shows restart and skip beside pause on a timed run, and skip advances phases
     }
 });
 
-it("offers only Complete set on an untimed tile — no timers to restart or skip", async () => {
+it("ends the run before an untimed set, and closes, rather than offering to tick it", async () => {
     const restore = fakeClock();
     try {
-        workouts.getAll.mockResolvedValue({
-            data: [set({ doc_id: 1, work_seconds: null, reps: 8 })],
-        } as never);
+        let stored: Workout[] = [
+            set({ doc_id: 1, order: 1, exercise: "Plank", work_seconds: 5, reps: 1, rest_seconds: 0, rest_after_seconds: 30 }) as Workout,
+            set({ doc_id: 2, order: 2, exercise: "Overhead Press", reps: 5 }) as Workout,
+        ];
+        workouts.getAll.mockImplementation((async () => ({ data: stored })) as never);
+        workouts.perform.mockImplementation((async (id: number) => {
+            stored = stored.map((w) => (w.doc_id === id ? { ...w, completed_at: `${DATE}T11:00:00` } : w));
+            return { data: {} };
+        }) as never);
         renderDay();
         await settle();
 
         fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
-        tick(5020);
+        tick(5020); // get-ready
+        tick(5100); // the plank's one rep — no rest-after: it was the run's last set
         await settle();
 
-        expect(screen.getByRole("button", { name: "Complete set" })).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Restart timer" })).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Skip to next timer" })).not.toBeInTheDocument();
+        // The timed set was written; the lift was not touched.
+        expect(workouts.perform).toHaveBeenCalledTimes(1);
+        expect(workouts.perform.mock.calls[0][0]).toBe(1);
+        expect(workouts.toggleComplete).not.toHaveBeenCalled();
+        // The player is gone: no hero, no "Complete set", and no Play — the
+        // only incomplete set is untimed.
+        expect(screen.queryByRole("button", { name: "Complete set" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /^play$/i })).not.toBeInTheDocument();
     } finally {
         restore();
     }
+});
+
+it("starts Play at the first timed set when an untimed one comes first", async () => {
+    workouts.getAll.mockResolvedValue({
+        data: [
+            set({ doc_id: 1, order: 1, exercise: "Overhead Press", reps: 5 }),
+            set({ doc_id: 2, order: 2, exercise: "Plank", work_seconds: 30, reps: 1 }),
+        ],
+    } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByRole("button", { name: /^play$/i }));
+    expect(await screen.findByText("GET READY")).toBeInTheDocument();
+    // The hero names the plank; the press is not in the run, so not locked.
+    expect(screen.getAllByText(/Plank/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByRole("checkbox", { name: /mobility work/i })[0]).toBeEnabled();
 });
 
 it("cannot reach or fire the delete confirm on a locked tile", async () => {

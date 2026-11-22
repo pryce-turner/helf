@@ -205,6 +205,22 @@ def toggle_workout_complete(workout_id: int, complete: WorkoutComplete):
     return updated
 
 
+@router.post("/{workout_id}/count-full", response_model=Workout)
+def count_workout_as_full(workout_id: int):
+    """Clear an "ended early": the completed set counts as run to the end.
+
+    Re-derives the actuals from the targets and drops `ended_early`; the
+    completion itself stands. 409 for a set that is not completed. To reset a
+    stopped set to planned instead, untick it (`PATCH /complete`).
+    """
+    result = WorkoutRepository().count_as_full(workout_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    if result is False:
+        raise HTTPException(status_code=409, detail="Only a completed set can be counted as full")
+    return result
+
+
 @router.post("/{workout_id}/perform", response_model=Workout)
 def perform_workout(workout_id: int, performance: WorkoutPerform):
     """Write one tile's performance, as measured by the day player.

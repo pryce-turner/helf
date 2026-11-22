@@ -374,6 +374,28 @@ class WorkoutRepository:
             ExerciseRepository().update_usage(exercise_name, result["date"])
         return result
 
+    def count_as_full(self, doc_id: int) -> dict | None | bool:
+        """Clear a Stop: record a completed tile as if it ran to the end.
+
+        For a set that was stopped by mistake, or finished off the clock. The
+        completion stands (same `completed_at`, usage already counted); the
+        actuals are re-derived from the targets exactly as a natural finish
+        derives them, and `ended_early` goes. Returns None for a missing tile
+        and False for one that is not completed — there is no Stop to clear.
+        Resetting it to planned instead is the ordinary untick.
+        """
+        with SessionLocal() as session:
+            workout = session.get(Workout, doc_id)
+            if not workout:
+                return None
+            if workout.completed_at is None:
+                return False
+            self._derive_actuals(workout)
+            workout.updated_at = get_current_datetime()
+            session.commit()
+            session.refresh(workout)
+            return self._serialize(workout)
+
     def perform(
         self,
         doc_id: int,

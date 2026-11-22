@@ -212,9 +212,14 @@ tile is **not work**: the calendar, progression history and `v_daily_summary`
 count performed tiles only, and `exercises.last_used` moves at performance.
 The rest after a set is a value **on that set**, rendered as a divider after
 its tile — there are deliberately no rest rows. The day player executes
-incomplete tiles from an immutable snapshot, writing each tile's performance
+**timed** tiles from an immutable snapshot: the run starts at the first
+incomplete timed tile and ends before the next incomplete *untimed* one
+(completed tiles between are passed over), then the player closes — a lift is
+ticked by hand, and Play picks up after it. It writes each tile's performance
 (from the snapshot, as totals) before advancing; a stopped tile completes
-with `ended_early` and the shortfall readable beside its targets.
+with `ended_early` and the shortfall readable beside its targets. The tile's
+edit form clears a Stop either way: **Count as full** (`POST /count-full`) or
+**Reset to not done** (untick).
 
 **Planned training is flat too — one queue, two authors.**
 `upcoming_workouts` holds every prescribed set waiting to be copied onto a
@@ -558,6 +563,9 @@ docker-compose up -d
 - `PATCH /{id}/complete` - Toggle workout completion
 - `POST /date/{source_date}/move` - Move all workouts to different date
 - `POST /date/{source_date}/copy` - Copy all workouts to different date
+- `POST /{id}/count-full` - Clear an `ended_early`: a completed tile's actuals
+  are re-derived from its targets and the flag drops; the completion stands.
+  409 if the tile is not completed (reset-to-planned is `PATCH /complete`)
 - `POST /{id}/perform` - Write one tile's performance, as measured by the day
   player (plan 0018). Empty body = natural completion: the server derives the
   full actuals from the targets *as totals* (`work_seconds × reps`; the
@@ -738,7 +746,7 @@ work is a field on the set, written through the normal workout routes
 | Path | Page | Description |
 |---|---|---|
 | `/` | Calendar | Month view with workout count indicators + streak |
-| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag sets as mobility work, suggest a movement break, and **Play** the day's incomplete tiles through the day player |
+| `/day/:date` | WorkoutSession | Log exercises, drag-reorder, mark complete, flag sets as mobility work, suggest a movement break, and **Play** the timed sets (from the first incomplete one up to the next untimed set) through the day player |
 | `/progression` | Progression | Main lifts (Bench/Squat/Deadlift) 1RM charts — tab 2 of the Exercises section |
 | `/progression/:exercise` | Progression | Single exercise 1RM chart |
 | `/timer` | — | Redirects to today's day view; the standalone timer is retired (plan 0018) |

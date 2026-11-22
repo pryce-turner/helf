@@ -50,6 +50,7 @@ import {
   Play,
   StretchHorizontal,
   Timer,
+  RotateCcw,
 } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import RestDivider from "@/components/RestDivider";
@@ -75,6 +76,7 @@ import {
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import {
+  useCountFull,
   useToggleComplete,
   useMoveToDate,
   useCopyToDate,
@@ -104,6 +106,11 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
   const { data: exercises } = useExercises();
   // A day's tile or a preset's: the form is the same, the store is not.
   const source = useTileSourceContext();
+  // Clearing a Stop (only a day's tiles are ever performed): count the set
+  // as run to the end, or reset it to planned so Play runs it again.
+  const countFull = useCountFull();
+  const toggleComplete = useToggleComplete();
+  const stopped = workout.ended_early && workout.completed_at != null;
   const [showRecentWeights, setShowRecentWeights] = useState(false);
 
   // Seeded once from the set being edited. A refetch of the day while the
@@ -179,6 +186,48 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
               gap: "var(--space-4)",
             }}
           >
+            {stopped && (
+              <div className="ended-early">
+                <p className="ended-early__text">
+                  Ended early
+                  {workout.completed_reps != null && workout.reps != null
+                    ? ` at ${workout.completed_reps} / ${workout.reps} reps`
+                    : ""}
+                </p>
+                <div className="grid grid-cols-2" style={{ gap: "var(--space-3)" }}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full justify-center"
+                    disabled={countFull.isPending}
+                    onClick={async () => {
+                      await countFull.mutateAsync(workout.doc_id);
+                      onClose();
+                    }}
+                  >
+                    <Check style={{ width: "16px", height: "16px" }} />
+                    Count as full
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full justify-center"
+                    disabled={toggleComplete.isPending}
+                    onClick={async () => {
+                      await toggleComplete.mutateAsync({
+                        id: workout.doc_id,
+                        completed: false,
+                      });
+                      onClose();
+                    }}
+                  >
+                    <RotateCcw style={{ width: "16px", height: "16px" }} />
+                    Reset to not done
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <WorkoutFields
               exercise={exerciseConfig}
               values={formData}
@@ -970,22 +1019,38 @@ export const DayEditor = ({
     [workouts],
   );
 
-  const incompleteTiles = useMemo(
-    () => sortedWorkouts.filter((w) => !w.completed_at),
-    [sortedWorkouts],
-  );
+  // What Play runs: the timed sets from the first incomplete timed one,
+  // up to the next incomplete *untimed* set. The player is a timer — an
+  // untimed set (a lift) has nothing to count down, and offering a check
+  // for it at the end of a timed run ticked off sets that were never done.
+  // So a run stops there; tick the lift off, and Play picks up after it.
+  // Completed sets in between are passed over, not a reason to stop.
+  const playableTiles = useMemo(() => {
+    const start = sortedWorkouts.findIndex(
+      (w) => !w.completed_at && w.work_seconds != null,
+    );
+    if (start === -1) return [];
+    const block: Workout[] = [];
+    for (const w of sortedWorkouts.slice(start)) {
+      if (w.completed_at) continue;
+      if (w.work_seconds == null) break;
+      block.push(w);
+    }
+    return block;
+  }, [sortedWorkouts]);
 
-  // The day player (plan 0018). It runs the incomplete tiles in order from
-  // an immutable snapshot taken at Play; the write for each tile lands
-  // before the run advances. It watches the incomplete list so a suggestion
-  // landing after a finished run re-arms it.
-  const player = useWorkoutPlayer(incompleteTiles);
-  const playing = player.status !== "idle";
-  // A finished run is not terminal: Play re-arms whenever incomplete tiles
-  // remain, and starts at the first of them.
+  // The day player (plan 0018). It runs the playable tiles in order from an
+  // immutable snapshot taken at Play; the write for each tile lands before
+  // the run advances. It watches the playable list so a suggestion landing
+  // after a finished run re-arms it.
+  const player = useWorkoutPlayer(playableTiles);
+  // A finished run closes: the player is shown while a run is live (or
+  // failed), never as a "done" screen to dismiss.
+  const playing = player.status !== "idle" && player.status !== "done";
+  // A finished run is not terminal: Play re-arms whenever timed sets remain.
   const canPlay =
     (player.status === "idle" || player.status === "done") &&
-    incompleteTiles.length > 0;
+    playableTiles.length > 0;
   // A failed write is not a released snapshot either: the tiles stay locked
   // in `error` until Retry lands or the run is discarded.
   const runLive =
@@ -1189,9 +1254,9 @@ export const DayEditor = ({
                     // form, a delete confirm — must not act under it.
                     setConfirmingDelete(null);
                     setEditingId(null);
-                    player.play(incompleteTiles);
+                    player.play(playableTiles);
                   }}
-                  title="Play the day's incomplete sets, from the first one"
+                  title="Play the timed sets, from the first incomplete one up to the next untimed set"
                 >
                   <Play style={{ width: "16px", height: "16px" }} />
                   Play

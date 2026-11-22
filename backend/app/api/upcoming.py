@@ -48,6 +48,10 @@ PRESETS = {
         "display_name": "Cutting Rotation",
         "description": "Minimalist 3-workout rotation (Squat/Bench/Deadlift) for cutting. One main lift per session with light accessories. Rotate A→B→C regardless of schedule.",
     },
+    "core_stability_531": {
+        "display_name": "5/3/1 Core Stability",
+        "description": "Four-day 5/3/1 (press, deadlift, bench, squat) over four weeks with a deload, each day framed by dynamic stretching, a two-movement core-stability block, accessories, foam rolling and static stretching. The 1RM lines are training maxes.",
+    },
 }
 
 router = APIRouter()

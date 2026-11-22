@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { Fragment, useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2, Activity, Timer } from 'lucide-react';
 import Navigation from '@/components/Navigation';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import LiftoscriptEditor from '@/components/LiftoscriptEditor';
 import PresetSelector from '@/components/PresetSelector';
 import WorkoutSectionTabs from '@/components/WorkoutSectionTabs';
+import RestDivider from '@/components/RestDivider';
 import { formatSeconds } from '@/lib/setTiles';
 import {
   useUpcomingWorkouts,
@@ -432,8 +433,8 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
             {session.items.map((workout, workoutIndex) => {
               const catColor = getCategoryColor(workout.category);
               return (
+                <Fragment key={workout.doc_id}>
                 <div
-                  key={workout.doc_id}
                   style={{
                     padding: 'var(--space-4)',
                     background: 'var(--bg-tertiary)',
@@ -521,13 +522,6 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                             </div>
                           )
                         )}
-                        {workout.rest_after_seconds ? (
-                          <div className="workout-chip">
-                            <span className="workout-chip__value" style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                              then rest {formatSeconds(workout.rest_after_seconds)}
-                            </span>
-                          </div>
-                        ) : null}
                         {workout.comment && (
                           <div className="workout-chip">
                             <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
@@ -540,6 +534,12 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                     </div>
                   </div>
                 </div>
+                {/* The rest after a set is drawn between rows, as on the day
+                    view — not as one more chip on an already full line. */}
+                {workout.rest_after_seconds ? (
+                  <RestDivider seconds={workout.rest_after_seconds} />
+                ) : null}
+                </Fragment>
               );
             })}
           </div>

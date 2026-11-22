@@ -281,5 +281,6 @@ it("shows a generated set's timing and the rest after it", async () => {
     renderPage(<Upcoming />);
 
     expect(await screen.findByText("0:10 · rest 0:05")).toBeInTheDocument();
-    expect(screen.getByText("then rest 0:30")).toBeInTheDocument();
+    // The rest after the set is a divider between rows, not a chip.
+    expect(screen.getByRole("separator", { name: "Rest 0:30" })).toBeInTheDocument();
 });

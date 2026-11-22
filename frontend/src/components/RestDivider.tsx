@@ -9,12 +9,15 @@ import { formatSeconds } from "@/lib/setTiles";
  */
 interface RestDividerProps {
   seconds: number;
-  onEdit: () => void;
+  /** Omitted, the divider is read-only — the upcoming queue shows it but has
+   *  no editor to open. */
+  onEdit?: () => void;
   /** Locked while a run includes the tile it belongs to. */
   disabled?: boolean;
 }
 
-const RestDivider = ({ seconds, onEdit, disabled }: RestDividerProps) => (
+const RestDivider = ({ seconds, onEdit, disabled }: RestDividerProps) =>
+  onEdit ? (
   <button
     type="button"
     className="rest-divider"
@@ -31,6 +34,12 @@ const RestDivider = ({ seconds, onEdit, disabled }: RestDividerProps) => (
     <span className="rest-divider__label">Rest {formatSeconds(seconds)}</span>
     <span className="rest-divider__line" />
   </button>
-);
+  ) : (
+    <div className="rest-divider rest-divider--static" role="separator" aria-label={`Rest ${formatSeconds(seconds)}`}>
+      <span className="rest-divider__line" />
+      <span className="rest-divider__label">Rest {formatSeconds(seconds)}</span>
+      <span className="rest-divider__line" />
+    </div>
+  );
 
 export default RestDivider;

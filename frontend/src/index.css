@@ -437,7 +437,11 @@
         background: var(--bg-tertiary);
         border: 1px solid var(--border);
         border-radius: var(--radius-sm);
-        padding: 12px 16px;
+        /* 44px, the control height the select trigger and the stepper buttons
+           already use, so an input beside either lines up with it. Padding
+           alone made it ~50px. */
+        height: 44px;
+        padding: 0 16px;
         color: var(--text-primary);
         /* 16px, not 15. Under 16 iOS Safari zooms into the field on focus and
            does not zoom back out, which is what left every form off-centre on
@@ -1945,7 +1949,11 @@
         transition: color var(--duration-fast) var(--ease-default);
     }
 
-    .rest-divider:hover .rest-divider__label,
+    .rest-divider--static {
+        cursor: default;
+    }
+
+    .rest-divider:not(.rest-divider--static):hover .rest-divider__label,
     .rest-divider:focus-visible .rest-divider__label {
         color: var(--text-secondary);
     }

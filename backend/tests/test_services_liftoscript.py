@@ -419,3 +419,62 @@ Pull Ups / 3x10
         assert parser._round_to_nearest_5(142.5) == 140
         # Verify it rounds up for .5 when the result is odd
         assert parser._round_to_nearest_5(147.5) == 150
+
+
+class TestTimingAndDistance:
+    """Plan 0021: a set spec can carry the set tile's timing and a distance."""
+
+    def _one(self, line):
+        return LiftoscriptParser().parse(f"## Day 1\n{line}")
+
+    def test_work_rest_and_rest_after(self):
+        sets = self._one("Plank / 3x6 10s rest 5s after 30s")
+        assert len(sets) == 3
+        assert {(s.reps, s.work_seconds, s.rest_seconds, s.rest_after_seconds) for s in sets} == {
+            (6, 10, 5, 30)
+        }
+
+    def test_rest_is_never_read_as_work(self):
+        (s,) = self._one("Plank / 1x6 rest 5s")
+        assert (s.work_seconds, s.rest_seconds) == (None, 5)
+
+    @pytest.mark.parametrize(
+        "token, seconds",
+        [("45s", 45), ("90sec", 90), ("2min", 120), ("1:30", 90), ("2 min", 120)],
+    )
+    def test_duration_spellings(self, token, seconds):
+        (s,) = self._one(f"Wall Sit / 1x1 {token}")
+        assert s.work_seconds == seconds
+
+    @pytest.mark.parametrize(
+        "token, distance, unit",
+        [("400m", 400, "m"), ("5km", 5, "km"), ("1.5mi", 1.5, "mi"), ("100yd", 100, "yd")],
+    )
+    def test_distance(self, token, distance, unit):
+        (s,) = self._one(f"Rower / 1x1 {token}")
+        assert (s.distance, s.distance_unit, s.work_seconds) == (distance, unit, None)
+
+    def test_m_is_metres_and_min_is_minutes(self):
+        (s,) = self._one("Run / 1x1 800m 4min")
+        assert (s.distance, s.distance_unit, s.work_seconds) == (800, "m", 240)
+
+    def test_weight_and_timing_together(self):
+        (s,) = self._one("Farmer Carry / 1x2 70lb 40s rest 20s")
+        assert (s.weight, s.reps, s.work_seconds, s.rest_seconds) == (70, 2, 40, 20)
+
+    def test_timing_applies_per_spec(self):
+        sets = self._one("Dead Hang / 1x1 30s, 1x1 45s")
+        assert [s.work_seconds for s in sets] == [30, 45]
+
+    def test_plain_lifting_lines_are_unchanged(self):
+        (s,) = self._one("Barbell Squat / 1x5 135lb")
+        assert (s.work_seconds, s.rest_seconds, s.rest_after_seconds, s.distance) == (
+            None,
+            None,
+            None,
+            None,
+        )
+
+    def test_out_of_range_names_the_exercise(self):
+        with pytest.raises(LiftoscriptParseError, match="Plank: work time of 7200s"):
+            self._one("Plank / 1x1 120min")

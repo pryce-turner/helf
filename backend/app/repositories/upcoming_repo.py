@@ -37,6 +37,9 @@ class UpcomingWorkoutRepository:
             "distance_unit": workout.distance_unit,
             "time": workout.time,
             "comment": workout.comment,
+            "work_seconds": workout.work_seconds,
+            "rest_seconds": workout.rest_seconds,
+            "rest_after_seconds": workout.rest_after_seconds,
             "created_at": workout.created_at,
         }
 
@@ -155,6 +158,9 @@ class UpcomingWorkoutRepository:
                 distance_unit=workout_dict.get("distance_unit"),
                 time=workout_dict.get("time"),
                 comment=workout_dict.get("comment"),
+                work_seconds=workout_dict.get("work_seconds"),
+                rest_seconds=workout_dict.get("rest_seconds"),
+                rest_after_seconds=workout_dict.get("rest_after_seconds"),
                 created_at=get_current_datetime(),
             )
             session.add(new_workout)
@@ -170,6 +176,7 @@ class UpcomingWorkoutRepository:
         with SessionLocal() as session:
             categories_cache: dict[str, Category] = {}
             exercises_cache: dict[str, Exercise] = {}
+            created_here: set[str] = set()
             created = []
 
             for workout in workouts:
@@ -184,22 +191,53 @@ class UpcomingWorkoutRepository:
 
                 exercise = exercises_cache.get(exercise_name)
                 if not exercise:
+                    is_new = (
+                        session.execute(
+                            select(Exercise.id).where(Exercise.name == exercise_name)
+                        ).first()
+                        is None
+                    )
                     exercise = self._get_or_create_exercise(
                         session, exercise_name, category
                     )
                     exercises_cache[exercise_name] = exercise
+                    if is_new:
+                        created_here.add(exercise_name)
+                # A movement this program brings into the catalog takes the
+                # field groups the program gives it: transfer applies the
+                # exercise's configuration (plan 0018), and a new exercise
+                # defaults Time and Distance off, which would drop them.
+                # Existing exercises are never changed here — the generate
+                # route refuses a program that needs a group they have off.
+                if exercise_name in created_here:
+                    if workout_dict.get("work_seconds") is not None:
+                        exercise.time_enabled = True
+                    if workout_dict.get("distance") is not None:
+                        exercise.distance_enabled = True
+
+                # An exercise already in the catalog keeps its own category.
+                # The parser only knows a short built-in list and calls
+                # everything else "Other", which used to land on the queued
+                # set — and from there on the day — whatever the movement's
+                # real category was.
+                row_category_id = (
+                    category.id if exercise_name in created_here else exercise.category_id
+                )
 
                 new_workout = UpcomingWorkout(
                     session=workout_dict["session"],
                     is_mobility=workout_dict.get("is_mobility") or False,
                     exercise_id=exercise.id,
-                    category_id=category.id,
+                    category_id=row_category_id,
                     weight=workout_dict.get("weight"),
                     reps=workout_dict.get("reps"),
                     distance=workout_dict.get("distance"),
                     distance_unit=workout_dict.get("distance_unit"),
                     time=workout_dict.get("time"),
                     comment=workout_dict.get("comment"),
+                    work_seconds=workout_dict.get("work_seconds"),
+                    rest_seconds=workout_dict.get("rest_seconds"),
+                    rest_after_seconds=workout_dict.get("rest_after_seconds"),
                     created_at=get_current_datetime(),
                 )
                 session.add(new_workout)
@@ -278,6 +316,41 @@ class UpcomingWorkoutRepository:
 
             session.commit()
             return count
+
+    def groups_turned_off(self, workouts: list[UpcomingWorkoutCreate]) -> list[str]:
+        """What a program needs that an existing exercise has switched off.
+
+        Transfer applies the exercise's field configuration (plan 0018), so a
+        scripted "30s" on an exercise with Time off would vanish on the way to
+        the day. Better to refuse the program, naming what to change, than to
+        queue sets that silently lose their timing. Exercises the program
+        creates are configured from it instead (`create_bulk`).
+        """
+        needs_time = {
+            w.exercise
+            for w in workouts
+            if w.work_seconds is not None
+            or w.rest_seconds is not None
+            or w.rest_after_seconds is not None
+        }
+        needs_distance = {w.exercise for w in workouts if w.distance is not None}
+        names = needs_time | needs_distance
+        if not names:
+            return []
+        with SessionLocal() as session:
+            existing = session.execute(
+                select(Exercise).where(Exercise.name.in_(names))
+            ).scalars()
+            problems = []
+            for exercise in sorted(existing, key=lambda e: e.name):
+                off = []
+                if exercise.name in needs_time and not exercise.time_enabled:
+                    off.append("Time")
+                if exercise.name in needs_distance and not exercise.distance_enabled:
+                    off.append("Distance")
+                if off:
+                    problems.append(f"{exercise.name} has {' and '.join(off)} turned off")
+            return problems
 
     # The program behind the queue. Each successful generate keeps its script
     # as a `document` — the raw payload, kept whole — so the editor reopens on

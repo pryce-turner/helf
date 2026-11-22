@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2, Activity } from 'lucide-react';
+import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2, Activity, Timer } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import LiftoscriptEditor from '@/components/LiftoscriptEditor';
 import PresetSelector from '@/components/PresetSelector';
 import WorkoutSectionTabs from '@/components/WorkoutSectionTabs';
+import { formatSeconds } from '@/lib/setTiles';
 import {
   useUpcomingWorkouts,
   useDeleteUpcomingSession,
@@ -71,6 +72,9 @@ interface Movement {
   sets: number;
   reps: number | null;
   weight: number | null;
+  work_seconds: number | null;
+  distance: number | null;
+  distance_unit: string | null;
   comment: string | null;
 }
 
@@ -83,6 +87,9 @@ const foldMovements = (items: UpcomingWorkout[]): Movement[] =>
       last.is_mobility === item.is_mobility &&
       last.reps === item.reps &&
       last.weight === item.weight &&
+      last.work_seconds === item.work_seconds &&
+      last.distance === item.distance &&
+      last.distance_unit === item.distance_unit &&
       last.comment === item.comment;
 
     if (sameAsLast) {
@@ -97,6 +104,9 @@ const foldMovements = (items: UpcomingWorkout[]): Movement[] =>
       sets: 1,
       reps: item.reps,
       weight: item.weight,
+      work_seconds: item.work_seconds,
+      distance: item.distance,
+      distance_unit: item.distance_unit,
       comment: item.comment,
     });
     return movements;
@@ -105,7 +115,10 @@ const foldMovements = (items: UpcomingWorkout[]): Movement[] =>
 const prescription = (movement: Movement) => {
   const scheme =
     movement.reps != null ? `${movement.sets} x ${movement.reps}` : `${movement.sets} sets`;
-  return movement.weight != null ? `${scheme} @ ${movement.weight}lb` : scheme;
+  const parts = [movement.weight != null ? `${scheme} @ ${movement.weight}lb` : scheme];
+  if (movement.work_seconds != null) parts.push(`${formatSeconds(movement.work_seconds)} each`);
+  if (movement.distance != null) parts.push(`${movement.distance}${movement.distance_unit ?? ''}`);
+  return parts.join(' · ');
 };
 
 /** The flag rendered small: which sets of the workout are the mobility element. */
@@ -490,13 +503,31 @@ const SessionCard = ({ session }: { session: UpcomingSession }) => {
                             </span>
                           </div>
                         )}
-                        {workout.time && (
+                        {workout.work_seconds != null ? (
                           <div className="workout-chip">
+                            <Timer style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
                             <span className="workout-chip__value" style={{ fontSize: '13px' }}>
-                              {workout.time}
+                              {formatSeconds(workout.work_seconds)}
+                              {workout.rest_seconds ? ` · rest ${formatSeconds(workout.rest_seconds)}` : ''}
                             </span>
                           </div>
+                        ) : (
+                          workout.time && (
+                            <div className="workout-chip">
+                              <Timer style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />
+                              <span className="workout-chip__value" style={{ fontSize: '13px' }}>
+                                {workout.time}
+                              </span>
+                            </div>
+                          )
                         )}
+                        {workout.rest_after_seconds ? (
+                          <div className="workout-chip">
+                            <span className="workout-chip__value" style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                              then rest {formatSeconds(workout.rest_after_seconds)}
+                            </span>
+                          </div>
+                        ) : null}
                         {workout.comment && (
                           <div className="workout-chip">
                             <MessageSquare style={{ width: '16px', height: '16px', color: 'var(--text-muted)' }} />

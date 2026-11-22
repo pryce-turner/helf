@@ -325,6 +325,18 @@ class UpcomingWorkout(Base):
     __tablename__ = "upcoming_workouts"
     __table_args__ = (
         CheckConstraint("is_mobility IN (0, 1)", name="ck_upcoming_is_mobility"),
+        CheckConstraint(
+            "work_seconds IS NULL OR work_seconds BETWEEN 1 AND 3600",
+            name="ck_upcoming_work_seconds",
+        ),
+        CheckConstraint(
+            "rest_seconds IS NULL OR rest_seconds BETWEEN 0 AND 3600",
+            name="ck_upcoming_rest_seconds",
+        ),
+        CheckConstraint(
+            "rest_after_seconds IS NULL OR rest_after_seconds BETWEEN 0 AND 3600",
+            name="ck_upcoming_rest_after_seconds",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -347,6 +359,12 @@ class UpcomingWorkout(Base):
     time: Mapped[str | None] = mapped_column(String(32), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # The set tile's target timing (plan 0018), held until transfer copies it
+    # onto the day (842c1976c18a). Liftoscript writes it; `time` above is the
+    # read-only legacy string transfer still promotes when these are empty.
+    work_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     exercise: Mapped[Exercise] = relationship("Exercise", back_populates="upcoming_workouts")
     category: Mapped[Category] = relationship("Category", back_populates="upcoming_workouts")

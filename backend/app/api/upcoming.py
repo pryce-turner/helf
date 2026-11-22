@@ -163,9 +163,17 @@ def transfer_session(session: int, request: SessionTransferRequest):
             reps=upcoming_workout.get("reps"),
             distance=upcoming_workout.get("distance"),
             distance_unit=upcoming_workout.get("distance_unit"),
-            # Legacy `time` is read-only now (plan 0018); its duration moves
-            # onto the tile as `work_seconds` rather than dropping.
-            work_seconds=parse_duration_seconds(upcoming_workout.get("time")),
+            # The planned timing travels field for field (842c1976c18a). A
+            # row from before it may hold only the legacy `time`, read-only
+            # since plan 0018; its duration moves onto the tile as
+            # `work_seconds` rather than dropping.
+            work_seconds=(
+                upcoming_workout.get("work_seconds")
+                if upcoming_workout.get("work_seconds") is not None
+                else parse_duration_seconds(upcoming_workout.get("time"))
+            ),
+            rest_seconds=upcoming_workout.get("rest_seconds"),
+            rest_after_seconds=upcoming_workout.get("rest_after_seconds"),
             comment=upcoming_workout.get("comment"),
             order=start_order + offset,
             is_mobility=upcoming_workout.get("is_mobility", False),
@@ -250,6 +258,19 @@ def generate_liftoscript_workouts(request: LiftoscriptGenerateRequest):
             count=0,
             sessions=0,
             deleted_count=0,
+        )
+
+    # Before anything is cleared: a program whose timing or distance would be
+    # dropped at transfer is refused whole, with the fix named.
+    turned_off = repo.groups_turned_off(workouts)
+    if turned_off:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "; ".join(turned_off)
+                + ". Turn it on for the exercise on the Exercises page, or take "
+                "the timing or distance out of the script."
+            ),
         )
 
     deleted_count = repo.delete_all()

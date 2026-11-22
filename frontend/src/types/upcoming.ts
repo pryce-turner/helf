@@ -10,8 +10,13 @@ export interface UpcomingWorkout {
   reps: number | null;
   distance: number | null;
   distance_unit: string | null;
+  /** Legacy free-form duration; read-only — new rows carry `work_seconds`. */
   time: string | null;
   comment: string | null;
+  /** The set tile's target timing (plan 0021), carried onto the day at transfer. */
+  work_seconds: number | null;
+  rest_seconds: number | null;
+  rest_after_seconds: number | null;
   created_at: string;
 }
 

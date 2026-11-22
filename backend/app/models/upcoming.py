@@ -21,6 +21,10 @@ class UpcomingWorkoutBase(BaseModel):
     distance_unit: str | None = None
     time: str | None = None
     comment: str | None = None
+    # Target timing, carried onto the day's set at transfer (842c1976c18a).
+    work_seconds: int | None = Field(None, ge=1, le=3600)
+    rest_seconds: int | None = Field(None, ge=0, le=3600)
+    rest_after_seconds: int | None = Field(None, ge=0, le=3600)
 
 
 class UpcomingWorkoutCreate(UpcomingWorkoutBase):

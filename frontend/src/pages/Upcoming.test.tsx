@@ -261,3 +261,25 @@ it("opens the editor on the last generated program", async () => {
     expect(screen.getByLabelText("Cycles")).toHaveValue(6);
     expect(screen.getByText(/The program last generated, on Nov 20, 2026/)).toBeInTheDocument();
 });
+
+it("shows a generated set's timing and the rest after it", async () => {
+    upcoming.getAll.mockResolvedValue({
+        data: [
+            {
+                ...GENERATED_SESSION,
+                items: [
+                    {
+                        ...row("Bird Dog", 6, null, 21, 7),
+                        work_seconds: 10,
+                        rest_seconds: 5,
+                        rest_after_seconds: 30,
+                    },
+                ],
+            },
+        ],
+    } as never);
+    renderPage(<Upcoming />);
+
+    expect(await screen.findByText("0:10 · rest 0:05")).toBeInTheDocument();
+    expect(screen.getByText("then rest 0:30")).toBeInTheDocument();
+});

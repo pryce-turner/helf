@@ -2,7 +2,8 @@
 
 Supports: exercise name, sets, reps, 1RM percentage, simple weight, ## Day headers,
 comments via //, and linear progression via progress: lp(Xlb). AMRAP indicated by +
-converted to comment.
+converted to comment. Since plan 0021 a set spec can also carry the set tile's
+timing and a distance: `3x6 10s rest 5s after 30s`, `1x1 400m`.
 
 Required comments for percentage/progression:
 - If using % for weight: must have "// ExerciseName 1RM: Xlb" at top
@@ -55,11 +56,20 @@ class LiftoscriptParser:
         - Absolute: "135lb" or "60kg"
         - Linear progression: "progress: lp(5lb)" (requires // ExerciseName SW: Xlb comment)
 
+    Timing and distance (plan 0021), anywhere in a set spec after `NxM`:
+        - Work per rep: "10s", "90sec", "2min" or "1:30"
+        - Rest between reps: "rest 5s"
+        - Rest after the set: "after 30s"
+        - Distance: "400m", "5km", "1mi", "100yd" — `m` is metres; minutes
+          are always "min" or "m:ss"
+
     Examples:
         ## Day 1
         Barbell Squat / 5x5 135lb
         Bench Press / 3x8 80%
         Deadlift / 1x5 65%, 1x3 80%, 1x1+ 95%
+        Plank / 3x6 10s rest 5s after 30s
+        Rower / 1x1 2000m
 
         // Squat 1RM: 225lb
         // Bench Press 1RM: 135lb
@@ -75,7 +85,15 @@ class LiftoscriptParser:
     WEIGHT_ABSOLUTE_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*(lb|kg)")
     PROGRESS_LP_PATTERN = re.compile(r"progress:\s*lp\((\d+(?:\.\d+)?)\s*(lb|kg)\)")
     RPE_PATTERN = re.compile(r"@(\d+(?:\.\d+)?)")
-    REST_PATTERN = re.compile(r"(\d+)(s|m)")
+    # Timing and distance (plan 0021). A duration is "m:ss" or a number with
+    # s / sec / min. `m` alone is never minutes: it is metres, below.
+    _DURATION = r"(?:(\d+):([0-5]\d)|(\d+)\s*(sec|min|s))(?![\w:])"
+    REST_AFTER_PATTERN = re.compile(r"\bafter\s+" + _DURATION, re.IGNORECASE)
+    REST_BETWEEN_PATTERN = re.compile(r"\brest\s+" + _DURATION, re.IGNORECASE)
+    WORK_PATTERN = re.compile(r"(?<![\w.:])" + _DURATION, re.IGNORECASE)
+    DISTANCE_PATTERN = re.compile(
+        r"(?<![\w.])(\d+(?:\.\d+)?)\s*(km|mi|yd|m)\b", re.IGNORECASE
+    )
     DAY_HEADER_PATTERN = re.compile(r"^##\s+(.+)$")
     REQUIRED_1RM_PATTERN = re.compile(r"^//\s+(.+?)\s+1RM:\s*(\d+(?:\.\d+)?)\s*(lb|kg)$")
     REQUIRED_SW_PATTERN = re.compile(r"^//\s+(.+?)\s+SW:\s*(\d+(?:\.\d+)?)\s*(lb|kg)$")
@@ -184,6 +202,57 @@ class LiftoscriptParser:
 
         return None, "lbs"
 
+    @staticmethod
+    def _duration_seconds(match: re.Match) -> int:
+        minutes, secs, amount, unit = match.groups()
+        if minutes is not None:
+            return int(minutes) * 60 + int(secs)
+        return int(amount) * (60 if unit.lower() == "min" else 1)
+
+    def _parse_timing(
+        self, set_spec: str, exercise_name: str
+    ) -> tuple[int | None, int | None, int | None, float | None, str | None]:
+        """Work, rest, rest-after seconds and distance from one set spec.
+
+        `rest` and `after` are taken out before the work time is looked for,
+        so "rest 5s" is never read as five seconds of work. Bounds match the
+        set tile's CHECKs; out of range is an error naming the exercise, not a
+        constraint failure at write time.
+        """
+        # The leading NxM is not timing; scan only what follows it.
+        sets_match = self.SET_PATTERN.match(set_spec.strip())
+        rest_of = set_spec.strip()[sets_match.end():] if sets_match else set_spec
+
+        def take(pattern: re.Pattern) -> int | None:
+            nonlocal rest_of
+            match = pattern.search(rest_of)
+            if not match:
+                return None
+            rest_of = rest_of[: match.start()] + " " + rest_of[match.end():]
+            return self._duration_seconds(match)
+
+        rest_after = take(self.REST_AFTER_PATTERN)
+        rest_between = take(self.REST_BETWEEN_PATTERN)
+        work = take(self.WORK_PATTERN)
+
+        distance = distance_unit = None
+        distance_match = self.DISTANCE_PATTERN.search(rest_of)
+        if distance_match:
+            distance = float(distance_match.group(1))
+            distance_unit = distance_match.group(2).lower()
+
+        for label, value, low in (
+            ("work time", work, 1),
+            ("rest", rest_between, 0),
+            ("rest after", rest_after, 0),
+        ):
+            if value is not None and not low <= value <= 3600:
+                raise LiftoscriptParseError(
+                    f"{exercise_name}: {label} of {value}s is outside "
+                    f"{low}s to 60min"
+                )
+        return work, rest_between, rest_after, distance, distance_unit
+
     def _parse_sets_reps(self, sets_reps_str: str) -> tuple[int, int, bool]:
         """Parse sets and reps string. Returns (sets, reps, is_amrap)."""
         match = self.SET_PATTERN.match(sets_reps_str.strip())
@@ -244,6 +313,9 @@ class LiftoscriptParser:
 
                 sets, reps, is_amrap = self._parse_sets_reps(set_spec)
                 weight, unit = self._parse_weight(set_spec, exercise_name, cycle_num)
+                work, rest, rest_after, distance, distance_unit = self._parse_timing(
+                    set_spec, exercise_name
+                )
 
                 for set_index in range(sets):
                     # AMRAP marks the final set only - "3x5+" is three sets of
@@ -263,6 +335,11 @@ class LiftoscriptParser:
                         weight_unit=unit,
                         reps=reps,
                         comment=comment,
+                        work_seconds=work,
+                        rest_seconds=rest,
+                        rest_after_seconds=rest_after,
+                        distance=distance,
+                        distance_unit=distance_unit,
                     )
                     workouts.append(workout)
 

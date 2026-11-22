@@ -327,3 +327,61 @@ def test_a_program_that_fails_to_generate_is_not_kept(client):
     client.post("/api/upcoming/liftoscript/generate", json={"script": "just words", "num_cycles": 1})
 
     assert client.get("/api/upcoming/liftoscript/last").json()["script"] == good
+
+
+def test_scripted_timing_reaches_the_day(client):
+    """Plan 0021 end to end: timing written in the script is queued, then
+    lands on the day's set at transfer. A movement the script creates is
+    configured to take it, or transfer's field-config guard would drop it."""
+    generated = client.post(
+        "/api/upcoming/liftoscript/generate",
+        json={"script": "## Day 1\nBird Dog / 1x6 10s rest 5s after 30s\nSled / 1x1 40yd", "num_cycles": 1},
+    )
+    assert generated.status_code == 200, generated.text
+
+    (session,) = client.get("/api/upcoming/").json()
+    bird, sled = session["items"]
+    assert (bird["work_seconds"], bird["rest_seconds"], bird["rest_after_seconds"]) == (10, 5, 30)
+    assert (sled["distance"], sled["distance_unit"]) == (40, "yd")
+
+    client.post("/api/upcoming/session/1/transfer", json={"date": "2026-11-23"})
+    day = sorted(
+        client.get("/api/workouts/", params={"date": "2026-11-23"}).json(),
+        key=lambda w: w["order"],
+    )
+    assert (day[0]["work_seconds"], day[0]["rest_seconds"], day[0]["rest_after_seconds"]) == (10, 5, 30)
+    assert (day[1]["distance"], day[1]["distance_unit"]) == (40, "yd")
+
+
+def test_a_program_needing_a_group_an_exercise_has_off_is_refused(client):
+    client.post("/api/exercises/", json={"name": "Plank", "category": "Core"})  # Time off
+    client.post(
+        "/api/upcoming/liftoscript/generate",
+        json={"script": "## Day 1\nBench Press / 3x5 135lb", "num_cycles": 1},
+    )
+
+    refused = client.post(
+        "/api/upcoming/liftoscript/generate",
+        json={"script": "## Day 1\nPlank / 3x1 30s", "num_cycles": 1},
+    )
+    assert refused.status_code == 400
+    assert "Plank has Time turned off" in refused.json()["detail"]
+    # Refused before anything was cleared: the earlier queue is intact.
+    queue = client.get("/api/upcoming/").json()
+    assert [i["exercise"] for s in queue for i in s["items"]] == ["Bench Press"] * 3
+    assert "Bench Press" in client.get("/api/upcoming/liftoscript/last").json()["script"]
+
+
+def test_a_known_exercise_keeps_its_own_category(client):
+    """The parser's built-in category list does not know most movements and
+    says "Other"; a movement already in the catalog keeps its category."""
+    client.post("/api/exercises/", json={"name": "Bird Dog", "category": "Core"})
+    client.post(
+        "/api/upcoming/liftoscript/generate",
+        json={"script": "## Day 1\nBird Dog / 1x6\nBrand New Thing / 1x5", "num_cycles": 1},
+    )
+    (session,) = client.get("/api/upcoming/").json()
+    assert [(i["exercise"], i["category"]) for i in session["items"]] == [
+        ("Bird Dog", "Core"),
+        ("Brand New Thing", "Other"),
+    ]

@@ -623,7 +623,8 @@ docker-compose up -d
 - `POST /liftoscript/generate` - Parse Liftoscript and generate workout
   sessions. **Clears the whole queue first** — rows and plans alike
   (9c4e7b21f806); the page warns, naming the agent-written sessions, before
-  the confirm is offered
+  the confirm is offered. 400 before clearing anything if the script needs a
+  field group an existing exercise has off (plan 0021)
 - `GET /presets` - List available workout presets
 - `GET /presets/{name}` - Get preset script content
 - `GET /liftoscript/last` - The script and `num_cycles` of the last **successful** generate, or null. Each one is kept as a `document` (`kind = 'liftoscript_program'`), so earlier programs stay readable; the editor reopens on the latest
@@ -775,6 +776,7 @@ work is a field on the set, written through the normal workout routes
 - Built-in programs (the program editor's dropdown; `app/presets/*.liftoscript`, still "presets" in the API and code): Wendler 5/3/1, StrongLifts 5x5, Cutting Rotation
 - Percentage-based weights (% of 1RM)
 - Linear progression: `progress: lp(5lb)`
+- Timing and distance after `NxM` (plan 0021): work per rep `10s`/`2min`/`1:30`, `rest 5s` between reps, `after 30s` after the set, distance `400m`/`5km`/`1mi`/`100yd` (`m` is metres; minutes are `min` or `m:ss`). Carried on the queue and onto the day at transfer. Generate refuses a program needing Time/Distance on an existing exercise that has the group off; exercises it creates get the groups switched on
 - Multi-cycle generation
 - One-click transfer to historical data
 - The editor reopens on the last generated program (kept server-side, so it follows you across devices); a failed generate never replaces it

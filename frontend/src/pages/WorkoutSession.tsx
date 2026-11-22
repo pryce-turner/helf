@@ -7,6 +7,7 @@ import {
   useRef,
   memo,
   Fragment,
+  type ReactNode,
 } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
@@ -69,16 +70,17 @@ import {
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import {
-  useWorkouts,
-  useCreateWorkout,
-  useUpdateWorkout,
-  useDeleteWorkout,
-  useBulkReorderWorkouts,
   useToggleComplete,
   useMoveToDate,
   useCopyToDate,
   useSetDayMobility,
 } from "@/hooks/useWorkouts";
+import {
+  TileSourceContext,
+  useDayTileSource,
+  useTileSourceContext,
+  type TileSource,
+} from "@/hooks/useTileSource";
 import type { Workout } from "@/types/workout";
 import { useCategories, useExercises, useMovementBreakPool, useRecentExercises } from "@/hooks/useExercises";
 import { useProgression } from "@/hooks/useProgression";
@@ -95,8 +97,8 @@ interface InlineEditFormProps {
 
 const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
   const { data: exercises } = useExercises();
-  const updateWorkout = useUpdateWorkout();
-  const createWorkout = useCreateWorkout();
+  // A day's tile or a preset's: the form is the same, the store is not.
+  const source = useTileSourceContext();
   const [showRecentWeights, setShowRecentWeights] = useState(false);
 
   // Seeded once from the set being edited. A refetch of the day while the
@@ -135,7 +137,7 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
     e.preventDefault();
     if (!formData.exercise || !formData.category) return;
 
-    await updateWorkout.mutateAsync({ id: workout.doc_id, workout: formData });
+    await source.updateAsync(workout.doc_id, formData);
     onClose();
   };
 
@@ -145,7 +147,7 @@ const InlineEditForm = ({ workout, onClose }: InlineEditFormProps) => {
     // A duplicate of a mobility tile is mobility work too — the intent
     // travels, the performance does not (the new tile is planned, so
     // completion and actuals reset server-side).
-    await createWorkout.mutateAsync({
+    await source.create({
       ...formData,
       is_mobility: workout.is_mobility,
     });
@@ -384,6 +386,8 @@ interface SortableWorkoutCardProps {
   isLocked: boolean;
   /** The tile the player is on right now: highlighted. */
   isActiveTile: boolean;
+  /** A day's tiles can be ticked done; a preset's are never performed. */
+  showCompletion: boolean;
   handleEditWorkout: (workout: Workout) => void;
   handleToggleComplete: (workout: Workout) => void;
   handleToggleMobility: (workout: Workout) => void;
@@ -461,6 +465,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
   isConfirmingDelete,
   isLocked,
   isActiveTile,
+  showCompletion,
   handleEditWorkout,
   handleToggleComplete,
   handleToggleMobility,
@@ -502,7 +507,10 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
       )}
       {!isEditing && (
         <div className="set-row__actions">
-          {/* Completion checkbox */}
+          {/* Completion checkbox. A preset keeps its cell empty, so the
+              other controls sit where they do on a day. */}
+          {!showCompletion && <span aria-hidden="true" />}
+          {showCompletion && (
           <button
             className="action-btn"
             disabled={isLocked}
@@ -531,6 +539,7 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
               <Circle className="set-row__icon" />
             )}
           </button>
+          )}
 
           {/* Mobility toggle.
               Whether a set was mobility work is a property of *that set*:
@@ -760,21 +769,51 @@ const WorkoutCardContent = memo(function WorkoutCardContent({
   );
 });
 
-const WorkoutSession = () => {
-  const { date } = useParams<{ date: string }>();
-  const navigate = useNavigate();
+interface DayEditorProps {
+  /** Where the tiles live: a dated day, or a preset (plan 0020). */
+  source: TileSource;
+  /** The day being edited. Absent for a preset, which has no date. */
+  date?: string;
+  title: ReactNode;
+  subtitle: ReactNode;
+  onBack: () => void;
+  /** Buttons beside Add — a preset's Apply and Delete. */
+  extraActions?: ReactNode;
+  /** Cards under the header, above the add form — a preset's apply calendar. */
+  extraPanels?: ReactNode;
+  emptyTitle: string;
+  emptyText: string;
+}
 
-  const { data: workouts, isLoading } = useWorkouts({ date });
+/**
+ * The tile editor: add form, cards, inline edit, drag reorder, delete.
+ *
+ * One editor for a day and for a preset, so the two cannot drift. What only a
+ * dated day has — completion, the day player, move/copy, the bulk mobility
+ * flag, a movement break suggestion — renders only when the source is a day.
+ */
+export const DayEditor = ({
+  source,
+  date,
+  title,
+  subtitle,
+  onBack,
+  extraActions,
+  extraPanels,
+  emptyTitle,
+  emptyText,
+}: DayEditorProps) => {
+  const navigate = useNavigate();
+  const isDay = source.kind === "day";
+
+  const workouts = source.tiles;
+  const isLoading = source.isLoading;
   const { data: categories } = useCategories();
   const { data: exercises } = useExercises();
   const { data: recentExercises } = useRecentExercises(8);
   const { data: movementBreakPool } = useMovementBreakPool();
   const suggestMovementBreak = useSuggestMovementBreak();
 
-  const createWorkout = useCreateWorkout();
-  const updateWorkout = useUpdateWorkout();
-  const deleteWorkout = useDeleteWorkout();
-  const bulkReorderWorkouts = useBulkReorderWorkouts();
   const toggleComplete = useToggleComplete();
   const moveToDate = useMoveToDate();
   const copyToDate = useCopyToDate();
@@ -876,7 +915,7 @@ const WorkoutSession = () => {
       return;
     }
 
-    await createWorkout.mutateAsync(formData);
+    await source.create(formData);
     resetForm();
   };
 
@@ -895,13 +934,13 @@ const WorkoutSession = () => {
   // The mutation objects change identity with their own pending state, so
   // the callbacks depend on `mutate`/`mutateAsync`, which are stable. That
   // keeps one card's toggle from re-rendering every other card.
-  const { mutateAsync: deleteWorkoutAsync } = deleteWorkout;
+  const { remove: removeTile } = source;
   const handleDeleteConfirm = useCallback(
     async (id: number) => {
-      await deleteWorkoutAsync(id);
+      await removeTile(id);
       setConfirmingDelete(null);
     },
-    [deleteWorkoutAsync],
+    [removeTile],
   );
 
   const handleDeleteCancel = useCallback(() => {
@@ -966,7 +1005,7 @@ const WorkoutSession = () => {
     [sortedIdsKey],
   );
 
-  const { mutate: bulkReorderMutate } = bulkReorderWorkouts;
+  const { reorder: bulkReorderMutate } = source;
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -1027,12 +1066,10 @@ const WorkoutSession = () => {
   // the only field that changes. The backend leaves the flag alone when the
   // key is absent, so sending it explicitly is what makes this a deliberate
   // edit rather than a side effect of some other save.
-  const { mutate: updateWorkoutMutate } = updateWorkout;
+  const { update: updateTile } = source;
   const handleToggleMobility = useCallback(
     (workout: Workout) => {
-      updateWorkoutMutate({
-        id: workout.doc_id,
-        workout: {
+      updateTile(workout.doc_id, {
           date: workout.date,
           exercise: workout.exercise,
           category: workout.category,
@@ -1050,10 +1087,9 @@ const WorkoutSession = () => {
           work_seconds: workout.work_seconds,
           rest_seconds: workout.rest_seconds,
           rest_after_seconds: workout.rest_after_seconds,
-        },
       });
     },
-    [updateWorkoutMutate],
+    [updateTile],
   );
 
   // Progression data for add form's selected exercise
@@ -1066,14 +1102,9 @@ const WorkoutSession = () => {
 
   const categoryExercises =
     exercises?.filter((e) => e.category === selectedCategory) || [];
-  const formattedDate = date ? format(parseISO(date), "MMMM d, yyyy") : "";
-  // Performed tiles are logged work; planned ones — a suggestion included —
-  // are named as such rather than counted into the log (plan 0018).
-  const performedCount = (workouts ?? []).filter((w) => w.completed_at).length;
-  const plannedCount = (workouts?.length ?? 0) - performedCount;
 
   return (
-    <>
+    <TileSourceContext.Provider value={source}>
       <Navigation />
       <div className="page">
         <div className="page__content page__content--narrow">
@@ -1089,28 +1120,20 @@ const WorkoutSession = () => {
               <Button
                 variant="secondary"
                 size="icon"
-                onClick={() => navigate("/")}
+                onClick={onBack}
                 className="icon-btn"
+                aria-label="Back"
               >
                 <ArrowLeft style={{ width: "16px", height: "16px" }} />
               </Button>
-              <div>
-                <h1 className="page__title page__title--compact">
-                  {formattedDate}
-                </h1>
-                <p className="page__subtitle">
-                  {/* Performed tiles only: a planned tile — a suggestion —
-                      is not logged work (plan 0018), and the count must not
-                      call it one. */}
-                  {performedCount} exercise
-                  {performedCount !== 1 ? "s" : ""} logged
-                  {plannedCount > 0 ? ` · ${plannedCount} planned` : ""}
-                </p>
+              <div style={{ minWidth: 0 }}>
+                <h1 className="page__title page__title--compact">{title}</h1>
+                <p className="page__subtitle">{subtitle}</p>
               </div>
             </div>
 
             <div className="flex flex-wrap" style={{ gap: "var(--space-2)" }}>
-              {workouts && workouts.length > 0 && (
+              {isDay && workouts && workouts.length > 0 && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1120,7 +1143,7 @@ const WorkoutSession = () => {
                   Move
                 </Button>
               )}
-              {workouts && workouts.length > 0 && (
+              {isDay && workouts && workouts.length > 0 && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1130,7 +1153,7 @@ const WorkoutSession = () => {
                   Copy
                 </Button>
               )}
-              {workouts && workouts.length > 0 && (
+              {isDay && workouts && workouts.length > 0 && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1152,7 +1175,7 @@ const WorkoutSession = () => {
               {/* The day player runs the incomplete tiles from the first one
                   on. A finished run is not terminal: Play re-arms whenever
                   incomplete tiles remain. */}
-              {canPlay && (
+              {isDay && canPlay && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1173,7 +1196,7 @@ const WorkoutSession = () => {
                   this date (plan 0018) — editable and deletable like any
                   other, and not work until it is played. Hidden when the
                   pool is empty; the Mobility page is where it gets filled. */}
-              {(movementBreakPool?.length ?? 0) > 0 && (
+              {isDay && (movementBreakPool?.length ?? 0) > 0 && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1185,6 +1208,7 @@ const WorkoutSession = () => {
                   Movement break
                 </Button>
               )}
+              {extraActions}
               <Button
                 size="sm"
                 onClick={() => {
@@ -1200,6 +1224,8 @@ const WorkoutSession = () => {
               </Button>
             </div>
           </div>
+
+          {extraPanels}
 
           {/* Move to Date Calendar */}
           {showMoveCalendar && (
@@ -1733,6 +1759,7 @@ const WorkoutSession = () => {
                         isActiveTile={
                           runLive && player.activeTileId === workout.doc_id
                         }
+                        showCompletion={isDay}
                         handleEditWorkout={handleEditWorkout}
                         handleToggleComplete={handleToggleComplete}
                         handleToggleMobility={handleToggleMobility}
@@ -1775,10 +1802,8 @@ const WorkoutSession = () => {
                     }}
                   />
                 </div>
-                <h3 className="empty-state__title">No workouts yet</h3>
-                <p className="empty-state__text">
-                  Start your training session by adding your first exercise
-                </p>
+                <h3 className="empty-state__title">{emptyTitle}</h3>
+                <p className="empty-state__text">{emptyText}</p>
                 <Button onClick={() => setShowForm(true)}>
                   <Plus style={{ width: "16px", height: "16px" }} />
                   Add your first exercise
@@ -1788,7 +1813,40 @@ const WorkoutSession = () => {
           )}
         </div>
       </div>
-    </>
+    </TileSourceContext.Provider>
+  );
+};
+
+const WorkoutSession = () => {
+  const { date } = useParams<{ date: string }>();
+  const navigate = useNavigate();
+  const source = useDayTileSource(date);
+  const workouts = source.tiles;
+
+  const formattedDate = date ? format(parseISO(date), "MMMM d, yyyy") : "";
+  // Performed tiles are logged work; planned ones — a suggestion included —
+  // are named as such rather than counted into the log (plan 0018).
+  const performedCount = (workouts ?? []).filter((w) => w.completed_at).length;
+  const plannedCount = (workouts?.length ?? 0) - performedCount;
+
+  return (
+    <DayEditor
+      source={source}
+      date={date}
+      title={formattedDate}
+      subtitle={
+        <>
+          {/* Performed tiles only: a planned tile — a suggestion — is not
+              logged work (plan 0018), and the count must not call it one. */}
+          {performedCount} exercise
+          {performedCount !== 1 ? "s" : ""} logged
+          {plannedCount > 0 ? ` · ${plannedCount} planned` : ""}
+        </>
+      }
+      onBack={() => navigate("/")}
+      emptyTitle="No workouts yet"
+      emptyText="Start your training session by adding your first exercise"
+    />
   );
 };
 

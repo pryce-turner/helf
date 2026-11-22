@@ -352,6 +352,97 @@ class UpcomingWorkout(Base):
     category: Mapped[Category] = relationship("Category", back_populates="upcoming_workouts")
 
 
+class WorkoutPreset(Base):
+    """A hand-built workout, kept to be applied to a day (plan 0020).
+
+    Like a stack, a preset is an **input method, not a record**: applying one
+    writes ordinary planned `workouts` rows and nothing points back here, so
+    editing a preset tomorrow cannot change what a past day says was planned
+    or done.
+
+    Distinct from the Liftoscript presets (`app/presets/*.liftoscript`), which
+    are program *templates* that generate the upcoming queue. These are built
+    tile by tile on the day editor and land on one date.
+
+    Not audited, matching `upcoming_workouts` and `mobility_plan`: a plan that
+    has not been run is not history yet, and applying it is the moment it
+    becomes some — as ordinary, audited workout rows.
+    """
+
+    __tablename__ = "workout_preset"
+    __table_args__ = (
+        CheckConstraint("trim(name) <> ''", name="ck_workout_preset_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Unique: the name is how the list tells two presets apart.
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    items: Mapped[list["WorkoutPresetItem"]] = relationship(
+        "WorkoutPresetItem",
+        back_populates="preset",
+        cascade="all, delete-orphan",
+        order_by="WorkoutPresetItem.order",
+    )
+
+
+class WorkoutPresetItem(Base):
+    """One set tile of a preset — the *targets* of a `workouts` row, no actuals.
+
+    The columns mirror a planned workout tile on purpose: the day editor
+    renders both with the same card, and applying a preset copies these onto
+    new rows field for field. There is no `completed_at` or performance here,
+    because a preset is never performed — the day it is applied to is.
+    """
+
+    __tablename__ = "workout_preset_item"
+    __table_args__ = (
+        Index("ix_workout_preset_item_preset_order", "preset_id", "order"),
+        CheckConstraint("is_mobility IN (0, 1)", name="ck_workout_preset_item_is_mobility"),
+        CheckConstraint(
+            "work_seconds IS NULL OR work_seconds BETWEEN 1 AND 3600",
+            name="ck_workout_preset_item_work_seconds",
+        ),
+        CheckConstraint(
+            "rest_seconds IS NULL OR rest_seconds BETWEEN 0 AND 3600",
+            name="ck_workout_preset_item_rest_seconds",
+        ),
+        CheckConstraint(
+            "rest_after_seconds IS NULL OR rest_after_seconds BETWEEN 0 AND 3600",
+            name="ck_workout_preset_item_rest_after_seconds",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    preset_id: Mapped[int] = mapped_column(
+        ForeignKey("workout_preset.id", ondelete="CASCADE"), nullable=False
+    )
+    # No cascade from the catalog, deliberately: deleting an exercise a preset
+    # uses must not silently empty the preset. The FK refuses instead.
+    exercise_id: Mapped[int] = mapped_column(
+        ForeignKey("exercises.id"), nullable=False, index=True
+    )
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"), nullable=False, index=True
+    )
+    order: Mapped[int] = mapped_column(Integer, nullable=False)
+    weight: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    distance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    distance_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    work_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rest_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_mobility: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+
+    preset: Mapped[WorkoutPreset] = relationship("WorkoutPreset", back_populates="items")
+    exercise: Mapped[Exercise] = relationship("Exercise")
+    category: Mapped[Category] = relationship("Category")
+
+
 class Document(Base):
     """A raw imported payload, kept whole.
 

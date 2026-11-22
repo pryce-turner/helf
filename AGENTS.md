@@ -235,6 +235,13 @@ checkbox can adjust it. Every workout's mobility element is exactly its
 flagged sets. The `kind` column this replaced made every query name a
 program; the flag makes that whole class of mistake impossible.
 
+**A hand-built preset is an input method, not a record** (plan 0020).
+`workout_preset` / `workout_preset_item` hold named lists of planned tiles —
+the target columns of `workouts`, no actuals — built on the day editor and
+applied to a date as ordinary planned rows. Nothing points back, so editing a
+preset never rewrites a day; not audited, like the queue. Not the Liftoscript
+presets, which are program templates for the queue.
+
 **Everything measured is tall.** An `observation` is one act of measuring — an
 instant and an instrument — carrying `metric` rows whose names come from a fixed
 vocabulary in `metric_def`. Adding a *quantity* is a row. Adding a *name* is a
@@ -657,6 +664,20 @@ docker-compose up -d
 - `GET /{id}` / `PUT /{id}` / `DELETE /{id}` - `items` on PUT **replaces** the membership
 - `POST /{id}/log` - Write one `food_log` row per item, at one instant
 
+### Presets (`/api/presets`)
+Hand-built workouts (plan 0020) — not `/api/upcoming/presets`, the Liftoscript
+templates.
+- `GET /` - Every preset with its tiles, by name
+- `POST /` - Create an empty preset; no name → "New preset", numbered if taken
+- `GET /{id}` / `PUT /{id}` (rename) / `DELETE /{id}` (tiles cascade; days it
+  was applied to are untouched)
+- `POST /{id}/items` - Add a tile (appends); the exercise's field
+  configuration nulls disabled groups, as on a workout create
+- `PUT /items/{item_id}` / `DELETE /items/{item_id}`
+- `PATCH /{id}/reorder` - `item_ids` in order; another preset's ids are ignored
+- `POST /{id}/apply` - Copy the tiles onto `date` as **planned** rows after the
+  day's own; 422 for an empty preset
+
 ### Mobility (`/api/mobility`)
 The queue half of mobility moved to `/api/upcoming` (plan 0019) — pending
 sessions are listed, transferred and discarded there. What stays here is what
@@ -723,7 +744,8 @@ work is a field on the set, written through the normal workout routes
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Nutrition section |
 | `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 1 of the Nutrition section (the default) |
 | `/upcoming` | Upcoming | The one queue: generated program sessions and the agent's labelled mobility sessions in one list, Liftoscript editor, last mobility session (plan 0019) — tab 1 of the Workouts section |
-| `/presets` | Presets | Hand-built presets — tab 2 of the Workouts section |
+| `/presets` | Presets | Hand-built presets, and **Add preset** — tab 2 of the Workouts section (plan 0020) |
+| `/presets/:id` | PresetEditor | One preset on the day editor (`DayEditor` fed a preset tile source): rename, add/edit/reorder tiles, apply to a day, delete |
 | `/mobility` | — | Redirects to `/upcoming`; the separate page is retired (plan 0019) |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category — tab 1 of the Exercises section |
 
@@ -754,6 +776,14 @@ work is a field on the set, written through the normal workout routes
 - Linear progression: `progress: lp(5lb)`
 - Multi-cycle generation
 - One-click transfer to historical data
+
+### Hand-built presets
+- A workout built once on the day editor and applied to any day as planned
+  sets (plan 0020)
+- The day editor is `DayEditor`, shared by `/day/:date` and `/presets/:id`
+  through a tile source (`hooks/useTileSource.ts`); day-only controls —
+  completion, Play, Move, Copy, Mark all mobility, Movement break — render only
+  for a day
 
 ### Food and intake
 - Catalog with macros per serving; log with servings, meal and time

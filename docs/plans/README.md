@@ -44,6 +44,7 @@ table.
 | 0017 | [Popcorn: equipment-free mobility, timed](0017-popcorn-mobility.md) | Implemented 2026-11-16 | `5d1a7c3e8f02`, renamed to *movement break* in `c8e1f4a7b293` | The pool is seeded by `migrations/seed_movement_break_pool.py`, not the migration — run it on a fresh install (§2). **Partly superseded by 0018**: `movement_break_seconds` is now `movement_break_enabled` + time defaults, and the finished-run writer is the suggestion |
 | 0018 | [Configurable set tiles and the day player](0018-configurable-set-tiles-and-day-player.md) | Implemented 2026-11-19 | through `85ac045` | `workouts.time` is read-only legacy, dropping in a follow-up |
 | 0019 | [One upcoming queue](0019-one-upcoming-queue.md) | Implemented 2026-11-21 | `9c4e7b21f806` | Retires 0012 §2's `kind` split: mobility is a flag on the planned set, and `/mobility` merged into `/upcoming` |
+| 0020 | [Hand-built presets](0020-hand-built-presets.md) | Implemented 2026-11-22 | `ef7567caec16` | — |
 
 ## Where things stand
 

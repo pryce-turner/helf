@@ -48,6 +48,12 @@ import type {
     PresetContent,
 } from "../types/upcoming";
 import type { MobilityLastSession } from "../types/mobility";
+import type {
+    WorkoutPreset,
+    PresetItem,
+    PresetItemCreate,
+    PresetApplyResponse,
+} from "../types/preset";
 
 // Use relative URL - Vite proxy handles routing to backend in dev
 // In production, requests go to same origin
@@ -369,6 +375,37 @@ export const stacksApi = {
 };
 
 // System
+// Hand-built workouts (plan 0020) — not `upcomingApi.getPresets`, which lists
+// the Liftoscript program templates.
+export const presetsApi = {
+    getAll: () => api.get<WorkoutPreset[]>("/api/presets/"),
+
+    getById: (id: number) => api.get<WorkoutPreset>(`/api/presets/${id}`),
+
+    /** No name: the server picks "New preset", numbered if taken. */
+    create: (name?: string) =>
+        api.post<WorkoutPreset>("/api/presets/", name ? { name } : {}),
+
+    rename: (id: number, name: string) =>
+        api.put<WorkoutPreset>(`/api/presets/${id}`, { name }),
+
+    delete: (id: number) => api.delete(`/api/presets/${id}`),
+
+    addItem: (presetId: number, item: PresetItemCreate) =>
+        api.post<PresetItem>(`/api/presets/${presetId}/items`, item),
+
+    updateItem: (itemId: number, item: PresetItemCreate) =>
+        api.put<PresetItem>(`/api/presets/items/${itemId}`, item),
+
+    deleteItem: (itemId: number) => api.delete(`/api/presets/items/${itemId}`),
+
+    reorder: (presetId: number, itemIds: number[]) =>
+        api.patch(`/api/presets/${presetId}/reorder`, { item_ids: itemIds }),
+
+    apply: (presetId: number, date: string) =>
+        api.post<PresetApplyResponse>(`/api/presets/${presetId}/apply`, { date }),
+};
+
 export const systemApi = {
     health: (timeout?: number) =>
         api.get<{ status: string; version: string }>("/api/health", {

@@ -17,6 +17,7 @@ from app.api import (
     food,
     mobility,
     notes,
+    presets,
     progression,
     stacks,
     upcoming,
@@ -105,4 +106,5 @@ def client(db_engine):
     app.include_router(food.router, prefix="/api/food")
     app.include_router(notes.router, prefix="/api/notes")
     app.include_router(stacks.router, prefix="/api/stacks")
+    app.include_router(presets.router, prefix="/api/presets")
     return TestClient(app)

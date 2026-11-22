@@ -15,6 +15,7 @@ from app.api import (
     food,
     mobility,
     notes,
+    presets,
     progression,
     stacks,
     upcoming,
@@ -87,6 +88,7 @@ app.include_router(body_comp.router, prefix="/api/body-composition", tags=["body
 app.include_router(food.router, prefix="/api/food", tags=["food"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(stacks.router, prefix="/api/stacks", tags=["stacks"])
+app.include_router(presets.router, prefix="/api/presets", tags=["presets"])
 
 
 @app.get("/api/health")

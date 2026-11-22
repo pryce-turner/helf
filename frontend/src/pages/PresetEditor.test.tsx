@@ -122,10 +122,8 @@ it("adds a set to the preset, with no date", async () => {
     renderEditor();
 
     await userEvent.click(await screen.findByRole("button", { name: /^add$/i }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Category" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Legs" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Exercise" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Barbell Squat" }));
+    await userEvent.type(screen.getByRole("combobox", { name: "Search exercises" }), "squa");
+    await userEvent.click(await screen.findByRole("option", { name: /Barbell Squat/ }));
     await userEvent.click(screen.getByRole("button", { name: /add workout/i }));
 
     await waitFor(() => expect(presets.addItem).toHaveBeenCalledTimes(1));

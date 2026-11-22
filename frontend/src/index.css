@@ -2204,6 +2204,93 @@
         gap: var(--space-2);
     }
 
+    /* The add form's exercise search: type, and matches list live. */
+    .exercise-search {
+        position: relative;
+    }
+
+    .exercise-search__field {
+        position: relative;
+    }
+
+    .exercise-search__icon {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 16px;
+        color: var(--text-muted);
+        pointer-events: none;
+    }
+
+    .exercise-search__input {
+        padding-left: 40px;
+        padding-right: 40px;
+    }
+
+    .exercise-search__clear {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+        cursor: pointer;
+    }
+
+    .exercise-search__list {
+        list-style: none;
+        margin: var(--space-1) 0 0;
+        padding: var(--space-1);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        max-height: 320px;
+        overflow-y: auto;
+    }
+
+    .exercise-search__option {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-3);
+        min-height: 44px;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+    }
+
+    .exercise-search__option--active {
+        background: var(--bg-hover);
+    }
+
+    .exercise-search__name {
+        color: var(--text-primary);
+        font-size: 15px;
+        align-self: center;
+    }
+
+    .exercise-search__category {
+        flex: 0 0 auto;
+        color: var(--text-muted);
+        font-size: 13px;
+        align-self: center;
+    }
+
+    .exercise-search__empty {
+        padding: var(--space-3);
+        color: var(--text-muted);
+        font-size: 14px;
+    }
+
     /* A stopped set's two ways out, at the top of its edit form. */
     .ended-early {
         display: flex;

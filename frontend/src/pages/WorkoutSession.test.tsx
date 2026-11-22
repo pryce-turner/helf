@@ -421,10 +421,8 @@ it("applies the exercise's defaults when one is picked in the add form", async (
     renderDay();
 
     await userEvent.click(await screen.findByRole("button", { name: /add/i }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Category" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Legs" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Exercise" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Farmer Carry" }));
+    await userEvent.type(screen.getByRole("combobox", { name: "Search exercises" }), "carr");
+    await userEvent.click(await screen.findByRole("option", { name: /Farmer Carry/ }));
 
     // Enabled with a NULL default: the input appears and starts blank.
     expect(screen.getByLabelText("Weight")).toHaveValue(null);
@@ -448,10 +446,8 @@ it("sends the tile's timing when a suggested set is saved", async () => {
     renderDay();
 
     await userEvent.click(await screen.findByRole("button", { name: /add/i }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Category" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Legs" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Exercise" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Farmer Carry" }));
+    await userEvent.type(screen.getByRole("combobox", { name: "Search exercises" }), "carr");
+    await userEvent.click(await screen.findByRole("option", { name: /Farmer Carry/ }));
     await userEvent.click(screen.getByRole("button", { name: /add workout/i }));
 
     await waitFor(() =>
@@ -996,3 +992,32 @@ it("offers a way out of a permanently failed write", async () => {
         restore();
     }
 });
+
+it("finds a movement by typing, with its category, and fills its defaults", async () => {
+    vi.mocked(exercisesApi).getAll.mockResolvedValue({ data: [farmerCarry()] } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByRole("button", { name: /add/i }));
+    const search = screen.getByRole("combobox", { name: "Search exercises" });
+    await userEvent.type(search, "carr");
+
+    const option = await screen.findByRole("option", { name: /Farmer Carry/ });
+    expect(option).toHaveTextContent("Legs");
+    await userEvent.click(option);
+
+    expect(search).toHaveValue("Farmer Carry");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Work seconds")).toHaveValue(40);
+});
+
+it("says so when nothing matches, and offers no Add until a movement is chosen", async () => {
+    vi.mocked(exercisesApi).getAll.mockResolvedValue({ data: [farmerCarry()] } as never);
+    renderDay();
+
+    await userEvent.click(await screen.findByRole("button", { name: /add/i }));
+    await userEvent.type(screen.getByRole("combobox", { name: "Search exercises" }), "zzz");
+
+    expect(await screen.findByText('No exercise matches "zzz"')).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add workout/i })).toBeDisabled();
+});
+

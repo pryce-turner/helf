@@ -55,6 +55,7 @@ import {
 import Navigation from "@/components/Navigation";
 import RestDivider from "@/components/RestDivider";
 import WorkoutFields from "@/components/WorkoutFields";
+import ExerciseSearch from "@/components/ExerciseSearch";
 import WorkoutPlayerControls from "@/components/WorkoutPlayerControls";
 import { useWorkoutPlayer } from "@/hooks/useWorkoutPlayer";
 import {
@@ -67,13 +68,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import {
   useCountFull,
@@ -89,7 +83,7 @@ import {
   type TileSource,
 } from "@/hooks/useTileSource";
 import type { Workout } from "@/types/workout";
-import { useCategories, useExercises, useMovementBreakPool, useRecentExercises } from "@/hooks/useExercises";
+import { useExercises, useMovementBreakPool, useRecentExercises } from "@/hooks/useExercises";
 import { useProgression } from "@/hooks/useProgression";
 import { useSuggestMovementBreak } from "@/hooks/useMobility";
 import type { WorkoutCreate } from "@/types/workout";
@@ -862,7 +856,6 @@ export const DayEditor = ({
 
   const workouts = source.tiles;
   const isLoading = source.isLoading;
-  const { data: categories } = useCategories();
   const { data: exercises } = useExercises();
   const { data: recentExercises } = useRecentExercises(8);
   const { data: movementBreakPool } = useMovementBreakPool();
@@ -887,7 +880,6 @@ export const DayEditor = ({
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedExercise, setSelectedExercise] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [showAddRecent, setShowAddRecent] = useState(false);
@@ -907,11 +899,6 @@ export const DayEditor = ({
     time: null,
     comment: null,
   });
-
-  const handleCategoryChange = (category: string) => {
-    setSelectedCategory(category);
-    setFormData({ ...formData, category });
-  };
 
   const handleExerciseChange = (exercise: string) => {
     const exerciseData = exercises?.find((e) => e.name === exercise);
@@ -943,7 +930,6 @@ export const DayEditor = ({
       rest_seconds: null,
       rest_after_seconds: null,
     });
-    setSelectedCategory("");
     setSelectedExercise("");
     setEditingId(null);
     setShowForm(false);
@@ -1170,8 +1156,6 @@ export const DayEditor = ({
     false,
   );
 
-  const categoryExercises =
-    exercises?.filter((e) => e.category === selectedCategory) || [];
 
   return (
     <TileSourceContext.Provider value={source}>
@@ -1490,7 +1474,6 @@ export const DayEditor = ({
                             key={ex.doc_id}
                             type="button"
                             onClick={() => {
-                              setSelectedCategory(ex.category);
                               setSelectedExercise(ex.name);
                               setFormData({
                                 ...formData,
@@ -1532,61 +1515,24 @@ export const DayEditor = ({
                     gap: "var(--space-6)",
                   }}
                 >
-                  <div
-                    className="grid grid-cols-1 md:grid-cols-2"
-                    style={{ gap: "var(--space-6)" }}
-                  >
-                    <div className="form-field">
-                      <Label htmlFor="category" className="form-label">
-                        <Hash style={{ width: "16px", height: "16px" }} />
-                        Category
-                      </Label>
-                      <Select
-                        value={selectedCategory}
-                        onValueChange={handleCategoryChange}
-                      >
-                        <SelectTrigger aria-label="Category">
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories?.map((cat) => (
-                            <SelectItem key={cat.doc_id} value={cat.name}>
-                              {cat.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="form-field">
-                      <Label htmlFor="exercise" className="form-label">
-                        <Dumbbell style={{ width: "16px", height: "16px" }} />
-                        Exercise
-                      </Label>
-                      <Select
-                        key={selectedCategory}
-                        value={
-                          categoryExercises.some(
-                            (e) => e.name === selectedExercise,
-                          )
-                            ? selectedExercise
-                            : undefined
-                        }
-                        onValueChange={handleExerciseChange}
-                        disabled={!selectedCategory}
-                      >
-                        <SelectTrigger aria-label="Exercise">
-                          <SelectValue placeholder="Select exercise" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categoryExercises.map((ex) => (
-                            <SelectItem key={ex.doc_id} value={ex.name}>
-                              {ex.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* One search across every movement, results live with
+                      their category — not a category dropdown and then an
+                      exercise dropdown inside it. */}
+                  <div className="form-field">
+                    <Label htmlFor="exercise-search" className="form-label">
+                      <Dumbbell style={{ width: "16px", height: "16px" }} />
+                      Exercise
+                    </Label>
+                    <ExerciseSearch
+                      id="exercise-search"
+                      exercises={exercises ?? []}
+                      value={selectedExercise}
+                      onSelect={(exercise) => handleExerciseChange(exercise.name)}
+                      onClear={() => {
+                        setSelectedExercise("");
+                        setFormData({ ...formData, exercise: "", category: "" });
+                      }}
+                    />
                   </div>
 
                   {/* The exercise's configuration decides which of these

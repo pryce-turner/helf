@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2, Activity, Coffee, Timer } from 'lucide-react';
+import { Calendar as CalendarIcon, Trash2, ArrowRight, Dumbbell, Check, X, Weight, Hash, MessageSquare, Edit3, Loader2, Activity } from 'lucide-react';
 import Navigation from '@/components/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
@@ -19,8 +18,7 @@ import {
   usePreset,
   useLiftoscriptGenerate,
 } from '@/hooks/useUpcoming';
-import { useLastMobilitySession, useSuggestMovementBreak } from '@/hooks/useMobility';
-import { useMovementBreakPool } from '@/hooks/useExercises';
+import { useLastMobilitySession } from '@/hooks/useMobility';
 import type { UpcomingSession, UpcomingWorkout } from '@/types/upcoming';
 import type { MobilityLastSession } from '@/types/mobility';
 
@@ -188,75 +186,6 @@ const LastSessionCard = ({ session }: { session: MobilityLastSession }) => {
             next one gets written from.
           </p>
         )}
-      </CardContent>
-    </Card>
-  );
-};
-
-/**
- * Movement break: one equipment-free movement, timed, for between tasks.
- *
- * The shuffle inserts a *suggested* tile on today — an ordinary planned tile
- * holding the movement's defaults (plan 0018) — and hands over to the day
- * view, where it is edited or played like anything else. It is not a finished
- * run: nothing is logged until it is played.
- *
- * The pool size is on the card because an empty pool makes the button a dead
- * end, and the Exercises page is where it gets filled.
- */
-const MovementBreakCard = () => {
-  const navigate = useNavigate();
-  const { data: pool } = useMovementBreakPool();
-  const suggest = useSuggestMovementBreak();
-  const count = pool?.length ?? 0;
-
-  const handleShuffle = async () => {
-    // Local time, never `toISOString()` — the day an entry lands on is the
-    // string prefix of its timestamp (the food log's timezone bug).
-    const today = format(new Date(), 'yyyy-MM-dd');
-    await suggest.mutateAsync(today);
-    navigate(`/day/${today}`);
-  };
-
-  return (
-    <Card className="animate-in" style={{ marginBottom: 'var(--space-6)' }}>
-      <CardContent
-        className="flex items-center justify-between flex-wrap"
-        style={{ gap: 'var(--space-4)' }}
-      >
-        <div style={{ minWidth: 0, flex: '1 1 240px' }}>
-          <div className="flex items-center" style={{ gap: 'var(--space-2)' }}>
-            <Coffee
-              style={{
-                width: '16px',
-                height: '16px',
-                color: 'var(--warning)',
-              }}
-            />
-            <h2 className="font-display text-lg tracking-tight">Movement break</h2>
-          </div>
-          <p
-            style={{
-              fontSize: '13px',
-              color: 'var(--text-muted)',
-              marginTop: 'var(--space-1)',
-              lineHeight: 1.5,
-            }}
-          >
-            {count === 0
-              ? 'No movements in the pool yet. Add one from the Exercises page.'
-              : `One of ${count} movements, suggested onto today. Played from the day view.`}
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          onClick={handleShuffle}
-          disabled={count === 0 || suggest.isPending}
-          style={{ flexShrink: 0 }}
-        >
-          <Timer style={{ width: '16px', height: '16px' }} />
-          Shuffle
-        </Button>
       </CardContent>
     </Card>
   );
@@ -817,8 +746,6 @@ const Upcoming = () => {
               </Card>
             </div>
           )}
-
-          <MovementBreakCard />
 
           {isLoading ? (
             <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>

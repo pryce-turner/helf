@@ -9,10 +9,9 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { format } from "date-fns";
 import { renderPage } from "@/test/renderPage";
 import Upcoming from "./Upcoming";
-import { exercisesApi, mobilityApi, upcomingApi } from "@/lib/api";
+import { mobilityApi, upcomingApi } from "@/lib/api";
 
 vi.mock("@/lib/api", async (importOriginal) => {
     const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -29,17 +28,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
         },
         mobilityApi: {
             getLastSession: vi.fn(),
-            suggestMovementBreak: vi.fn(),
         },
-        // The page's movement break card reads the pool. Left unmocked it would
-        // attempt a real request from the test and fail it silently.
-        exercisesApi: { ...actual.exercisesApi, getMovementBreaks: vi.fn() },
     };
 });
 
 const upcoming = vi.mocked(upcomingApi);
 const mobility = vi.mocked(mobilityApi);
-const pool = vi.mocked(exercisesApi.getMovementBreaks);
 
 const row = (
     exercise: string,
@@ -104,24 +98,8 @@ const LAST_SESSION = {
     ],
 };
 
-const POOL = [
-    {
-        doc_id: 1,
-        name: "Deep Squat Hold",
-        category: "Legs",
-        form: "Sink and stay.",
-        application: null,
-        rating: null,
-        default_work_seconds: 40,
-        last_used: null,
-        use_count: 0,
-        created_at: "2026-11-12",
-    },
-];
-
 beforeEach(() => {
     vi.clearAllMocks();
-    pool.mockResolvedValue({ data: [] } as never);
     mobility.getLastSession.mockResolvedValue({ data: null } as never);
     upcoming.getPresets.mockResolvedValue({ data: [] } as never);
     upcoming.getPreset.mockResolvedValue({ data: null } as never);
@@ -229,61 +207,6 @@ it("shows the last session beside the empty state when the queue is empty", asyn
     expect(await screen.findByText("No upcoming workouts")).toBeInTheDocument();
     expect(screen.getByText(/ask the agent to write a mobility session/)).toBeInTheDocument();
     expect(screen.getByText("Last mobility session")).toBeInTheDocument();
-});
-
-it("suggests a movement break onto today and goes to the day", async () => {
-    pool.mockResolvedValue({ data: POOL } as never);
-    upcoming.getAll.mockResolvedValue({ data: [] } as never);
-    mobility.suggestMovementBreak.mockResolvedValue({
-        data: {
-            doc_id: 7,
-            date: format(new Date(), "yyyy-MM-dd"),
-            exercise: "Deep Squat Hold",
-        },
-    } as never);
-    renderPage(<Upcoming />);
-
-    await userEvent.click(await screen.findByRole("button", { name: /Shuffle/ }));
-
-    // The suggestion lands on today and the page hands over to it.
-    await waitFor(() =>
-        expect(mobility.suggestMovementBreak).toHaveBeenCalledWith(
-            format(new Date(), "yyyy-MM-dd"),
-        ),
-    );
-    await waitFor(() =>
-        expect(screen.queryByText("UPCOMING WORKOUTS")).not.toBeInTheDocument(),
-    );
-});
-
-it("cannot suggest twice from a double tap", async () => {
-    pool.mockResolvedValue({ data: POOL } as never);
-    upcoming.getAll.mockResolvedValue({ data: [] } as never);
-    // A suggestion that has not answered yet: the button must go dead, or a
-    // second tap inserts a second tile.
-    let settle!: (value: unknown) => void;
-    mobility.suggestMovementBreak.mockReturnValue(
-        new Promise((resolve) => {
-            settle = resolve;
-        }) as never,
-    );
-    renderPage(<Upcoming />);
-
-    const button = await screen.findByRole("button", { name: /Shuffle/ });
-    await userEvent.click(button);
-    expect(button).toBeDisabled();
-
-    settle({ data: { doc_id: 7, exercise: "Deep Squat Hold" } });
-});
-
-it("says where to fill the pool rather than offering an empty shuffle", async () => {
-    upcoming.getAll.mockResolvedValue({ data: [] } as never);
-    renderPage(<Upcoming />);
-
-    expect(
-        await screen.findByText(/No movements in the pool yet/),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Shuffle/ })).toBeDisabled();
 });
 
 it("warns before generating, naming the agent-written sessions it wipes", async () => {

@@ -722,7 +722,8 @@ work is a field on the set, written through the normal workout routes
 | `/body-composition` | BodyComposition | Trends, stats, DEXA import — the Body nav item |
 | `/food` | Food | Daily log, intake against `kcal_target` — tab 2 of the Nutrition section |
 | `/supplements` | Supplements | Preset groups logged in one tap, plus every dose logged — tab 1 of the Nutrition section (the default) |
-| `/upcoming` | Upcoming | The one queue: generated program sessions and the agent's labelled mobility sessions in one list, Liftoscript editor, movement break, last mobility session (plan 0019) |
+| `/upcoming` | Upcoming | The one queue: generated program sessions and the agent's labelled mobility sessions in one list, Liftoscript editor, last mobility session (plan 0019) — tab 1 of the Workouts section |
+| `/presets` | Presets | Hand-built presets — tab 2 of the Workouts section |
 | `/mobility` | — | Redirects to `/upcoming`; the separate page is retired (plan 0019) |
 | `/exercises` | Exercises | Browse/manage exercise catalog by category — tab 1 of the Exercises section |
 
@@ -844,10 +845,10 @@ so read them as one field.
   `v_daily_summary`, not the use count. The old writer created one completed
   row per interval; those rows remain as historical sets and cannot be
   faithfully regrouped (they lack rest and round structure — plan 0018 §2).
-- Entered from the **Movement break card on `/upcoming`** (suggests onto today
-  and navigates to the day) or the **Movement break button on the day view**
-  (suggests onto the displayed date). Both disable while the write is in
-  flight — a double tap must not insert two tiles.
+- Entered from the **Movement break button on the day view** (suggests onto
+  the displayed date). It disables while the write is in flight — a double
+  tap must not insert two tiles. (`/upcoming` had a card for it too; it was
+  removed as redundant with the day view.)
 - The movements themselves are seeded by
   `backend/migrations/seed_movement_break_pool.py`, **run by hand, not by the
   migration** — the migration carries only the columns, the CHECKs and the

@@ -48,12 +48,13 @@ table.
 | 0021 | [Liftoscript timing and distance](0021-liftoscript-timing-and-distance.md) | Implemented 2026-11-22 | `842c1976c18a` | The agent's mobility write tool still writes no timing; RPE still has no column |
 | 0022 | [The library: blocks and programs](0022-library-blocks-and-programs.md) | Implemented 2026-11-22 | `47920bce115b` | Built-in blocks are applied by duplicating; renaming a block does not rewrite programs that include it |
 | 0023 | [The UNA Watch, polled over Bluetooth](0023-una-watch-over-bluetooth.md) | **In progress** | no migration | First real sync from Android 2026-11-23 (§9): daily health verified end to end. Still to see: silent reconnect across hours of polling, and the first workout `.fit`. Promotion into `metric` is undecided (§7) |
+| 0024 | [Sleep from the watch](0024-sleep-from-the-watch.md) | **In progress** | no migration | Watch app (`watch/sleep-log/`) written and host-tested, decoder landed; not yet built or run on the watch (§7). Features, model and metrics are §6 steps 3–6; metrics need a migration, asked for first |
 
 ## Where things stand
 
 Every plan is landed except 0004, which is deferred on purpose; 0015, which
-works on real hardware but has one open question in §10; and 0023, which has
-not yet run against the real watch. Two things are built, tested, and deliberately
+works on real hardware but has one open question in §10; 0023, still being proven
+over hours of polling; and 0024, whose watch app has not yet run. Two things are built, tested, and deliberately
 **not switched on**: the general-purpose agent write tools
 (`QS_MCP_MODE=read-write`) and a notes UI. Both are decisions, not
 omissions — 0006 §8 and 0005 §7. Mobility's write tool is the one exception and

@@ -28,7 +28,10 @@ function seededWatch(): FakeWatch {
         .addText("/Apps/Running/Activity/.recording", "Activity/202611/activity_2.fit\n123\n")
         .addText("/Apps/Running/Settings/x.json", "{}")
         .add("/Apps/Alarm", { dir: true })
-        .addText("/Workouts/Schedule/2026-11-25.fit", "plan");
+        .addText("/Workouts/Schedule/2026-11-25.fit", "plan")
+        .add("/Apps/SleepLog/Sleep/20261123/231500.bin", { data: new Uint8Array([0x55, 0x53, 0x4c, 0x31]) })
+        .add("/Apps/SleepLog/Sleep/20261123/232500-1.bin", { data: new Uint8Array([1]) })
+        .add("/Apps/SleepLog/Sleep/20261123/233500.part", { data: new Uint8Array([2]) });
 }
 
 class MemoryApi implements WatchApi {
@@ -65,6 +68,8 @@ describe("discover", () => {
         expect(paths).toEqual([
             "/Apps/Running/Activity/202611/activity_1.fit",
             "/Apps/Running/Activity/summary.json",
+            "/Apps/SleepLog/Sleep/20261123/231500.bin",
+            "/Apps/SleepLog/Sleep/20261123/232500-1.bin",
             "/DailyHealth/200005/dh_20000501.json",
             "/DailyHealth/202611/dh_20261120.json",
             "/DailyHealth/202611/dh_20261121.json",
@@ -77,12 +82,12 @@ describe("syncOnce", () => {
         const w = seededWatch();
         const api = new MemoryApi();
         const first = await syncOnce(new FtsClient(w.transport()), api);
-        expect(first.fetched).toHaveLength(5);
+        expect(first.fetched).toHaveLength(7);
         expect(first.skipped).toEqual([]);
 
         const second = await syncOnce(new FtsClient(w.transport()), api);
         expect(second.fetched).toEqual([]);
-        expect(second.unchanged).toBe(5);
+        expect(second.unchanged).toBe(7);
     });
 
     it("fetches a file again when the watch rewrites it", async () => {

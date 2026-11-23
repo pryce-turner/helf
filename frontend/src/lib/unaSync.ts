@@ -49,6 +49,9 @@ export const MIN_FTS_VERSION = 5;
 
 const MONTH_DIR = /^\d{6}$/;
 const DAILY_FILE = /^dh_\d{8}\.json$/;
+const DAY_DIR = /^\d{8}$/;
+/** SleepLog chunks (plan 0024): only `.bin`, which the app renames to once complete. */
+const SLEEP_CHUNK = /^\d{6}(-\d+)?\.bin$/;
 
 /**
  * Directories under `/Workouts` that are inputs *to* the watch — planned
@@ -127,12 +130,33 @@ async function recordingPath(
     }
 }
 
-/** Workouts: `/Apps/<App>/Activity/` — `summary.json` and `YYYYMM/*.fit`. */
+/**
+ * SleepLog chunks: `/Apps/<App>/Sleep/YYYYMMDD/HHMMSS.bin` (plan 0024).
+ *
+ * Looked for under every app rather than one name, because the folder the
+ * watch gives an app is its own business. `.part` files are the chunk being
+ * written and are never fetched; a `.bin` is complete and never changes.
+ */
+async function discoverSleep(client: FtsClient, appDir: string): Promise<WatchFile[]> {
+    const files: WatchFile[] = [];
+    const sleepDir = `${appDir}/Sleep`;
+    for (const day of await listOrEmpty(client, sleepDir)) {
+        if (!day.isDir || !DAY_DIR.test(day.name)) continue;
+        const dir = `${sleepDir}/${day.name}`;
+        for (const f of await listOrEmpty(client, dir)) {
+            if (!f.isDir && SLEEP_CHUNK.test(f.name)) files.push(asFile(dir, f));
+        }
+    }
+    return files;
+}
+
+/** Per app: workouts under `Activity/`, and SleepLog chunks under `Sleep/`. */
 async function discoverActivities(client: FtsClient): Promise<WatchFile[]> {
     const files: WatchFile[] = [];
     for (const app of await listOrEmpty(client, "/Apps")) {
         if (!app.isDir) continue;
         const appDir = `/Apps/${app.name}`;
+        files.push(...(await discoverSleep(client, appDir)));
         const activityDir = `${appDir}/Activity`;
         const activity = await listOrEmpty(client, activityDir);
         if (!activity.length) continue;

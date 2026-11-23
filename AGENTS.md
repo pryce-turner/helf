@@ -180,6 +180,11 @@ helf/
 │   │                         #   `scripts/backup-db.sh`, never `cp`
 │   └── *.bak                 # Every backup ever taken. Never pruned — the
 │                             #   whole history is ~3MB apiece and kept
+├── watch/
+│   └── sleep-log/            # UNA Watch app (C++, UNA SDK) that records sleep
+│                             #   data for Helf to fetch — plan 0024. Built with
+│                             #   the SDK toolchain, not by this repo's tooling;
+│                             #   host tests: make -C watch/sleep-log/Tests
 ├── scripts/
 │   ├── backup-db.sh          # The only correct way to copy a live WAL database
 │   └── pre-migration-backup.sh   # PreToolUse hook: backs up before alembic

@@ -226,6 +226,12 @@ export default function Watch() {
                                     </span>
                                 </div>
 
+                                <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
+                                    First sync on a new phone: the watch shows a six-digit code. Type it into
+                                    Android&apos;s pairing prompt (check the notification shade). The watch
+                                    cannot take input.
+                                </p>
+
                                 {!canReconnectSilently() && (
                                     <p style={{ fontSize: 12, color: "var(--warning)", marginBottom: "var(--space-3)" }}>
                                         No getDevices() here, so every poll would need a tap. Enable

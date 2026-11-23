@@ -27,6 +27,35 @@ const BATTERY_SERVICE = 0x180f;
 const DEVICE_INFO_SERVICE = 0x180a;
 /** An awake, in-range watch connects in well under this. */
 const CONNECT_TIMEOUT_MS = 10_000;
+/**
+ * How long the first protected read keeps retrying while a bond is made.
+ *
+ * The watch is DISPLAY_ONLY with MITM required (`PeripheralBlueNRG.cpp`), so
+ * the first encrypted read makes it show a six-digit passkey that has to be
+ * typed into Android's pairing prompt. That takes a human tens of seconds,
+ * and the read can fail while it happens. Disconnecting on that failure is
+ * what aborted the first real pairing and left the watch stuck on its code
+ * screen, so the link is held and the read retried until the bond lands.
+ */
+const BOND_WAIT_MS = 90_000;
+const BOND_RETRY_MS = 2_000;
+
+async function readVersionAwaitingBond(
+    chr: BluetoothRemoteGATTCharacteristic,
+    gatt: BluetoothRemoteGATTServer,
+): Promise<number> {
+    const deadline = Date.now() + BOND_WAIT_MS;
+    for (;;) {
+        try {
+            return (await chr.readValue()).getUint32(0, true);
+        } catch (cause) {
+            // A dropped link means the pairing ended (refused, wrong code,
+            // timed out); retrying a dead link only hides that.
+            if (!gatt.connected || Date.now() >= deadline) throw cause;
+            await new Promise((r) => setTimeout(r, BOND_RETRY_MS));
+        }
+    }
+}
 
 export function isSupported(): boolean {
     return typeof navigator !== "undefined" && "bluetooth" in navigator;
@@ -113,7 +142,10 @@ export async function connectWatch(device?: BluetoothDevice | null): Promise<Wat
     try {
         const service = await server.getPrimaryService(FTS_SERVICE);
         // The first protected read is what triggers Android's bonding dialog.
-        const version = (await (await service.getCharacteristic(FTS_VERSION_CHAR)).readValue()).getUint32(0, true);
+        const version = await readVersionAwaitingBond(
+            await service.getCharacteristic(FTS_VERSION_CHAR),
+            server,
+        );
         const raw = await service.getCharacteristic(FTS_RAW_CHAR);
 
         const transport: FtsTransport = {
@@ -155,7 +187,7 @@ export async function connectWatch(device?: BluetoothDevice | null): Promise<Wat
             // Already gone.
         }
         throw new Error(
-            "Connected, but the File Transfer Service refused. If Android did not offer to pair, remove the watch from Bluetooth settings, put it in pairing mode (Settings → Phone → Pair) and pair again.",
+            "Connected, but the File Transfer Service refused: the phone and watch are not bonded. Bond in Android first: put the watch in pairing mode (Settings → Phone → Pair), then Android Settings → Connected devices → Pair new device → UNA Watch, and type the six-digit code the watch shows.",
             { cause },
         );
     }

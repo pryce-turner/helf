@@ -1,6 +1,6 @@
 # 0023 — The UNA Watch, polled over Bluetooth
 
-**Status**: In progress — client, poll loop and file mirror built and tested against a simulated watch; nothing has run against the real watch from Android yet
+**Status**: In progress — first real sync from Android on 2026-11-23; polling over time and workouts not yet seen
 
 The UNA Watch (open STM32 watch, upstream `github.com/UNAWatch`) records daily
 health and workouts to its own storage. This plan reads those files from an
@@ -169,3 +169,26 @@ whose encoder can only produce `0x10` and `0x14`, guarded like `fts.ts`.
 
 If step 5 fails, Web Bluetooth cannot poll this watch and §4's Capacitor
 fallback is the next plan.
+
+## 9. First real sync, 2026-11-23
+
+From the Android phone, after bonding in Android settings (§8 was wrong to
+expect Chrome to drive the bond — see below):
+
+- **Two files, both verified** (watch DIGEST = phone CRC = server CRC):
+  `/DailyHealth/202611/dh_20261121.json` (3342 bytes: 2096 steps, 13/18
+  floors, 5 active min, RHR 54, AHR 77, 259 of 1440 minutes with HR, 46-127
+  bpm) and `/DailyHealth/200005/dh_20000522.json` (all zeros — a day from
+  before the clock was set).
+- **mtime is microseconds on the real watch too**: `1795363200000000` reads
+  as 2026-11-22 16:00 UTC only at 1e6 per second. §3 holds.
+- **No workouts yet.** None recorded; where the first `.fit` lands is still
+  open (§2).
+- **Pairing is passkey entry.** The watch is DISPLAY_ONLY with MITM and
+  Secure Connections mandatory (`PeripheralBlueNRG.cpp`): it shows a random
+  six-digit code, typed into the phone. The first attempt failed because
+  `connectWatch` disconnected on the first failed protected read, aborting the
+  bond and leaving the watch on its code screen (fixed in `eed9a0c`: the read
+  retries for 90s while the link is up). Bonding from Android's own Bluetooth
+  settings first, then pairing in Helf, worked and is the recommended path.
+

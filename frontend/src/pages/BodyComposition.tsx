@@ -3,6 +3,7 @@ import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import type { LucideIcon } from "lucide-react";
 import { Bluetooth, Weight, TrendingDown, TrendingUp } from "lucide-react";
 import Navigation from "@/components/Navigation";
+import BodySectionTabs from "@/components/BodySectionTabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Select,
@@ -1053,6 +1054,8 @@ const BodyComposition = () => {
                         <h1 className="page__title">Body composition</h1>
                         <p className="page__subtitle">Track your weight, body fat, and muscle mass over time</p>
                     </div>
+
+                    <BodySectionTabs />
 
                     {statsLoading ? (
                         <div className="text-center" style={{ padding: 'var(--space-16) 0' }}>

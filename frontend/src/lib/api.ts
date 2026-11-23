@@ -21,6 +21,7 @@ import type {
     ScaleSyncResult,
 } from "../types/bodyComposition";
 import type { ScaleReading } from "./bcs";
+import type { ManifestEntry, WatchApi, WatchFile } from "./unaSync";
 import type {
     Food,
     FoodCreate,
@@ -445,6 +446,31 @@ export const programsApi = {
     update: (id: number, changes: { name?: string; script?: string; builder?: BuilderModel | null }) =>
         api.put<Program>(`/api/programs/${id}`, changes),
     delete: (id: number) => api.delete(`/api/programs/${id}`),
+};
+
+/**
+ * The UNA Watch file mirror (plan 0023). Shaped as `unaSync`'s `WatchApi` so
+ * the poll loop takes it directly.
+ */
+export const watchApi: WatchApi = {
+    manifest: () =>
+        api
+            .get<{ files: (ManifestEntry & { received_at: string })[] }>("/api/watch/files")
+            .then((r) => r.data.files),
+
+    /** Raw bytes in the body; size, mtime and CRC in headers, re-checked server-side. */
+    upload: (file: WatchFile, bytes: Uint8Array, crc: number) =>
+        api
+            .put<{ path: string; status: string; stored_as: string }>("/api/watch/files", bytes, {
+                params: { path: file.path },
+                headers: {
+                    "Content-Type": "application/octet-stream",
+                    "X-Watch-Size": String(file.size),
+                    "X-Watch-Mtime": file.mtime,
+                    "X-Watch-Crc32": crc.toString(16).padStart(8, "0"),
+                },
+            })
+            .then((r) => r.data),
 };
 
 export const systemApi = {

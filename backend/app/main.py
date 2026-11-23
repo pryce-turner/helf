@@ -21,6 +21,7 @@ from app.api import (
     progression,
     stacks,
     upcoming,
+    watch,
     workouts,
 )
 from app.config import settings
@@ -93,6 +94,7 @@ app.include_router(stacks.router, prefix="/api/stacks", tags=["stacks"])
 app.include_router(presets.router, prefix="/api/presets", tags=["presets"])
 app.include_router(programs.router, prefix="/api/programs", tags=["programs"])
 app.include_router(library.router, prefix="/api/library", tags=["library"])
+app.include_router(watch.router, prefix="/api/watch", tags=["watch"])
 
 
 @app.get("/api/health")

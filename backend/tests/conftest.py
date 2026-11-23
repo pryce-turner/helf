@@ -23,6 +23,7 @@ from app.api import (
     progression,
     stacks,
     upcoming,
+    watch,
     workouts,
 )
 from app.database import apply_sqlite_pragmas
@@ -111,4 +112,5 @@ def client(db_engine):
     app.include_router(presets.router, prefix="/api/presets")
     app.include_router(programs.router, prefix="/api/programs")
     app.include_router(library.router, prefix="/api/library")
+    app.include_router(watch.router, prefix="/api/watch")
     return TestClient(app)

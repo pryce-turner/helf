@@ -762,6 +762,19 @@ work is a field on the set, written through the normal workout routes
 (`PUT /api/workouts/{id}` with `is_mobility`). A day carrying any flagged set
 *is* a mobility day — there is nothing separate to assert (plan 0013).
 
+### Watch (`/api/watch`)
+
+A verified mirror of files read off the UNA Watch over Bluetooth — plan 0023.
+No database rows; files land in `data/una/`.
+
+- `GET /files` — the manifest: every watch path held, with size, raw mtime
+  (a decimal string, compared verbatim) and CRC-32. The phone diffs its
+  LISTDIR against this, so it keeps no state of its own.
+- `PUT /files?path=/abs/watch/path` — raw bytes, with `X-Watch-Size`,
+  `X-Watch-Mtime` and `X-Watch-Crc32` (8 hex digits). Refused with 422 if
+  the bytes do not match. Returns `stored`, `touched` (same bytes, new mtime)
+  or `unchanged`. Changed content is kept beside the original, never over it.
+
 ### Notes (`/api/notes`)
 - `GET /?kind=&start=&end=` - Notes, most recent first
 - `GET /kinds` - Counts and date spans per kind, across notes and documents

@@ -14,6 +14,7 @@ import PresetEditor from "./pages/PresetEditor";
 import Exercises from "./pages/Exercises";
 import Food from "./pages/Food";
 import Supplements from "./pages/Supplements";
+import Watch from "./pages/Watch";
 import { InstallPrompt } from "./components/PWA/InstallPrompt";
 import { usePWA } from "./hooks/usePWA";
 import { WifiOff } from "lucide-react";
@@ -74,6 +75,7 @@ function App() {
                             path="/body-composition"
                             element={<BodyComposition />}
                         />
+                        <Route path="/watch" element={<Watch />} />
                         <Route path="/food" element={<Food />} />
                         <Route path="/supplements" element={<Supplements />} />
                         <Route path="/upcoming" element={<Upcoming />} />

@@ -49,6 +49,7 @@ table.
 | 0022 | [The library: blocks and programs](0022-library-blocks-and-programs.md) | Implemented 2026-11-22 | `47920bce115b` | Built-in blocks are applied by duplicating; renaming a block does not rewrite programs that include it |
 | 0023 | [The UNA Watch, polled over Bluetooth](0023-una-watch-over-bluetooth.md) | **In progress** | no migration | First real sync from Android 2026-11-23 (§9): daily health verified end to end. Still to see: silent reconnect across hours of polling, and the first workout `.fit`. Promotion into `metric` is undecided (§7) |
 | 0024 | [Sleep from the watch](0024-sleep-from-the-watch.md) | **In progress** | no migration | Watch app (`watch/sleep-log/`) written and host-tested, decoder landed; not yet built or run on the watch (§7). Features, model and metrics are §6 steps 3–6; metrics need a migration, asked for first |
+| 0025 | [Helf as a Capacitor app](0025-capacitor-app.md) | Proposed | — | One app for Android and iOS, so the watch syncs in the background. §3 has four decisions for the user; phase 1 needs no native toolchain |
 
 ## Where things stand
 

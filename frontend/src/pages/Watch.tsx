@@ -6,20 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { watchApi } from "@/lib/api";
 import { type PollOutcome, pollLoop, pollOnce } from "@/lib/unaSync";
-import {
-    canReconnectSilently,
-    connectWatch,
-    isSupported,
-    pairWatch,
-    rememberedWatch,
-} from "@/lib/unaWatch";
+import { getWatchConnector, isSyncEnabled, setSyncEnabled } from "@/lib/watchConnector";
 
 /**
- * Polling the UNA Watch from an always-on phone (plan 0023).
+ * Polling the UNA Watch from an always-on phone (plans 0023, 0025).
  *
- * Runs only while this page is open and in front: Web Bluetooth has no
- * background mode. While polling it holds a screen wake lock so Android does
- * not throttle the page; the phone is expected to sit on a charger.
+ * In a browser this runs only while the page is open and in front (Web
+ * Bluetooth has no background mode), holding a screen wake lock. Inside the
+ * Capacitor app the same loop runs through the native plugin, and starts by
+ * itself when this device has sync switched on.
  */
 
 const INTERVALS = [5, 15, 30, 60];
@@ -65,8 +60,11 @@ const COLORS: Record<PollOutcome["kind"], string> = {
 type WakeLockSentinelLike = { release(): Promise<void> };
 
 export default function Watch() {
-    const supported = isSupported();
-    const [device, setDevice] = useState<BluetoothDevice | null>(null);
+    const connector = getWatchConnector();
+    const native = connector.kind === "native";
+    const supported = connector.isSupported();
+    const [device, setDevice] = useState<{ name: string } | null>(null);
+    const [syncOn, setSyncOn] = useState(isSyncEnabled);
     const [intervalMin, setIntervalMin] = useState(loadInterval);
     const [polling, setPolling] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -88,9 +86,9 @@ export default function Watch() {
 
     useEffect(() => {
         if (!supported) return;
-        rememberedWatch().then((d) => d && setDevice(d));
+        connector.remembered().then((d) => d && setDevice(d));
         refreshHeld();
-    }, [supported, refreshHeld]);
+    }, [supported, connector, refreshHeld]);
 
     const onOutcome = useCallback(
         (o: PollOutcome) => {
@@ -105,17 +103,19 @@ export default function Watch() {
 
     const deps = useCallback(
         () => ({
-            connect: () => connectWatch(device),
+            connect: () => connector.connect(),
             api: watchApi,
             log: (m: string) => append(m),
         }),
-        [device, append],
+        [connector, append],
     );
 
     // Keep the screen on while polling, and take the lock back when the page
     // returns to the front: Android drops it whenever the page is hidden.
     useEffect(() => {
-        if (!polling) return;
+        // The native app keeps running with the screen off; only a browser
+        // tab needs the screen held on.
+        if (!polling || native) return;
         const acquire = async () => {
             try {
                 const wl = (navigator as Navigator & {
@@ -136,14 +136,14 @@ export default function Watch() {
             void wakeLock.current?.release().catch(() => {});
             wakeLock.current = null;
         };
-    }, [polling, append]);
+    }, [polling, native, append]);
 
     useEffect(() => () => abort.current?.abort(), []);
 
     const pair = async () => {
         // First thing in the tap: the chooser needs transient activation.
         try {
-            const d = await pairWatch();
+            const d = await connector.pair();
             setDevice(d);
             append(`Paired with ${d.name ?? "the watch"}.`, "var(--success)");
         } catch (e) {
@@ -160,7 +160,7 @@ export default function Watch() {
         }
     };
 
-    const start = () => {
+    const start = useCallback(() => {
         const controller = new AbortController();
         abort.current = controller;
         setPolling(true);
@@ -175,6 +175,22 @@ export default function Watch() {
             },
             { intervalMs: intervalMin * 60_000, signal: controller.signal },
         ).finally(() => setPolling(false));
+    }, [deps, onOutcome, intervalMin, append]);
+
+    // Native and switched on: poll from launch, no tap needed. (Background
+    // keep-alive is plan 0025 phase 3.)
+    const autoStarted = useRef(false);
+    useEffect(() => {
+        if (native && syncOn && device && !autoStarted.current) {
+            autoStarted.current = true;
+            start();
+        }
+    }, [native, syncOn, device, start]);
+
+    const toggleSync = (on: boolean) => {
+        setSyncEnabled(on);
+        setSyncOn(on);
+        if (!on) stop();
     };
 
     const stop = () => {
@@ -232,7 +248,22 @@ export default function Watch() {
                                     cannot take input.
                                 </p>
 
-                                {!canReconnectSilently() && (
+                                <label
+                                    className="flex items-center gap-2"
+                                    style={{ fontSize: 13, marginBottom: "var(--space-3)" }}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={syncOn}
+                                        onChange={(e) => toggleSync(e.target.checked)}
+                                    />
+                                    This {native ? "phone" : "browser"} syncs the watch
+                                    <span style={{ color: "var(--text-muted)" }}>
+                                        (one device only: the watch takes one connection at a time)
+                                    </span>
+                                </label>
+
+                                {!connector.canReconnectSilently() && (
                                     <p style={{ fontSize: 12, color: "var(--warning)", marginBottom: "var(--space-3)" }}>
                                         No getDevices() here, so every poll would need a tap. Enable
                                         chrome://flags/#enable-web-bluetooth-new-permissions-backend.
@@ -244,13 +275,13 @@ export default function Watch() {
                                         <Bluetooth style={{ width: 16, height: 16 }} />
                                         {device ? "Pair again" : "Pair watch"}
                                     </Button>
-                                    <Button variant="outline" onClick={syncNow} disabled={!device || busy || polling}>
+                                    <Button variant="outline" onClick={syncNow} disabled={!syncOn || !device || busy || polling}>
                                         {busy ? "Syncing…" : "Sync now"}
                                     </Button>
                                     {polling ? (
                                         <Button onClick={stop}>Stop polling</Button>
                                     ) : (
-                                        <Button onClick={start} disabled={!device || busy}>
+                                        <Button onClick={start} disabled={!syncOn || !device || busy}>
                                             Start polling
                                         </Button>
                                     )}

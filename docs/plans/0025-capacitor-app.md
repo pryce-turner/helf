@@ -1,6 +1,6 @@
 # 0025 — Helf as a Capacitor app (Android and iOS)
 
-**Status**: Proposed — plan written 2026-11-24; nothing built
+**Status**: In progress — phase 1 landed 2026-11-24 (§8); first native build on the Mac is next
 
 One app for Android and iOS, wrapping the existing web frontend with
 [Capacitor](https://capacitorjs.com), so the UNA Watch can be synced in the
@@ -38,8 +38,8 @@ Android foreground service.
 
 | # | Question | Recommendation |
 |---|---|---|
-| a | Load the UI **from the Helf server** (`server.url`) or **bundle it into the app** | **From the server.** The UI and the sync code update with every redeploy, as the PWA does, instead of a rebuilt, re-sideloaded APK per change. Capacitor still injects its plugin bridge into a remote page. The cost: the app needs the server to open, which Helf needs anyway, and Capacitor's docs call `server.url` a development setting. Bundling is more robust offline and is the fallback if the remote mode misbehaves |
-| b | The URL the phone uses for Helf | Whatever the phone uses today. Plain `http://` needs `server.cleartext` and `usesCleartextTraffic` |
+| a | Load the UI **from the Helf server** (`server.url`) or **bundle it into the app** | **From the server** — chosen. The UI and the sync code update with every redeploy, as the PWA does, instead of a rebuilt, re-sideloaded APK per change. Capacitor still injects its plugin bridge into a remote page. The cost: the app needs the server to open, which Helf needs anyway, and Capacitor's docs call `server.url` a development setting. Bundling is more robust offline and is the fallback if the remote mode misbehaves |
+| b | The URL the phone uses for Helf | `https://helf.pryce.fyi` — chosen. HTTPS, so no cleartext exception |
 | c | App id | `app.helf` (reverse-DNS, no personal name, since the repo is on GitHub) |
 | d | Where native builds happen | **Your Mac**: Android Studio for the APK, Xcode for iOS. The admin container has no Android SDK, no Xcode and no Docker socket, and the repo deliberately has no remote CI |
 
@@ -142,3 +142,30 @@ built). Fine for an opt-in nobody intends to use yet.
 - **The foreground-service type** (§4). Fallback is in-repo native code.
 - **Two code paths** for Bluetooth. Kept thin: both adapters only produce an
   `FtsTransport`, and the protocol, sync and poll loop exist once.
+
+## 8. Phase 1, as landed (2026-11-24)
+
+- Capacitor 8 core/CLI/Android/iOS, `@capacitor-community/bluetooth-le` and
+  the Capawesome foreground-service plugin, unpinned.
+- `capacitor.config.ts`: `app.helf`, UI from `https://helf.pryce.fyi`.
+- `frontend/android/`, `frontend/ios/` generated and committed. The Android
+  manifest adds the foreground service (type `connectedDevice`), its
+  permissions, and `BLUETOOTH_SCAN` with `neverForLocation` (location only
+  below Android 12). `Info.plist` adds the Bluetooth usage string and
+  `bluetooth-central`. iOS uses Swift Package Manager, Capacitor 8's default.
+- `nativeBle.ts` (`NativeWatch`) and `watchConnector.ts`. `unaWatch.ts` kept
+  its name rather than becoming `webBluetooth.ts` (§5): a rename for nothing.
+  `nativeBle.test.ts` runs a whole sync through a fake plugin wired to
+  `FakeWatch`, and covers pairing from bonded devices, bonding when not
+  bonded, iOS self-bonding, unpaired, unreachable and the passkey wait.
+- The Watch tab: a per-device "This phone syncs the watch" switch that gates
+  Sync now and polling, **including in the browser** — the PWA on the Android
+  phone needs it ticked once. In the native app, polling starts on launch
+  when the switch is on. The wake lock is browser-only.
+- Not done: the foreground service is declared but not started (phase 3).
+
+Generating the native projects needs a passwd entry, which uid 568 lacks
+(`os.userInfo()` fails), so they were generated in a scratch copy with the
+same `package-lock.json` and copied in. Running `npx cap sync` on the Mac is
+unaffected.
+

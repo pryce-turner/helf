@@ -1,6 +1,6 @@
 # 0026 — Installing watch apps over Bluetooth
 
-**Status**: In progress — built and tested against a simulated watch 2026-11-27; not yet run against the real watch (§7)
+**Status**: In progress — first real install 2026-11-27 (§8); the first recorded night is next
 
 Helf builds Sleep Log (0024) on the NAS, serves it, and the phone installs it on
 the UNA Watch over the File Transfer Service, then restarts the watch so it
@@ -120,3 +120,20 @@ build called it.
   autostarted service or tries to start a second one.
 - On Web Bluetooth, a grant made before this change lacks the Custom Command
   Service; **Pair again** adds it. Native is unaffected.
+
+## 8. First real install, 2026-11-27
+
+From the Android app, after redeploying (`c046cb8`): **Install on watch**,
+then **Restart watch**. After the reboot the glances screen showed the Sleep
+Log tile reading "Idle". So, settled from §7:
+
+- The watch accepts writes into `/Apps/SleepLog/`, and the `.part` + DIGEST +
+  MOVE sequence completes against the real FTS.
+- RESET restarts it, and the boot scan registers a `.uapp` written over
+  Bluetooth.
+- A Glance with the autostart flag starts at boot, and its service answers the
+  glances screen (the tile was configured, so `EVENT_GLANCE_START` reached the
+  service, which had no other way to draw it).
+
+Still open: MTU and write speed on the real link (not captured), and everything
+in 0024 §7, which the first recorded night answers.

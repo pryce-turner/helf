@@ -17,7 +17,9 @@
 import { BleClient, type BleClientInterface, type BleDevice } from "@capacitor-community/bluetooth-le";
 
 import { FTS_RAW_CHAR, FTS_SERVICE, FTS_VERSION_CHAR, FtsClient, type FtsTransport } from "./fts";
-import { WatchNotPairedError, WatchUnreachableError, type WatchSession } from "./unaSync";
+import { FtsAppInstaller } from "./ftsInstall";
+import { CMD_CHAR, CMD_SERVICE, rebootWatch } from "./unaCommand";
+import { type ConnectOptions, WatchNotPairedError, WatchUnreachableError, type WatchSession } from "./unaSync";
 
 const NAME_PREFIX = "UNA Watch";
 const DEVICE_KEY = "helf.watch.deviceId";
@@ -40,6 +42,7 @@ export type BleApi = Pick<
     | "writeWithoutResponse"
     | "startNotifications"
     | "stopNotifications"
+    | "getMtu"
 >;
 
 export interface KeyValue {
@@ -116,7 +119,7 @@ export class NativeWatch {
         return this.remember(picked);
     }
 
-    async connect(): Promise<WatchSession> {
+    async connect(options: ConnectOptions = {}): Promise<WatchSession> {
         const deviceId = this.store.getItem(DEVICE_KEY);
         if (!deviceId) throw new WatchNotPairedError("No watch paired with this phone yet. Tap Pair watch.");
         await this.init();
@@ -163,16 +166,32 @@ export class NativeWatch {
             };
             // The client subscribes before notifications start, so the first
             // one cannot be lost.
-            const client = new FtsClient(transport);
+            const client = options.installFolder
+                ? new FtsAppInstaller(transport, options.installFolder)
+                : new FtsClient(transport);
             await this.ble.startNotifications(deviceId, FTS_SERVICE, FTS_RAW_CHAR, (value) => {
                 // Copy: the bridge may reuse the buffer.
                 const copy = new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
                 for (const l of listeners) l(copy);
             });
 
+            // Android asks for a large MTU on connect; what was granted bounds
+            // a WRITE_DATA (ATT payload is MTU − 3, less its 12-byte header).
+            let maxWritePayload: number | undefined;
+            if (options.installFolder) {
+                const mtu = await Promise.resolve()
+                    .then(() => this.ble.getMtu(deviceId))
+                    .catch(() => 0);
+                if (mtu > 23) maxWritePayload = mtu - 3 - 12;
+            }
+
             return {
                 client,
                 version,
+                maxWritePayload,
+                reboot: options.installFolder
+                    ? () => this.reboot(deviceId, closeListeners)
+                    : undefined,
                 disconnect: () => {
                     client.dispose();
                     void this.ble
@@ -187,6 +206,37 @@ export class NativeWatch {
                 "Connected, but the File Transfer Service refused: the phone and watch are not bonded. Remove the watch from Bluetooth settings, put it in pairing mode (Settings → Phone → Pair) and pair again.",
                 { cause },
             );
+        }
+    }
+
+    /** RESET over the Custom Command Service, on the session's own link. */
+    private async reboot(deviceId: string, closeListeners: Set<() => void>): Promise<void> {
+        const listeners = new Set<(v: DataView) => void>();
+        // The watch ignores commands until notifications are on.
+        await this.ble.startNotifications(deviceId, CMD_SERVICE, CMD_CHAR, (value) => {
+            const copy = new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+            for (const l of listeners) l(copy);
+        });
+        try {
+            await rebootWatch({
+                write: (data) =>
+                    this.ble.writeWithoutResponse(
+                        deviceId,
+                        CMD_SERVICE,
+                        CMD_CHAR,
+                        new DataView(data.buffer, data.byteOffset, data.byteLength),
+                    ),
+                subscribe: (l) => {
+                    listeners.add(l);
+                    return () => listeners.delete(l);
+                },
+                onClose: (l) => {
+                    closeListeners.add(l);
+                    return () => closeListeners.delete(l);
+                },
+            });
+        } finally {
+            await this.ble.stopNotifications(deviceId, CMD_SERVICE, CMD_CHAR).catch(() => {});
         }
     }
 

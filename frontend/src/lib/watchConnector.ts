@@ -10,7 +10,7 @@
 import { Capacitor } from "@capacitor/core";
 
 import { NativeWatch } from "./nativeBle";
-import type { WatchSession } from "./unaSync";
+import type { ConnectOptions, WatchSession } from "./unaSync";
 import {
     canReconnectSilently as webCanReconnect,
     connectWatch,
@@ -27,7 +27,47 @@ export interface WatchConnector {
     /** Must run inside a tap handler in the browser (the chooser needs it). */
     pair(): Promise<{ name: string }>;
     remembered(): Promise<{ name: string } | null>;
-    connect(): Promise<WatchSession>;
+    /**
+     * One session at a time, whoever asks: a poll and an app install queue
+     * behind each other here (see `exclusive`). Always `disconnect()` it.
+     */
+    connect(options?: ConnectOptions): Promise<WatchSession>;
+}
+
+/**
+ * The watch keeps one connection and stops advertising while it is held, so
+ * a second session opened over the first would just fail as "unreachable".
+ * Every session goes through here, and the next waits for `disconnect()`.
+ */
+let held: Promise<void> = Promise.resolve();
+
+export function exclusive(open: () => Promise<WatchSession>): Promise<WatchSession> {
+    const before = held;
+    let release!: () => void;
+    held = new Promise<void>((r) => (release = r));
+    return before.then(async () => {
+        let session: WatchSession;
+        try {
+            session = await open();
+        } catch (e) {
+            release();
+            throw e;
+        }
+        let released = false;
+        return {
+            ...session,
+            disconnect: () => {
+                try {
+                    session.disconnect();
+                } finally {
+                    if (!released) {
+                        released = true;
+                        release();
+                    }
+                }
+            },
+        };
+    });
 }
 
 function webConnector(): WatchConnector {
@@ -44,7 +84,7 @@ function webConnector(): WatchConnector {
             device = device ?? (await rememberedWatch());
             return device ? { name: device.name ?? "UNA Watch" } : null;
         },
-        connect: () => connectWatch(device),
+        connect: (options) => exclusive(() => connectWatch(device, options)),
     };
 }
 
@@ -56,7 +96,7 @@ function nativeConnector(): WatchConnector {
         canReconnectSilently: () => true,
         pair: () => watch.pair(),
         remembered: async () => watch.remembered(),
-        connect: () => watch.connect(),
+        connect: (options) => exclusive(() => watch.connect(options)),
     };
 }
 

@@ -25,6 +25,7 @@ from app.api import (
     stacks,
     upcoming,
     watch,
+    watch_app,
     workouts,
 )
 from app.database import apply_sqlite_pragmas
@@ -116,4 +117,6 @@ def client(db_engine):
     app.include_router(watch.router, prefix="/api/watch")
     app.include_router(android_app.router, prefix="/api/app")
     app.include_router(android_app.download_router, prefix="/download")
+    app.include_router(watch_app.router, prefix="/api/app")
+    app.include_router(watch_app.download_router, prefix="/download")
     return TestClient(app)

@@ -146,3 +146,23 @@ services:
             - ${HELF_DATA_PATH}:/app/data
         restart: "no"
         command: ["sh", "/usr/local/bin/sign-apk.sh"]
+
+    # Builds Sleep Log for the UNA Watch (plan 0024) and puts it on the data
+    # volume, then exits; the phone installs it over Bluetooth from the Watch
+    # page (plan 0026). Runs on every `up` like helf-apk, and skips the copy
+    # when the build did not change. The Arm toolchain and UNA SDK float
+    # (watch-versions), so an upstream change shows up here as a failed build.
+    #
+    # No `depends_on` either way: Helf reports `available: false` until
+    # data/watch-apps/ exists, so a failed watch build never stops Helf.
+    helf-watch-app:
+        build:
+            context: .
+            target: watch-publisher
+            pull: true
+        image: helf-watch-app:latest
+        pull_policy: build
+        container_name: helf-watch-app
+        volumes:
+            - ${HELF_DATA_PATH}:/app/data
+        restart: "no"

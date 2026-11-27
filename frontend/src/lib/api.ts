@@ -21,6 +21,7 @@ import type {
     ScaleSyncResult,
 } from "../types/bodyComposition";
 import type { AndroidAppInfo } from "../types/androidApp";
+import type { WatchAppInfo } from "../types/watchApp";
 import type { ScaleReading } from "./bcs";
 import type { ManifestEntry, WatchApi, WatchFile } from "./unaSync";
 import type {
@@ -476,6 +477,16 @@ export const watchApi: WatchApi = {
 
 export const androidAppApi = {
     info: () => api.get<AndroidAppInfo>("/api/app/android"),
+};
+
+export const watchAppApi = {
+    info: () => api.get<WatchAppInfo>("/api/app/watch").then((r) => r.data),
+
+    /** The .uapp bytes. Under /download/, so the service worker never caches it. */
+    download: (fileName: string) =>
+        api
+            .get<ArrayBuffer>(`/download/watch/${encodeURIComponent(fileName)}`, { responseType: "arraybuffer" })
+            .then((r) => new Uint8Array(r.data)),
 };
 
 export const systemApi = {

@@ -23,6 +23,7 @@ from app.api import (
     stacks,
     upcoming,
     watch,
+    watch_app,
     workouts,
 )
 from app.config import settings
@@ -100,6 +101,8 @@ app.include_router(android_app.router, prefix="/api/app", tags=["android-app"])
 # Not under /api/: see android_app.py. Registered here, ahead of the static
 # routes below, so no SPA route can answer it.
 app.include_router(android_app.download_router, prefix="/download", tags=["android-app"])
+app.include_router(watch_app.router, prefix="/api/app", tags=["watch-app"])
+app.include_router(watch_app.download_router, prefix="/download", tags=["watch-app"])
 
 
 @app.get("/api/health")

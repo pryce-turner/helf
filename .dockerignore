@@ -65,3 +65,9 @@ frontend/android/app/src/main/assets/capacitor.plugins.json
 frontend/android/app/src/main/res/xml/config.xml
 frontend/android/local.properties
 frontend/ios/
+
+# Watch app: local build output. The image builds its own (watch-build), and a
+# host build left in the context would bust that stage's cache.
+watch/sleep-log/Output/
+watch/sleep-log/Tests/build/
+watch/sleep-log/Software/App/SleepLog-CMake/build*/

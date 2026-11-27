@@ -64,6 +64,7 @@ public:
 
     Mode mode() const { return mMode; }
     uint16_t stillMinutes() const { return mStillMinutes; }
+    const PolicyConfig& config() const { return mCfg; }
 
 private:
     void enter(Mode m, uint32_t nowMs);

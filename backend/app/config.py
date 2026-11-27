@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # Defaults to <data_dir>/android in __init__; the ANDROID_DIR env var overrides.
     android_dir: Path | None = None
 
+    # Watch apps built into the image and published onto the data volume by
+    # the `helf-watch-app` service (scripts/publish-watch-app.sh, plan 0026):
+    # the .uapp and its watch-app.json. Absent until it has run, which the app
+    # handles (`available: false`). Defaults to <data_dir>/watch-apps; the
+    # WATCH_APPS_DIR env var overrides.
+    watch_apps_dir: Path | None = None
+
     # Database
     db_path: Path | None = None
 
@@ -56,6 +63,8 @@ class Settings(BaseSettings):
             self.db_path = self.data_dir / "helf.db"
         if self.android_dir is None:
             self.android_dir = self.data_dir / "android"
+        if self.watch_apps_dir is None:
+            self.watch_apps_dir = self.data_dir / "watch-apps"
         # Ensure data directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
 

@@ -1,4 +1,4 @@
-# SleepLog — headless, autostarted service app (plan 0024).
+# SleepLog — an autostarted Glance: a service with no GUI (plan 0024).
 # Structure follows the SDK's GlanceSteps example: a service and no GUI.
 cmake_minimum_required(VERSION 3.21)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build")
@@ -8,9 +8,15 @@ set(APP_NAME "SleepLog")
 set(APP_USER_NAME "Sleep Log")
 # The on-watch name may change; the file name the install flow keys on stays.
 set(APP_FILE_NAME "SleepLog")
-set(APP_TYPE "Utility")
+# A Glance, because it is the only type the SDK packs without a GUI:
+# app_merging.py refuses a Utility with no .gui ("required for type Utility").
+# The type only decides where the app shows; autostart is a separate flag the
+# kernel honours for any type (App::Manager::autoRun), so the service still
+# starts at boot and stays resident. The glance is a one-line status tile.
+set(APP_TYPE "Glance")
 # Started at boot with no GUI and left resident (service-lifecycle.md §3.2).
 set(APP_AUTOSTART On)
+# A Glance needs no launcher icons (the packer zero-fills them).
 set(APP_USE_ICONS Off)
 set(DEV_ID "HELF")
 # md5("SleepLog")[:16], per sdk-setup.md.

@@ -74,7 +74,8 @@ helf/
 │   │   │   ├── food.py
 │   │   │   ├── notes.py
 │   │   │   ├── stacks.py
-│   │   │   └── android_app.py   # APK info + download (plan 0025)
+│   │   │   ├── android_app.py   # APK info + download (plan 0025)
+│   │   │   └── watch_app.py     # watch app info + download (plan 0026)
 │   │   ├── db/
 │   │   │   └── models.py     # SQLAlchemy ORM models (tables)
 │   │   │                     #   No BodyComposition — retired by plan 0010;
@@ -189,6 +190,8 @@ helf/
 │                             #   host tests: make -C watch/sleep-log/Tests
 ├── scripts/
 │   ├── sign-apk.sh           # helf-apk service: signs the APK onto data/android/
+│   ├── publish-watch-app.sh  # helf-watch-app service: puts Sleep Log on data/watch-apps/
+│   ├── watch-app-meta.py     # watch-build: checks the .uapp, writes watch-app.json
 │   ├── backup-db.sh          # The only correct way to copy a live WAL database
 │   └── pre-migration-backup.sh   # PreToolUse hook: backs up before alembic
 │                             #   upgrade/downgrade/stamp, blocks if it can't
@@ -588,9 +591,27 @@ the app on the phone before a new build will install. Its password is fixed
 whatever off-box backup you keep. Install from the NAS build only: an APK signed
 with any other key is a trap.
 
-The one exception to "nothing in `data/` is overwritten" is `android/helf.apk`
-and `android/helf-apk.json`: derived artifacts, replaced on each new build, via
-temp file and `mv`.
+The exceptions to "nothing in `data/` is overwritten" are `android/helf.apk`
+and `android/helf-apk.json`, and `watch-apps/` (below): derived artifacts,
+replaced on each new build, via temp file and `mv`.
+
+### The watch app: built by the image, installed over Bluetooth
+
+Sleep Log (`watch/sleep-log/`, plan 0024) is built by the Dockerfile's
+`watch-build` stage and copied to `data/watch-apps/` by the one-shot
+`helf-watch-app` service, the same shape as the APK and with no `depends_on`
+for the same reason. `watch-versions` resolves the UNA SDK's `main` commit and
+the newest Arm GNU Toolchain; the build runs the host tests and checks the
+`.uapp` carries its APP_ID and the autostart flag. Helf serves it at
+`/api/app/watch` and `/download/watch/SleepLog.uapp`, and the Watch page
+installs it (plan 0026).
+
+**Writing to the watch is scoped, by construction.** The sync's `FtsClient`
+cannot send a write opcode. `FtsAppInstaller` (`frontend/src/lib/ftsInstall.ts`)
+can, and only for `/Apps/<its folder>/*.uapp(.part)` and MKDIR of that folder;
+never the app's recordings below it. RESET (`unaCommand.ts`) is the only Custom
+Command Helf sends, only from the **Restart watch** button. Keep both that way:
+widen a scope only in a plan.
 
 ### Environment Variables
 | Variable | Default | Description |

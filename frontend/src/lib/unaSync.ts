@@ -289,9 +289,25 @@ export class WatchNotPairedError extends Error {}
 export class WatchUnreachableError extends Error {}
 
 export interface WatchSession {
+    /**
+     * Read-only for the sync. An `FtsAppInstaller`, scoped to one app folder,
+     * only when `connect` was asked for one (`ConnectOptions.installFolder`).
+     */
     client: FtsClient;
     version: number;
+    /** Largest WRITE_DATA payload one packet carries, where the platform reports the MTU. */
+    maxWritePayload?: number;
+    /**
+     * Restart the watch (Custom Command RESET, plan 0026). Only on install
+     * sessions, and absent where that service cannot be reached.
+     */
+    reboot?: () => Promise<void>;
     disconnect(): void;
+}
+
+export interface ConnectOptions {
+    /** Open an install session that may write `/Apps/<installFolder>/*.uapp`. */
+    installFolder?: string;
 }
 
 export type PollOutcome =

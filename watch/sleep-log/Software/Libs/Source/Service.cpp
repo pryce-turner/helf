@@ -11,6 +11,7 @@
 #include "SDK/UnaLogger/Logger.h"
 
 #include "SDK/Messages/CommandMessages.hpp"
+#include "SDK/Messages/MessageGuard.hpp"
 #include "SDK/Messages/SensorLayerMessages.hpp"
 #include "SDK/SensorLayer/DataParsers/SensorDataParserAccelerometer.hpp"
 #include "SDK/SensorLayer/DataParsers/SensorDataParserBatteryCharging.hpp"
@@ -196,10 +197,73 @@ void Service::applyTransition(const Transition& t, uint32_t nowMs)
     openChunk(nowMs);
     mWriter.mode(nowMs, static_cast<uint8_t>(t.to), static_cast<uint8_t>(t.reason));
     if (t.to == Mode::RECORDING) {
+        mRecordingSinceUtc = std::time(nullptr);
         connectRecording();
     } else {
         connectIdle();
     }
+    refreshGlance();
+}
+
+// ------------------------------------------------------------------- glance
+
+void Service::onGlanceStart()
+{
+    mGlanceVisible = true;
+    if (!mGlanceBuilt) {
+        // Unlike the SDK's example glances, a refused config is not a reason
+        // to exit: the tile is optional, the recording is the point.
+        auto gc = SDK::make_msg<SDK::Message::RequestGlanceConfig>(mKernel);
+        if (!gc || !gc.send(100) || !gc.ok() || gc->maxControls < 2) {
+            LOG_WARNING("glance config refused; no tile\n");
+            return;
+        }
+        mGlanceUI.setWidth(gc->width);
+        mGlanceUI.setHeight(gc->height);
+        mGlanceTitle = mGlanceUI.createText();
+        mGlanceTitle.pos({kTitleX, kTitleY}, {kTitleW, kTitleH})
+            .font(GlanceFont_t::GLANCE_FONT_POPPINS_SEMIBOLD_20)
+            .color(GlanceColor_t::GLANCE_COLOR_TEAL)
+            .setText("Sleep Log")
+            .alignment(GlanceAlignH_t::GLANCE_ALIGN_H_CENTER);
+        mGlanceValue = mGlanceUI.createText();
+        mGlanceValue.pos({kValueX, kValueY}, {kValueW, kValueH})
+            .font(GlanceFont_t::GLANCE_FONT_POPPINS_MEDIUM_18)
+            .color(GlanceColor_t::GLANCE_COLOR_WHITE)
+            .setText("---")
+            .alignment(GlanceAlignH_t::GLANCE_ALIGN_H_CENTER);
+        mGlanceBuilt = true;
+    }
+    refreshGlance();
+    pushGlance();
+}
+
+void Service::refreshGlance()
+{
+    if (!mGlanceBuilt) return;
+    if (mPolicy.mode() == Mode::RECORDING) {
+        std::tm local {};
+        localtime_r(&mRecordingSinceUtc, &local);
+        mGlanceValue.print("Recording since %02d:%02d", local.tm_hour, local.tm_min);
+    } else if (mPolicy.stillMinutes() > 0) {
+        mGlanceValue.print("Idle, still %u/%u min",
+                           unsigned(mPolicy.stillMinutes()),
+                           unsigned(mPolicy.config().stillMinutesToStart));
+    } else {
+        mGlanceValue.setText("Idle");
+    }
+}
+
+void Service::pushGlance()
+{
+    if (!mGlanceBuilt || !mGlanceVisible || !mGlanceUI.isInvalid()) return;
+    if (auto upd = SDK::make_msg<SDK::Message::RequestGlanceUpdate>(mKernel)) {
+        upd->name           = APP_NAME;
+        upd->controls       = mGlanceUI.data();
+        upd->controlsNumber = static_cast<uint32_t>(mGlanceUI.size());
+        upd.send(100);
+    }
+    mGlanceUI.setValid();
 }
 
 // -------------------------------------------------------------------- files
@@ -385,6 +449,18 @@ void Service::run()
                     handleSensors(event->handle, batch);
                     break;
                 }
+                case SDK::MessageType::EVENT_GLANCE_START:
+                    onGlanceStart();
+                    break;
+                case SDK::MessageType::EVENT_GLANCE_TICK:
+                    refreshGlance();
+                    pushGlance();
+                    break;
+                case SDK::MessageType::EVENT_GLANCE_STOP:
+                    // The tile went off screen. The service is resident for
+                    // the recording, so this is not the exit GlanceSteps takes.
+                    mGlanceVisible = false;
+                    break;
                 default:
                     // No GUI, no custom messages: anything else is ignored.
                     break;

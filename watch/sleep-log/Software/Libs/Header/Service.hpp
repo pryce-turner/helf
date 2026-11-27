@@ -3,6 +3,11 @@
  * heart rate and wrist motion at full rate while you are (probably) asleep,
  * and writes it in 10-minute chunk files for Helf to fetch (plan 0024).
  *
+ * Packed as a Glance (the only GUI-less app type), so the glances screen also
+ * shows a one-line status tile. The tile is a view only: showing or hiding it
+ * never starts, stops or changes a recording, and unlike the SDK's example
+ * glances this service does not exit on EVENT_GLANCE_STOP.
+ *
  * The decisions live in `SleepPolicy` and the encoding in `RecordWriter`, both
  * tested on the host. This class is the SDK plumbing around them and cannot be
  * tested off the watch, so it is kept free of decisions.
@@ -11,8 +16,10 @@
 #pragma once
 
 #include <cstdint>
+#include <ctime>
 #include <memory>
 
+#include "SDK/Glance/GlanceControl.hpp"
 #include "SDK/Kernel/Kernel.hpp"
 #include "SDK/SensorLayer/SensorConnection.hpp"
 #include "SDK/SensorLayer/SensorDataBatch.hpp"
@@ -52,6 +59,11 @@ private:
     void recoverPartials();
     void pruneOldDays();
 
+    // Glance tile (status only)
+    void onGlanceStart();
+    void refreshGlance();
+    void pushGlance();
+
     SDK::Kernel& mKernel;
 
     SDK::Sensor::Connection mAccel;
@@ -76,6 +88,23 @@ private:
     int32_t  mMinuteSum[3] {};
     bool     mHavePrev = false;
     SleepLog::AccelSample mPrev {};
+
+    // Glance tile. Built once, on the first EVENT_GLANCE_START.
+    SDK::Glance::Form        mGlanceUI;
+    SDK::Glance::ControlText mGlanceTitle;
+    SDK::Glance::ControlText mGlanceValue;
+    bool        mGlanceBuilt = false;
+    bool        mGlanceVisible = false;
+    std::time_t mRecordingSinceUtc = 0;
+
+    static constexpr int16_t kTitleX = 18;
+    static constexpr int16_t kTitleY = 0;
+    static constexpr int16_t kTitleW = 205;
+    static constexpr int16_t kTitleH = 30;
+    static constexpr int16_t kValueX = 18;
+    static constexpr int16_t kValueY = 32;
+    static constexpr int16_t kValueW = 205;
+    static constexpr int16_t kValueH = 30;
 
     static constexpr const char* kRoot = "Sleep";
 

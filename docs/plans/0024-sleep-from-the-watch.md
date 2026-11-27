@@ -1,6 +1,6 @@
 # 0024 — Sleep from the watch
 
-**Status**: In progress — watch app written and host-tested, decoder landed; not yet built for or run on the watch
+**Status**: In progress — watch app written and host-tested, decoder landed; built in Docker and installable over Bluetooth (0026), not yet run on the watch
 
 Sleep scored in Helf from heart rate and wrist motion recorded on the UNA
 Watch by our own app, using the Walch method. Builds on 0023, which already
@@ -142,9 +142,10 @@ Order of work. 1–2 are in this commit.
 
 From reading the source, untested on the watch:
 
-- The app starts at boot as a headless autostart `Utility`, and opening it from
-  the launcher is harmless. No example app is quite this shape (the nearest are
-  the GUI-less Glances and the autostart Alarm).
+- The app starts at boot as a headless autostart service. **Changed
+  2026-11-27 (0026 §5):** it is an autostart `Glance`, not a `Utility`, because
+  the SDK will not pack a Utility without a GUI. Its glance tile shows the mode;
+  hiding the tile does not stop it.
 - An app's HR subscription gives continuous 1 Hz HR, not the kernel's bursts.
 - `TOUCH_DETECT` and `STEP_COUNTER` report periodically when asked for a period
   (10 s here), so a watch already worn at boot reads as worn. If touch only
@@ -165,4 +166,5 @@ From reading the source, untested on the watch:
   to the phone (the watch passes only bpm through from a strap).
 - **On-watch scoring.** Raw data stays the source of truth so the scoring can
   change.
-- **A watch GUI.** Headless first; a status Glance later if wanted.
+- **A watch GUI.** Headless. The status glance arrived with 0026 §5, because the
+  app had to be a Glance anyway.

@@ -20,7 +20,9 @@
  */
 
 import { FTS_RAW_CHAR, FTS_SERVICE, FTS_VERSION_CHAR, FtsClient, type FtsTransport } from "./fts";
-import { WatchNotPairedError, WatchUnreachableError, type WatchSession } from "./unaSync";
+import { FtsAppInstaller } from "./ftsInstall";
+import { CMD_CHAR, CMD_SERVICE, rebootWatch } from "./unaCommand";
+import { type ConnectOptions, WatchNotPairedError, WatchUnreachableError, type WatchSession } from "./unaSync";
 
 const NAME_PREFIX = "UNA Watch";
 const BATTERY_SERVICE = 0x180f;
@@ -79,7 +81,9 @@ export async function pairWatch(): Promise<BluetoothDevice> {
         filters: [{ namePrefix: NAME_PREFIX }, { services: [FTS_SERVICE] }],
         // Anything touched after connecting must be declared here or it is
         // unreachable, with a SecurityError that reads like a pairing fault.
-        optionalServices: [FTS_SERVICE, BATTERY_SERVICE, DEVICE_INFO_SERVICE],
+        // CMD_SERVICE is for the restart after an app install (plan 0026); a
+        // grant made before it was listed lacks it until Pair again.
+        optionalServices: [FTS_SERVICE, CMD_SERVICE, BATTERY_SERVICE, DEVICE_INFO_SERVICE],
     });
 }
 
@@ -108,7 +112,48 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
  * connection slot — is `WatchUnreachableError`, because from here they are
  * indistinguishable.
  */
-export async function connectWatch(device?: BluetoothDevice | null): Promise<WatchSession> {
+/** RESET over the Custom Command Service on an open link. */
+async function rebootOverWeb(server: BluetoothRemoteGATTServer, watch: BluetoothDevice): Promise<void> {
+    let chr: BluetoothRemoteGATTCharacteristic;
+    try {
+        chr = await (await server.getPrimaryService(CMD_SERVICE)).getCharacteristic(CMD_CHAR);
+    } catch (cause) {
+        throw new Error(
+            "This browser's grant to the watch predates restart support. Tap Pair again, or restart the watch by hand (Up until Power Off, Select twice, then hold Select).",
+            { cause },
+        );
+    }
+    const listeners = new Set<(v: DataView) => void>();
+    const handler = (event: Event) => {
+        const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
+        if (!value) return;
+        const copy = new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+        for (const l of listeners) l(copy);
+    };
+    chr.addEventListener("characteristicvaluechanged", handler);
+    try {
+        // The watch ignores commands until notifications are on.
+        await chr.startNotifications();
+        await rebootWatch({
+            write: (data) => chr.writeValueWithoutResponse(data),
+            subscribe: (l) => {
+                listeners.add(l);
+                return () => listeners.delete(l);
+            },
+            onClose: (l) => {
+                watch.addEventListener("gattserverdisconnected", l);
+                return () => watch.removeEventListener("gattserverdisconnected", l);
+            },
+        });
+    } finally {
+        chr.removeEventListener("characteristicvaluechanged", handler);
+    }
+}
+
+export async function connectWatch(
+    device?: BluetoothDevice | null,
+    options: ConnectOptions = {},
+): Promise<WatchSession> {
     if (!isSupported()) {
         throw new WatchNotPairedError(
             "This browser has no Web Bluetooth. Use Chrome on Android (or a Capacitor build).",
@@ -165,12 +210,17 @@ export async function connectWatch(device?: BluetoothDevice | null): Promise<Wat
             },
         };
         // Subscribe before notifications start, so the first one is not lost.
-        const client = new FtsClient(transport);
+        const client = options.installFolder
+            ? new FtsAppInstaller(transport, options.installFolder)
+            : new FtsClient(transport);
         await raw.startNotifications();
 
         return {
             client,
             version,
+            // Web Bluetooth does not say what MTU it negotiated; the installer
+            // starts at a size any negotiated link carries and halves on a cut.
+            reboot: options.installFolder ? () => rebootOverWeb(server, watch) : undefined,
             disconnect: () => {
                 client.dispose();
                 try {

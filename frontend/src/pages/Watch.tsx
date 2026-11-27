@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bluetooth, Watch as WatchIcon } from "lucide-react";
+import { Bluetooth, Moon, Watch as WatchIcon } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import BodySectionTabs from "@/components/BodySectionTabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { watchApi } from "@/lib/api";
+import { watchApi, watchAppApi } from "@/lib/api";
 import { type PollOutcome, pollLoop, pollOnce } from "@/lib/unaSync";
+import { installWatchApp, restartWatch } from "@/lib/watchAppInstall";
 import { getWatchConnector, isSyncEnabled, setSyncEnabled } from "@/lib/watchConnector";
+import type { WatchAppInfo } from "@/types/watchApp";
 
 /**
  * Polling the UNA Watch from an always-on phone (plans 0023, 0025).
@@ -70,6 +72,10 @@ export default function Watch() {
     const [busy, setBusy] = useState(false);
     const [log, setLog] = useState<{ at: Date; text: string; color: string }[]>([]);
     const [held, setHeld] = useState<number | null>(null);
+    const [watchApp, setWatchApp] = useState<WatchAppInfo | null>(null);
+    /** What the install is doing right now, or null when idle. */
+    const [installing, setInstalling] = useState<string | null>(null);
+    const [needsRestart, setNeedsRestart] = useState(false);
     const abort = useRef<AbortController | null>(null);
     const wakeLock = useRef<WakeLockSentinelLike | null>(null);
 
@@ -88,6 +94,10 @@ export default function Watch() {
         if (!supported) return;
         connector.remembered().then((d) => d && setDevice(d));
         refreshHeld();
+        watchAppApi
+            .info()
+            .then(setWatchApp)
+            .catch(() => setWatchApp(null));
     }, [supported, connector, refreshHeld]);
 
     const onOutcome = useCallback(
@@ -200,6 +210,50 @@ export default function Watch() {
         append("Stopped polling.");
     };
 
+    // Install and restart queue behind a running poll (watchConnector's
+    // `exclusive`), so they need no polling switch of their own.
+    const installApp = async () => {
+        if (!watchApp) return;
+        setInstalling("Downloading");
+        try {
+            const result = await installWatchApp(watchApp, {
+                download: watchAppApi.download,
+                connect: (options) => connector.connect(options),
+                onStep: (s) => {
+                    setInstalling(s.message);
+                    append(s.message);
+                },
+                onProgress: (n, total) => setInstalling(`Sending ${Math.round((100 * n) / total)}%`),
+            });
+            for (const w of result.warnings) append(w, "var(--warning)");
+            for (const p of result.removed) append(`Removed ${p}`);
+            if (result.status === "unchanged") {
+                append(`${watchApp.name} on the watch is already this build.`, "var(--success)");
+            } else {
+                append(`${watchApp.name} installed. It starts when the watch restarts.`, "var(--success)");
+                setNeedsRestart(true);
+            }
+        } catch (e) {
+            append((e as Error).message, "var(--error)");
+        } finally {
+            setInstalling(null);
+        }
+    };
+
+    const restart = async () => {
+        if (!watchApp) return;
+        setInstalling("Restarting the watch");
+        try {
+            await restartWatch(watchApp, (options) => connector.connect(options));
+            setNeedsRestart(false);
+            append(`The watch is restarting; ${watchApp.name} starts with it.`, "var(--success)");
+        } catch (e) {
+            append((e as Error).message, "var(--error)");
+        } finally {
+            setInstalling(null);
+        }
+    };
+
     const chooseInterval = (m: number) => {
         setIntervalMin(m);
         try {
@@ -306,6 +360,50 @@ export default function Watch() {
                                     <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>
                                         Keep this page open and in front, with the phone on a charger. Polling stops if
                                         the page is closed.
+                                    </p>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {supported && watchApp?.available && (
+                        <Card className="animate-in section">
+                            <CardContent style={{ paddingTop: "var(--space-4)" }}>
+                                <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)" }}>
+                                    <span className="flex items-center gap-2" style={{ fontWeight: 600 }}>
+                                        <Moon style={{ width: 16, height: 16 }} />
+                                        {watchApp.name} on the watch
+                                    </span>
+                                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                        {watchApp.size_bytes != null && `${Math.round(watchApp.size_bytes / 1024)} KB`}
+                                        {watchApp.built_at && ` · built ${new Date(watchApp.built_at).toLocaleDateString()}`}
+                                    </span>
+                                </div>
+
+                                <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
+                                    Records heart rate and wrist motion while you sleep, for Helf to fetch. Installs
+                                    over Bluetooth into /Apps/{watchApp.folder} and runs from the watch&apos;s next
+                                    restart, with a status tile on the glances screen.
+                                </p>
+
+                                <div className="flex flex-wrap gap-2">
+                                    <Button
+                                        variant={needsRestart ? "outline" : "default"}
+                                        onClick={installApp}
+                                        disabled={!device || installing !== null}
+                                    >
+                                        {installing ?? "Install on watch"}
+                                    </Button>
+                                    {needsRestart && (
+                                        <Button onClick={restart} disabled={installing !== null}>
+                                            Restart watch
+                                        </Button>
+                                    )}
+                                </div>
+
+                                {!device && (
+                                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>
+                                        Pair the watch first.
                                     </p>
                                 )}
                             </CardContent>

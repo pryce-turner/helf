@@ -12,9 +12,15 @@
  * drops notifications on purpose. `unaWatch.ts` is the Web Bluetooth plumbing
  * that supplies a real transport, and holds no logic.
  *
- * **Read-only by construction.** Only READ, READ_PACING, LISTDIR and DIGEST
- * have encoders, and `send()` refuses any other opcode, so a bug elsewhere
- * cannot turn into a WRITE, DELETE, MKDIR or MOVE on the watch.
+ * **`FtsClient` is read-only by construction.** It sends READ, READ_PACING,
+ * LISTDIR and DIGEST and `send()` refuses any other opcode, so a bug in the
+ * sync cannot turn into a WRITE, DELETE, MKDIR or MOVE on the watch.
+ *
+ * Writing exists in one place only: `FtsAppInstaller` (`ftsInstall.ts`), a
+ * subclass created just for installing an app, whose `permits()` admits the
+ * write opcodes for one app folder's `.uapp` files and nothing else. The
+ * write responses are decoded here because decoding is harmless; the
+ * encoders live with the installer.
  */
 
 export const FTS_SERVICE = "0000febb-0000-1000-8000-00805f9b34fb";
@@ -26,19 +32,43 @@ export const Command = {
     READ: 0x10,
     READ_DATA: 0x11,
     READ_PACING: 0x12,
+    WRITE: 0x20,
+    WRITE_PACING: 0x21,
+    WRITE_DATA: 0x22,
+    DELETE: 0x30,
+    DELETE_STATUS: 0x31,
+    MKDIR: 0x40,
+    MKDIR_STATUS: 0x41,
     LISTDIR: 0x50,
     LISTDIR_ENTRY: 0x51,
+    MOVE: 0x60,
+    MOVE_STATUS: 0x61,
     DIGEST: 0x70,
     DIGEST_STATUS: 0x71,
 } as const;
 
-/** The only opcodes this client will ever put on the wire. */
-const ALLOWED_REQUESTS: ReadonlySet<number> = new Set([
+/** The only opcodes `FtsClient` will ever put on the wire. */
+export const READ_REQUESTS: ReadonlySet<number> = new Set([
     Command.READ,
     Command.READ_PACING,
     Command.LISTDIR,
     Command.DIGEST,
 ]);
+
+/** Requests that change the watch. Only `FtsAppInstaller` may send these. */
+export const WRITE_REQUESTS: ReadonlySet<number> = new Set([
+    Command.WRITE,
+    Command.WRITE_DATA,
+    Command.DELETE,
+    Command.MKDIR,
+    Command.MOVE,
+]);
+
+/**
+ * Every request opcode. An error reply is two bytes carrying the *request*
+ * opcode (`sendErr(cmd, code)`), so these are how errors are recognised.
+ */
+const REQUEST_OPCODES: ReadonlySet<number> = new Set([...READ_REQUESTS, ...WRITE_REQUESTS]);
 
 export const Status = {
     OK: 0x01,
@@ -54,6 +84,10 @@ const STATUS_NAMES: Record<number, string> = {
     [Status.PROTOCOL]: "protocol error",
     [Status.READ_ONLY]: "read-only",
 };
+
+export function statusName(status: number): string {
+    return STATUS_NAMES[status] ?? `status ${status}`;
+}
 
 export class FtsError extends Error {
     readonly status?: number;
@@ -177,7 +211,21 @@ export type FtsResponse =
           /** Never longer than what the notification actually carried. */
           data: Uint8Array;
       }
-    | { kind: "digest"; status: number; fileSize: number; crc32: number };
+    | { kind: "digest"; status: number; fileSize: number; crc32: number }
+    | {
+          /**
+           * WRITE_PACING, the ACK to WRITE and WRITE_DATA. `freeSpace` is
+           * `totalSize - contiguousEnd`: the watch's high-water mark of
+           * hole-free bytes, so it stalls at a dropped chunk, and 0 is sent
+           * only once the whole file is written and closed.
+           */
+          kind: "write";
+          status: number;
+          offset: number;
+          freeSpace: number;
+      }
+    /** DELETE_STATUS, MKDIR_STATUS or MOVE_STATUS. */
+    | { kind: "done"; command: number; status: number };
 
 /**
  * Decode one Raw Transfer notification.
@@ -191,11 +239,25 @@ export function parseResponse(view: DataView): FtsResponse | null {
     const command = view.getUint8(0);
     const status = view.getUint8(1);
 
-    if (ALLOWED_REQUESTS.has(command)) {
+    if (REQUEST_OPCODES.has(command)) {
         return { kind: "error", command, status };
     }
 
     switch (command) {
+        case Command.WRITE_PACING: {
+            // {cmd, status, reserved[2], offset u32, truncatedTime u64, freeSpace u32}
+            if (view.byteLength < 20) return null;
+            return {
+                kind: "write",
+                status,
+                offset: view.getUint32(4, true),
+                freeSpace: view.getUint32(16, true),
+            };
+        }
+        case Command.DELETE_STATUS:
+        case Command.MKDIR_STATUS:
+        case Command.MOVE_STATUS:
+            return { kind: "done", command, status };
         case Command.LISTDIR_ENTRY: {
             if (view.byteLength < 28) return null;
             const pathLength = view.getUint16(2, true);
@@ -354,11 +416,22 @@ export class FtsClient {
         this.unsubscribeClose();
     }
 
+    /**
+     * Whether this client may put `bytes` on the wire. Here: the read
+     * requests and nothing else. `FtsAppInstaller` widens it, narrowly.
+     */
+    protected permits(bytes: Uint8Array): boolean {
+        return READ_REQUESTS.has(bytes[0]);
+    }
+
+    /** Why `permits()` said no, for the error. */
+    protected refusal(): string {
+        return "this client is read-only";
+    }
+
     private async send(bytes: Uint8Array<ArrayBuffer>): Promise<void> {
-        if (!ALLOWED_REQUESTS.has(bytes[0])) {
-            throw new FtsError(
-                `Refusing to send opcode 0x${bytes[0].toString(16)}: this client is read-only.`,
-            );
+        if (!this.permits(bytes)) {
+            throw new FtsError(`Refusing to send opcode 0x${bytes[0].toString(16)}: ${this.refusal()}.`);
         }
         if (this.closed) throw new FtsDisconnectedError("The watch disconnected.");
         await this.transport.write(bytes);
@@ -368,7 +441,7 @@ export class FtsClient {
      * Run one exchange exclusively. `run` receives every decoded response
      * until it settles; the idle timer restarts on each one.
      */
-    private exchange<T>(
+    protected exchange<T>(
         idleMs: number,
         body: (ctx: {
             resolve: (v: T) => void;

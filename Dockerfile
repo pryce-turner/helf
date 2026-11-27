@@ -1,14 +1,17 @@
-# Multi-stage Dockerfile for Helf: FastAPI + React PWA, and the Android app.
+# Multi-stage Dockerfile for Helf: FastAPI + React PWA, the Android app, and
+# the watch app.
 #
-# Two images come out of it. `production` (web build + backend) is what `helf`
-# and `helf-mcp` run, and never builds the Android stages. `android-signer`
-# builds the APK (frontend-deps -> android-prep, android-versions ->
-# android-build) and is what the one-shot `helf-apk` service runs to sign it
-# onto the data volume.
+# Three images come out of it. `production` (web build + backend) is what
+# `helf` and `helf-mcp` run, and never builds the Android or watch stages.
+# `android-signer` builds the APK (frontend-deps -> android-prep,
+# android-versions -> android-build) and is what the one-shot `helf-apk`
+# service runs to sign it onto the data volume. `watch-publisher` builds Sleep
+# Log for the UNA Watch (watch-versions -> watch-build) and is what the
+# one-shot `helf-watch-app` service runs to put it on the data volume.
 
 # Nothing here is pinned (user rule): every base image is a floating tag that
-# compose re-pulls (`build.pull: true`), and the Android toolchain resolves its
-# newest stable release at build time. Breakage from an upstream release shows
+# compose re-pulls (`build.pull: true`), and the Android and Arm toolchains and
+# the UNA SDK resolve their newest release at build time. Breakage from an upstream release shows
 # up as a failed build, never as a broken running container.
 
 # Stage 1: Frontend dependencies, shared by the web build and the Android prep
@@ -159,6 +162,108 @@ COPY --from=android-build /out/helf-unsigned.apk /out/version.json /opt/helf-apk
 COPY scripts/sign-apk.sh /usr/local/bin/sign-apk.sh
 
 CMD ["sh", "/usr/local/bin/sign-apk.sh"]
+
+# Stage 1f: Resolve the UNA SDK commit and the newest Arm GNU Toolchain.
+#
+# ADD of the SDK's main-branch commit is the cache key, as in android-versions:
+# a new SDK commit reruns this stage. The toolchain has no machine-readable
+# index (Arm's download page answers scripts with 403), but its files sit at
+# predictable URLs, so the newest is found by asking for each X.Y.relZ from
+# 14.x (the SDK's floor, 14.3.Rel1) up, until a whole major has none. The SDK
+# names the Arm GNU Toolchain or ST's; a distro gcc-arm-none-eabi is not
+# supported (newlib syscall stubs), so it is not used here.
+#
+# Only the resolved values leave this stage, and watch-build COPYs them, keyed
+# on content: an SDK commit that leaves the toolchain where it was does not
+# download the toolchain again.
+FROM debian:stable-slim AS watch-versions
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ADD https://api.github.com/repos/UNAWatch/una-sdk/commits/main /tmp/sdk-main.json
+
+RUN set -eu; \
+    sdk="$(grep -o '"sha": *"[0-9a-f]\{40\}"' /tmp/sdk-main.json | head -1 | grep -o '[0-9a-f]\{40\}')"; \
+    base=https://developer.arm.com/-/media/Files/downloads/gnu; \
+    arm=""; major=14; \
+    while [ "$major" -le 40 ]; do \
+        hit=""; \
+        for minor in 1 2 3 4; do for rel in 1 2 3; do \
+            v="$major.$minor.rel$rel"; \
+            if curl -fsIL -o /dev/null --max-time 30 \
+                "$base/$v/binrel/arm-gnu-toolchain-$v-x86_64-arm-none-eabi.tar.xz"; then \
+                arm="$v"; hit=1; \
+            fi; \
+        done; done; \
+        if [ -z "$hit" ] && [ -n "$arm" ]; then break; fi; \
+        major=$((major + 1)); \
+    done; \
+    for v in "$sdk" "$arm"; do [ -n "$v" ] || { echo "watch-versions: could not resolve a version" >&2; exit 1; }; done; \
+    printf 'SDK_COMMIT=%s\nARM_VERSION=%s\n' "$sdk" "$arm" > /versions.env; \
+    cat /versions.env
+
+# Stage 1g: Build Sleep Log (watch/sleep-log, plan 0024) into a .uapp.
+#
+# The host tests run first, so a policy or format regression fails the build.
+# The toolchain is checked against the SHA-256 Arm publishes beside it. The SDK
+# is fetched at exactly the resolved commit; no submodules (only LVGL is one,
+# and Sleep Log has no GUI). The .uapp is checked for its APP_ID and the
+# autostart flag before it can be published (scripts/watch-app-meta.py).
+FROM debian:stable-slim AS watch-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates xz-utils git cmake ninja-build make g++ \
+        python3 python3-pyelftools python3-pil python3-jsonschema \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=watch-versions /versions.env /versions.env
+
+RUN set -eu; . /versions.env; \
+    f="arm-gnu-toolchain-${ARM_VERSION}-x86_64-arm-none-eabi.tar.xz"; \
+    url="https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_VERSION}/binrel/$f"; \
+    curl -fsSL -o "/tmp/$f" "$url"; \
+    curl -fsSL -o "/tmp/$f.sha256asc" "$url.sha256asc"; \
+    (cd /tmp && sha256sum -c "$f.sha256asc"); \
+    mkdir -p /opt/arm; \
+    tar xf "/tmp/$f" -C /opt/arm --strip-components=1; \
+    rm "/tmp/$f" "/tmp/$f.sha256asc"; \
+    /opt/arm/bin/arm-none-eabi-gcc --version | head -1
+
+RUN set -eu; . /versions.env; \
+    git init -q /opt/una-sdk; \
+    git -C /opt/una-sdk fetch -q --depth 1 https://github.com/UNAWatch/una-sdk.git "$SDK_COMMIT"; \
+    git -C /opt/una-sdk checkout -q FETCH_HEAD
+
+ENV PATH=/opt/arm/bin:$PATH \
+    UNA_SDK=/opt/una-sdk
+
+WORKDIR /work
+COPY watch/sleep-log ./watch/sleep-log
+COPY scripts/watch-app-meta.py ./scripts/
+
+RUN set -eu; . /versions.env; \
+    make -C watch/sleep-log/Tests; \
+    cmake -S watch/sleep-log/Software/App/SleepLog-CMake -B /tmp/build -G Ninja \
+        -DUNA_PYTHON_EXECUTABLE=/usr/bin/python3 >/dev/null; \
+    cmake --build /tmp/build; \
+    uapp="$(ls watch/sleep-log/Output/*.uapp)"; \
+    [ "$(echo "$uapp" | wc -l)" -eq 1 ] || { echo "watch-build: expected one .uapp, got: $uapp" >&2; exit 1; }; \
+    python3 scripts/watch-app-meta.py watch/sleep-log/Software/App/SleepLog-CMake/CMakeLists.txt \
+        "$uapp" /out "$SDK_COMMIT" "$ARM_VERSION"
+
+# Stage 1h: Put the watch app on the data volume.
+#
+# Run as the `helf-watch-app` compose service on every `up`, like helf-apk:
+# a build cannot write to the host. Nothing to sign, so this is only a copy.
+FROM alpine:latest AS watch-publisher
+
+RUN apk add --no-cache jq
+
+COPY --from=watch-build /out/ /opt/watch-app/
+COPY scripts/publish-watch-app.sh /usr/local/bin/publish-watch-app.sh
+
+CMD ["sh", "/usr/local/bin/publish-watch-app.sh"]
 
 # Stage 2: Python dependencies
 FROM python:slim AS backend-deps

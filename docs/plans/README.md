@@ -49,6 +49,7 @@ table.
 | 0022 | [The library: blocks and programs](0022-library-blocks-and-programs.md) | Implemented 2026-11-22 | `47920bce115b` | Built-in blocks are applied by duplicating; renaming a block does not rewrite programs that include it |
 | 0023 | [The UNA Watch, polled over Bluetooth](0023-una-watch-over-bluetooth.md) | **In progress** | no migration | First real sync from Android 2026-11-23 (§9): daily health verified end to end. Still to see: silent reconnect across hours of polling, and the first workout `.fit`. Promotion into `metric` is undecided (§7) |
 | 0024 | [Sleep from the watch](0024-sleep-from-the-watch.md) | **In progress** | no migration | Watch app (`watch/sleep-log/`) written and host-tested, decoder landed; not yet built or run on the watch (§7). Features, model and metrics are §6 steps 3–6; metrics need a migration, asked for first |
+| 0026 | [Installing watch apps over Bluetooth](0026-watch-apps-over-bluetooth.md) | **In progress** | no migration | Built and tested against the simulated watch: Docker builds Sleep Log, Helf serves it, the phone writes it to `/Apps/SleepLog/` and restarts the watch. Not yet run on the real watch (§7). Sleep Log became an autostart Glance (§5) |
 | 0025 | [Helf as a Capacitor app](0025-capacitor-app.md) | **In progress** | no migration | Phase 1 landed (§8): native projects, the Bluetooth adapter, the per-device sync switch. The server now builds, signs and serves the APK (§9). Next: install it on a phone, then the foreground service |
 
 ## Where things stand

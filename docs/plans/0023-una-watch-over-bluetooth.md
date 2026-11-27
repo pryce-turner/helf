@@ -127,7 +127,7 @@ commands until notifications are on.
 | `0x10` | GET_DAILY_HEALTH `{year u16, month, day}` | yes | steps, floors (**up + down summed**), activity min, RHR, AHR — **today from RAM**, past days from storage |
 | `0x14` | GET_DAILY_HEALTH_HR `{year, month, day, hour}` | yes | 60 one-byte HR values for that hour; today from RAM |
 | `0x12` | GET_EPO_STATUS | yes | GPS assistance data validity |
-| `0x01` | RESET | **reboots the watch** | never |
+| `0x01` | RESET | **reboots the watch** | never from the sync; 0026 sends it, on a tap, after an app install |
 | `0x02` | START_FW_UPDATE | **flashes firmware** | never |
 | `0x11`, `0x13`, `0x20` | find-phone ack, reference location, media now-playing | writes state | no |
 | event `0x01` | ACTIVITY_SESSION_ENDED `{appId u64}` | — | pushed only while connected |

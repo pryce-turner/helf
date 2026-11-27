@@ -1,7 +1,9 @@
 ext {
     minSdkVersion = 24
-    compileSdkVersion = 36
-    targetSdkVersion = 36
+    // The newest platform, resolved by the Dockerfile and passed as
+    // -PhelfAndroidSdk. minSdk is a floor, not a pin.
+    compileSdkVersion = Integer.parseInt(property('helfAndroidSdk').toString())
+    targetSdkVersion = compileSdkVersion
     androidxActivityVersion = '1.11.0'
     androidxAppCompatVersion = '1.7.1'
     androidxCoordinatorLayoutVersion = '1.3.0'

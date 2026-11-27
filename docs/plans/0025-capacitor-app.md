@@ -171,12 +171,13 @@ unaffected.
 
 ## 9. The APK built and signed on the server (2026-11-26)
 
-- The root `Dockerfile` has `frontend-deps` (Node 24, shared `npm ci`; the
+- The root `Dockerfile` has `frontend-deps` (Node, shared `npm ci`; the
   Capacitor CLI needs Node >= 22), `android-prep` (`cap sync` over only
   `capacitor.config.ts` and `android/`, with a placeholder `dist`, since
-  `server.url` means the bundled assets are never shown), `android-build`
-  (JDK 21 + SDK, `assembleDebug`, output `helf-unsigned.apk` plus version
-  metadata) and `android-signer`. `production` does not contain the APK, so the
+  `server.url` means the bundled assets are never shown), `android-versions`
+  (resolves the newest stable toolchain), `android-build` (`gradle:latest` +
+  SDK, `assembleDebug`, output `helf-unsigned.apk` plus version metadata) and
+  `android-signer`. `production` does not contain the APK, so the
   web services never build any of this. Gradle reruns only for native changes.
   Removing `server.url` would mean bundling the real `dist` into `android-prep`
   and paying that rebuild every time.
@@ -194,3 +195,18 @@ unaffected.
 - `scripts/build-android.sh` and `frontend/android/docker/` are gone: a
   Mac-built APK with a different key would be a trap.
 - Still open: install on a phone, and iOS, which needs Xcode on the Mac.
+
+## 10. Unpinned (2026-11-27)
+
+The first version pinned cmdline-tools 15859902, build-tools 36.0.0,
+android-36, AGP 8.13.0, Gradle 8.14.3, JDK 21, Node 24 and Python 3.12. All of
+it now floats (user rule: nothing pinned): base images are floating tags pulled
+on every build, and `android-versions` resolves the toolchain from Google's
+SDK index and Maven metadata. Moving to AGP 9 needed one fix in
+`app/build.gradle` (`proguard-android.txt` is refused, `-optimize` replaces it).
+The Gradle wrapper is gone, since it is a pinned Gradle. Verified outside
+Docker with the versions resolved that day: JDK 25, Gradle 9.9.2, AGP 9.5.3,
+build-tools 37.0.0, compileSdk/targetSdk 37; aapt2 reads `app.helf`,
+targetSdk 37, and apksigner signs and verifies it. The backend suite passes on
+Python 3.15. Library versions (`variables.gradle`'s androidx set, the npm
+lockfile) are dependency locks, not toolchain pins, and were left alone.

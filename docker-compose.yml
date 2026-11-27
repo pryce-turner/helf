@@ -1,6 +1,10 @@
 services:
     helf:
-        build: .
+        build:
+            context: .
+            # Re-pull the floating base images on every build; nothing in the
+            # Dockerfile is pinned, and a cached `:latest` would never move.
+            pull: true
         # `docker compose up` builds only when the image is *absent* — so a
         # code change never reached a restarted app without a manual
         # `docker compose build`. `pull_policy: build` makes
@@ -63,7 +67,9 @@ services:
     # Same image, different command; the two-writer contention this creates is
     # what `audit_actor` + `BEGIN IMMEDIATE` already exist to handle.
     helf-mcp:
-        build: .
+        build:
+            context: .
+            pull: true
         pull_policy: build
         image: helf:latest
         container_name: helf-mcp
@@ -132,6 +138,7 @@ services:
         build:
             context: .
             target: android-signer
+            pull: true
         image: helf-apk:latest
         pull_policy: build
         container_name: helf-apk

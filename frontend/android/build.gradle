@@ -7,8 +7,11 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.13.0'
-        classpath 'com.google.gms:google-services:4.4.4'
+        // No versions here (nothing is pinned): the Dockerfile resolves the
+        // newest stable AGP and passes it as -PhelfAgpVersion. google-services
+        // is only applied when a google-services.json exists, which it doesn't.
+        classpath "com.android.tools.build:gradle:${property('helfAgpVersion')}"
+        classpath 'com.google.gms:google-services:latest.release'
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files

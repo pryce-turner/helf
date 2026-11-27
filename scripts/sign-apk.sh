@@ -50,9 +50,9 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 cp "$SRC/helf-unsigned.apk" "$work/helf.apk"
-java -jar "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass "pass:$PASS" \
+java --enable-native-access=ALL-UNNAMED -jar "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass "pass:$PASS" \
     --ks-key-alias "$ALIAS" --key-pass "pass:$PASS" "$work/helf.apk"
-java -jar "$APKSIGNER" verify "$work/helf.apk"
+java --enable-native-access=ALL-UNNAMED -jar "$APKSIGNER" verify "$work/helf.apk"
 
 jq -n \
     --slurpfile v "$SRC/version.json" \

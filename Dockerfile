@@ -5,9 +5,9 @@
 # `helf` and `helf-mcp` run, and never builds the Android or watch stages.
 # `android-signer` builds the APK (frontend-deps -> android-prep,
 # android-versions -> android-build) and is what the one-shot `helf-apk`
-# service runs to sign it onto the data volume. `watch-publisher` builds Sleep
-# Log for the UNA Watch (watch-versions -> watch-build) and is what the
-# one-shot `helf-watch-app` service runs to put it on the data volume.
+# service runs to sign it onto the data volume. `watch-publisher` builds the
+# UNA Watch apps under watch/ (watch-versions -> watch-build) and is what the
+# one-shot `helf-watch-app` service runs to put them on the data volume.
 
 # Nothing here is pinned (user rule): every base image is a floating tag that
 # compose re-pulls (`build.pull: true`), and the Android and Arm toolchains and
@@ -203,13 +203,15 @@ RUN set -eu; \
     printf 'SDK_COMMIT=%s\nARM_VERSION=%s\n' "$sdk" "$arm" > /versions.env; \
     cat /versions.env
 
-# Stage 1g: Build Sleep Log (watch/sleep-log, plan 0024) into a .uapp.
+# Stage 1g: Build every watch app under watch/ into a .uapp: Sleep Log
+# (plan 0024) and Drinks (plan 0027).
 #
-# The host tests run first, so a policy or format regression fails the build.
-# The toolchain is checked against the SHA-256 Arm publishes beside it. The SDK
-# is fetched at exactly the resolved commit; no submodules (only LVGL is one,
-# and Sleep Log has no GUI). The .uapp is checked for its APP_ID and the
-# autostart flag before it can be published (scripts/watch-app-meta.py).
+# An app is a directory with Software/App/*-CMake/CMakeLists.txt; its host
+# tests (Tests/Makefile) run first, so a logic or format regression fails the
+# build. The toolchain is checked against the SHA-256 Arm publishes beside it.
+# The SDK is fetched at exactly the resolved commit, with its one submodule,
+# LVGL, which Drinks' GUI is built on. Each .uapp is checked for its APP_ID and
+# its autostart flag before it can be published (scripts/watch-app-meta.py).
 FROM debian:stable-slim AS watch-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -233,26 +235,33 @@ RUN set -eu; . /versions.env; \
 RUN set -eu; . /versions.env; \
     git init -q /opt/una-sdk; \
     git -C /opt/una-sdk fetch -q --depth 1 https://github.com/UNAWatch/una-sdk.git "$SDK_COMMIT"; \
-    git -C /opt/una-sdk checkout -q FETCH_HEAD
+    git -C /opt/una-sdk checkout -q FETCH_HEAD; \
+    git -C /opt/una-sdk submodule update -q --init --depth 1 ThirdParty/lvgl
 
 ENV PATH=/opt/arm/bin:$PATH \
     UNA_SDK=/opt/una-sdk
 
 WORKDIR /work
-COPY watch/sleep-log ./watch/sleep-log
+COPY watch ./watch
 COPY scripts/watch-app-meta.py ./scripts/
 
 RUN set -eu; . /versions.env; \
-    make -C watch/sleep-log/Tests; \
-    cmake -S watch/sleep-log/Software/App/SleepLog-CMake -B /tmp/build -G Ninja \
-        -DUNA_PYTHON_EXECUTABLE=/usr/bin/python3 >/dev/null; \
-    cmake --build /tmp/build; \
-    uapp="$(ls watch/sleep-log/Output/*.uapp)"; \
-    [ "$(echo "$uapp" | wc -l)" -eq 1 ] || { echo "watch-build: expected one .uapp, got: $uapp" >&2; exit 1; }; \
-    python3 scripts/watch-app-meta.py watch/sleep-log/Software/App/SleepLog-CMake/CMakeLists.txt \
-        "$uapp" /out "$SDK_COMMIT" "$ARM_VERSION"
+    built=0; \
+    for cml in watch/*/Software/App/*-CMake/CMakeLists.txt; do \
+        app="${cml%%/Software/*}"; \
+        echo "watch-build: $app"; \
+        if [ -f "$app/Tests/Makefile" ]; then make -C "$app/Tests"; fi; \
+        cmake -S "$(dirname "$cml")" -B "/tmp/build/$app" -G Ninja \
+            -DUNA_PYTHON_EXECUTABLE=/usr/bin/python3 >/dev/null; \
+        cmake --build "/tmp/build/$app"; \
+        uapp="$(ls "$app"/Output/*.uapp)"; \
+        [ "$(echo "$uapp" | wc -l)" -eq 1 ] || { echo "watch-build: expected one .uapp in $app, got: $uapp" >&2; exit 1; }; \
+        python3 scripts/watch-app-meta.py "$cml" "$uapp" /out "$SDK_COMMIT" "$ARM_VERSION"; \
+        built=$((built + 1)); \
+    done; \
+    [ "$built" -gt 0 ] || { echo "watch-build: no apps under watch/" >&2; exit 1; }
 
-# Stage 1h: Put the watch app on the data volume.
+# Stage 1h: Put the watch apps on the data volume, one folder each.
 #
 # Run as the `helf-watch-app` compose service on every `up`, like helf-apk:
 # a build cannot write to the host. Nothing to sign, so this is only a copy.
@@ -260,7 +269,7 @@ FROM alpine:latest AS watch-publisher
 
 RUN apk add --no-cache jq
 
-COPY --from=watch-build /out/ /opt/watch-app/
+COPY --from=watch-build /out/ /opt/watch-apps/
 COPY scripts/publish-watch-app.sh /usr/local/bin/publish-watch-app.sh
 
 CMD ["sh", "/usr/local/bin/publish-watch-app.sh"]

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bluetooth, Moon, Watch as WatchIcon } from "lucide-react";
+import { Bluetooth, GlassWater, Moon, Watch as WatchIcon, type LucideIcon } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import BodySectionTabs from "@/components/BodySectionTabs";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,18 @@ const COLORS: Record<PollOutcome["kind"], string> = {
 
 type WakeLockSentinelLike = { release(): Promise<void> };
 
+/** What each app Helf builds is for, by its folder on the watch. */
+const WATCH_APP_ABOUT: Record<string, { icon: LucideIcon; text: string }> = {
+    SleepLog: {
+        icon: Moon,
+        text: "Records heart rate and wrist motion while you sleep, for Helf to fetch. Starts by itself at boot, with a status tile on the glances screen.",
+    },
+    Drinks: {
+        icon: GlassWater,
+        text: "Log drinks by volume and strength and see an estimated BAC, coloured by level. Open it from the watch's app list; Helf fetches what you log.",
+    },
+};
+
 export default function Watch() {
     const connector = getWatchConnector();
     const native = connector.kind === "native";
@@ -72,10 +84,11 @@ export default function Watch() {
     const [busy, setBusy] = useState(false);
     const [log, setLog] = useState<{ at: Date; text: string; color: string }[]>([]);
     const [held, setHeld] = useState<number | null>(null);
-    const [watchApp, setWatchApp] = useState<WatchAppInfo | null>(null);
-    /** What the install is doing right now, or null when idle. */
-    const [installing, setInstalling] = useState<string | null>(null);
-    const [needsRestart, setNeedsRestart] = useState(false);
+    const [watchApps, setWatchApps] = useState<WatchAppInfo[]>([]);
+    /** The app being installed (or the watch restarted for) and what is happening, or null when idle. */
+    const [installing, setInstalling] = useState<{ folder: string; text: string } | null>(null);
+    /** An app was installed since the last restart: the watch registers apps only at boot. */
+    const [needsRestart, setNeedsRestart] = useState<WatchAppInfo | null>(null);
     const abort = useRef<AbortController | null>(null);
     const wakeLock = useRef<WakeLockSentinelLike | null>(null);
 
@@ -95,9 +108,9 @@ export default function Watch() {
         connector.remembered().then((d) => d && setDevice(d));
         refreshHeld();
         watchAppApi
-            .info()
-            .then(setWatchApp)
-            .catch(() => setWatchApp(null));
+            .list()
+            .then(setWatchApps)
+            .catch(() => setWatchApps([]));
     }, [supported, connector, refreshHeld]);
 
     const onOutcome = useCallback(
@@ -212,27 +225,23 @@ export default function Watch() {
 
     // Install and restart queue behind a running poll (watchConnector's
     // `exclusive`), so they need no polling switch of their own.
-    const installApp = async () => {
-        if (!watchApp) return;
-        setInstalling("Downloading");
+    const installApp = async (app: WatchAppInfo) => {
+        const folder = app.folder ?? "";
+        setInstalling({ folder, text: "Downloading" });
         try {
-            const result = await installWatchApp(watchApp, {
+            const result = await installWatchApp(app, {
                 download: watchAppApi.download,
                 connect: (options) => connector.connect(options),
                 onStep: (s) => {
-                    setInstalling(s.message);
+                    setInstalling({ folder, text: s.message });
                     append(s.message);
                 },
-                onProgress: (n, total) => setInstalling(`Sending ${Math.round((100 * n) / total)}%`),
+                onProgress: (n, total) => setInstalling({ folder, text: `Sending ${Math.round((100 * n) / total)}%` }),
             });
             for (const w of result.warnings) append(w, "var(--warning)");
             for (const p of result.removed) append(`Removed ${p}`);
-            if (result.status === "unchanged") {
-                append(`${watchApp.name} on the watch is already this build.`, "var(--success)");
-            } else {
-                append(`${watchApp.name} installed. It starts when the watch restarts.`, "var(--success)");
-                setNeedsRestart(true);
-            }
+            append(`${app.name} installed. It starts when the watch restarts.`, "var(--success)");
+            setNeedsRestart(app);
         } catch (e) {
             append((e as Error).message, "var(--error)");
         } finally {
@@ -241,12 +250,13 @@ export default function Watch() {
     };
 
     const restart = async () => {
-        if (!watchApp) return;
-        setInstalling("Restarting the watch");
+        if (!needsRestart) return;
+        const app = needsRestart;
+        setInstalling({ folder: app.folder ?? "", text: "Restarting the watch" });
         try {
-            await restartWatch(watchApp, (options) => connector.connect(options));
-            setNeedsRestart(false);
-            append(`The watch is restarting; ${watchApp.name} starts with it.`, "var(--success)");
+            await restartWatch(app, (options) => connector.connect(options));
+            setNeedsRestart(null);
+            append("The watch is restarting; new apps are there when it is back.", "var(--success)");
         } catch (e) {
             append((e as Error).message, "var(--error)");
         } finally {
@@ -366,49 +376,57 @@ export default function Watch() {
                         </Card>
                     )}
 
-                    {supported && watchApp?.available && (
-                        <Card className="animate-in section">
-                            <CardContent style={{ paddingTop: "var(--space-4)" }}>
-                                <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)" }}>
-                                    <span className="flex items-center gap-2" style={{ fontWeight: 600 }}>
-                                        <Moon style={{ width: 16, height: 16 }} />
-                                        {watchApp.name} on the watch
-                                    </span>
-                                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                        {watchApp.size_bytes != null && `${Math.round(watchApp.size_bytes / 1024)} KB`}
-                                        {watchApp.built_at && ` · built ${new Date(watchApp.built_at).toLocaleDateString()}`}
-                                    </span>
-                                </div>
+                    {supported &&
+                        watchApps.map((app) => {
+                            const about = WATCH_APP_ABOUT[app.folder ?? ""];
+                            const Icon = about?.icon ?? WatchIcon;
+                            const mine = installing !== null && installing.folder === app.folder;
+                            return (
+                                <Card key={app.folder} className="animate-in section">
+                                    <CardContent style={{ paddingTop: "var(--space-4)" }}>
+                                        <div
+                                            className="flex items-center justify-between"
+                                            style={{ marginBottom: "var(--space-3)" }}
+                                        >
+                                            <span className="flex items-center gap-2" style={{ fontWeight: 600 }}>
+                                                <Icon style={{ width: 16, height: 16 }} />
+                                                {app.name} on the watch
+                                            </span>
+                                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                                {app.size_bytes != null && `${Math.round(app.size_bytes / 1024)} KB`}
+                                                {app.built_at && ` · built ${new Date(app.built_at).toLocaleDateString()}`}
+                                            </span>
+                                        </div>
 
-                                <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
-                                    Records heart rate and wrist motion while you sleep, for Helf to fetch. Installs
-                                    over Bluetooth into /Apps/{watchApp.folder} and runs from the watch&apos;s next
-                                    restart, with a status tile on the glances screen.
-                                </p>
+                                        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
+                                            {about?.text ?? "A watch app built by Helf."} Installs over Bluetooth into
+                                            /Apps/{app.folder}.
+                                        </p>
 
-                                <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        variant={needsRestart ? "outline" : "default"}
-                                        onClick={installApp}
-                                        disabled={!device || installing !== null}
-                                    >
-                                        {installing ?? "Install on watch"}
-                                    </Button>
-                                    {needsRestart && (
-                                        <Button onClick={restart} disabled={installing !== null}>
-                                            Restart watch
-                                        </Button>
-                                    )}
-                                </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button
+                                                variant={needsRestart ? "outline" : "default"}
+                                                onClick={() => installApp(app)}
+                                                disabled={!device || installing !== null}
+                                            >
+                                                {mine ? installing.text : "Install on watch"}
+                                            </Button>
+                                            {needsRestart?.folder === app.folder && (
+                                                <Button onClick={restart} disabled={installing !== null}>
+                                                    Restart watch
+                                                </Button>
+                                            )}
+                                        </div>
 
-                                {!device && (
-                                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>
-                                        Pair the watch first.
-                                    </p>
-                                )}
-                            </CardContent>
-                        </Card>
-                    )}
+                                        {!device && (
+                                            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>
+                                                Pair the watch first.
+                                            </p>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
 
                     {log.length > 0 && (
                         <Card className="animate-in section">

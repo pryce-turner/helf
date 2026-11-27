@@ -66,8 +66,10 @@ frontend/android/app/src/main/res/xml/config.xml
 frontend/android/local.properties
 frontend/ios/
 
-# Watch app: local build output. The image builds its own (watch-build), and a
-# host build left in the context would bust that stage's cache.
-watch/sleep-log/Output/
-watch/sleep-log/Tests/build/
-watch/sleep-log/Software/App/SleepLog-CMake/build*/
+# Watch apps: local build output. The image builds its own (watch-build), and
+# a host build left in the context would bust that stage's cache.
+watch/*/Output/
+watch/*/Tests/build/
+watch/*/Software/App/*-CMake/build*/
+watch/*/Software/App/LVGL-GUI/simulator/build*/
+watch/*/Software/App/LVGL-GUI/simulator/sim-out/

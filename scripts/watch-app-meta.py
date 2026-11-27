@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Describe a built watch app for Helf (plan 0026). Used by the Dockerfile.
+"""Describe a built watch app for Helf (plans 0026, 0027). Used by the Dockerfile.
 
-    watch-app-meta.py <CMakeLists.txt> <built .uapp> <out dir> <sdk commit> <toolchain>
+    watch-app-meta.py <CMakeLists.txt> <built .uapp> <out root> <sdk commit> <toolchain>
 
-Copies the .uapp to <out dir>/<APP_FILE_NAME>.uapp, the fixed name the
-installer writes on the watch (the build names it with its version), and
-writes <out dir>/watch-app.json beside it. The app's identity comes from its
-own CMakeLists.txt, so there is one place it is set.
+Copies the .uapp to <out root>/<APP_FILE_NAME>/<APP_FILE_NAME>.uapp, the
+folder and fixed name the installer writes on the watch (the build names it
+with its version), and writes watch-app.json beside it. The app's identity
+comes from its own CMakeLists.txt, so there is one place it is set.
 
 `crc32` is zlib's, the same CRC-32 as the watch's DIGEST, so the phone can
 check the watch's copy without reading it back.
@@ -38,11 +38,15 @@ def main() -> None:
     # libcVersion u32, serviceSize u32, flags u32, all little-endian.
     if len(data) < 24 or int.from_bytes(data[0:8], "little") != int(app_id, 16):
         sys.exit(f"watch-app-meta: {built} does not carry APP_ID {app_id}")
+    # The packed autostart flag must say what CMakeLists.txt asked for: an
+    # app meant to start at boot (Sleep Log) that does not would never run.
     flags = int.from_bytes(data[20:24], "little")
-    if not flags & 0x08:
-        sys.exit("watch-app-meta: FLAG_APP_AUTO_START is not set; the app would never start by itself")
+    m = re.search(r"^\s*set\(APP_AUTOSTART\s+(\w+)\)", text, re.MULTILINE)
+    want_autostart = bool(m) and m.group(1).upper() in {"ON", "TRUE", "1", "YES"}
+    if bool(flags & 0x08) != want_autostart:
+        sys.exit(f"watch-app-meta: FLAG_APP_AUTO_START is {bool(flags & 0x08)}, CMakeLists.txt says {want_autostart}")
 
-    out_dir = Path(out)
+    out_dir = Path(out) / file_stem
     out_dir.mkdir(parents=True, exist_ok=True)
     file_name = f"{file_stem}.uapp"
     shutil.copyfile(built, out_dir / file_name)

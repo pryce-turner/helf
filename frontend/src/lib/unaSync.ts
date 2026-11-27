@@ -52,6 +52,8 @@ const DAILY_FILE = /^dh_\d{8}\.json$/;
 const DAY_DIR = /^\d{8}$/;
 /** SleepLog chunks (plan 0024): only `.bin`, which the app renames to once complete. */
 const SLEEP_CHUNK = /^\d{6}(-\d+)?\.bin$/;
+/** Drinks events (plan 0027): only `.json`, which the app renames to from `.tmp` once written. */
+const DRINK_EVENT = /^\d{6}(-\d+)?\.json$/;
 
 /**
  * Directories under `/Workouts` that are inputs *to* the watch — planned
@@ -150,13 +152,31 @@ async function discoverSleep(client: FtsClient, appDir: string): Promise<WatchFi
     return files;
 }
 
-/** Per app: workouts under `Activity/`, and SleepLog chunks under `Sleep/`. */
+/**
+ * Drinks events: `/Apps/<App>/Log/YYYYMMDD/HHMMSS.json` (plan 0027). One small
+ * file per drink or undo, never rewritten, so each is fetched once.
+ */
+async function discoverDrinks(client: FtsClient, appDir: string): Promise<WatchFile[]> {
+    const files: WatchFile[] = [];
+    const logDir = `${appDir}/Log`;
+    for (const day of await listOrEmpty(client, logDir)) {
+        if (!day.isDir || !DAY_DIR.test(day.name)) continue;
+        const dir = `${logDir}/${day.name}`;
+        for (const f of await listOrEmpty(client, dir)) {
+            if (!f.isDir && DRINK_EVENT.test(f.name)) files.push(asFile(dir, f));
+        }
+    }
+    return files;
+}
+
+/** Per app: workouts under `Activity/`, SleepLog chunks under `Sleep/`, Drinks events under `Log/`. */
 async function discoverActivities(client: FtsClient): Promise<WatchFile[]> {
     const files: WatchFile[] = [];
     for (const app of await listOrEmpty(client, "/Apps")) {
         if (!app.isDir) continue;
         const appDir = `/Apps/${app.name}`;
         files.push(...(await discoverSleep(client, appDir)));
+        files.push(...(await discoverDrinks(client, appDir)));
         const activityDir = `${appDir}/Activity`;
         const activity = await listOrEmpty(client, activityDir);
         if (!activity.length) continue;

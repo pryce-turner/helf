@@ -379,8 +379,15 @@ export interface InstallStep {
 }
 
 export interface InstallResult {
-    /** `unchanged` when the watch already has this exact file. */
-    status: "installed" | "unchanged";
+    /**
+     * Always `installed`: there is no "already up to date" shortcut, because
+     * the watch cannot tell. A .uapp ends with the CRC-32 of everything before
+     * it, so the CRC-32 of any intact .uapp is the residue 0x2144DF1C, and
+     * DIGEST (whole-file CRC-32) gives the same answer for every build of
+     * every app. Size plus DIGEST would skip a changed build of the same size.
+     * Corruption still shows: a damaged file no longer hits the residue.
+     */
+    status: "installed";
     /** Other `.uapp` files removed from the folder (e.g. a copy put there over USB). */
     removed: string[];
     /** Things worth telling the user that did not stop the install. */
@@ -447,13 +454,6 @@ export async function installApp(
         (e) => !e.isDir && e.name !== app.fileName && client.isAppFile(`${dir}/${e.name}`) && e.name !== `${app.fileName}.part`,
     );
     const existing = entries.find((e) => !e.isDir && e.name === app.fileName);
-
-    if (existing && existing.size === size && others.length === 0) {
-        if (sameDigest(await client.digest(target), size, crc)) {
-            step({ step: "done", message: "Already on the watch" });
-            return { status: "unchanged", removed: [], warnings };
-        }
-    }
 
     step({ step: "upload", message: `Sending ${size} bytes` });
     await client.writeFile(part, app.bytes, options.write);

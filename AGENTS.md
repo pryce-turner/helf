@@ -190,7 +190,7 @@ helf/
 │                             #   host tests: make -C watch/sleep-log/Tests
 ├── scripts/
 │   ├── sign-apk.sh           # helf-apk service: signs the APK onto data/android/
-│   ├── publish-watch-app.sh  # helf-watch-app service: puts Sleep Log on data/watch-apps/
+│   ├── publish-watch-app.sh  # helf-watch-app service: puts the watch apps on data/watch-apps/
 │   ├── watch-app-meta.py     # watch-build: checks the .uapp, writes watch-app.json
 │   ├── backup-db.sh          # The only correct way to copy a live WAL database
 │   └── pre-migration-backup.sh   # PreToolUse hook: backs up before alembic
@@ -595,16 +595,26 @@ The exceptions to "nothing in `data/` is overwritten" are `android/helf.apk`
 and `android/helf-apk.json`, and `watch-apps/` (below): derived artifacts,
 replaced on each new build, via temp file and `mv`.
 
-### The watch app: built by the image, installed over Bluetooth
+### The watch apps: built by the image, installed over Bluetooth
 
-Sleep Log (`watch/sleep-log/`, plan 0024) is built by the Dockerfile's
-`watch-build` stage and copied to `data/watch-apps/` by the one-shot
-`helf-watch-app` service, the same shape as the APK and with no `depends_on`
-for the same reason. `watch-versions` resolves the UNA SDK's `main` commit and
-the newest Arm GNU Toolchain; the build runs the host tests and checks the
-`.uapp` carries its APP_ID and the autostart flag. Helf serves it at
-`/api/app/watch` and `/download/watch/SleepLog.uapp`, and the Watch page
-installs it (plan 0026).
+Every app under `watch/` (Sleep Log, plan 0024; Drinks, plan 0027) is built
+by the Dockerfile's `watch-build` stage and copied to
+`data/watch-apps/<Folder>/` by the one-shot `helf-watch-app` service, the same
+shape as the APK and with no `depends_on` for the same reason.
+`watch-versions` resolves the UNA SDK's `main` commit and the newest Arm GNU
+Toolchain; the build runs each app's host tests, then checks each `.uapp`
+carries its APP_ID and the autostart flag its CMakeLists asks for. Helf lists
+them at `/api/app/watch`, serves `/download/watch/<Folder>/<File>.uapp`, and
+the Watch page installs each (plan 0026).
+
+**Every intact `.uapp` has whole-file CRC-32 `2144df1c`**: it ends with its
+own CRC. So the watch's DIGEST cannot tell two builds apart; never use it to
+decide a file is "already installed" (plan 0026 §9).
+
+To add an app: a folder under `watch/` with `Software/App/<Name>-CMake/`
+(`APP_FILE_NAME` is its folder on the watch), host tests in `Tests/Makefile`,
+and a line in the Watch page's `WATCH_APP_ABOUT`. `watch/drinks/` is the GUI
+template (LVGL), `watch/sleep-log/` the background one.
 
 **Writing to the watch is scoped, by construction.** The sync's `FtsClient`
 cannot send a write opcode. `FtsAppInstaller` (`frontend/src/lib/ftsInstall.ts`)

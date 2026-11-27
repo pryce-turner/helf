@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { FakeWatch } from "./fakeWatch";
 import { FtsClient, crc32 } from "./fts";
@@ -15,7 +16,7 @@ const info: WatchAppInfo = {
     file_name: "SleepLog.uapp",
     app_id: "64313DF28C1B15C8",
     size_bytes: bytes.length,
-    sha256: "x",
+    sha256: createHash("sha256").update(bytes).digest("hex"),
     crc32: crc32(bytes).toString(16).padStart(8, "0"),
     sdk_commit: null,
     toolchain: null,
@@ -56,6 +57,16 @@ describe("installWatchApp", () => {
         const c = connector(new FakeWatch());
         const bad = bytes.slice(0, 3999);
         await expect(installWatchApp(info, { download: async () => bad, connect: c.connect })).rejects.toThrow(
+            /checksum/,
+        );
+        expect(c.opened).toHaveLength(0);
+    });
+
+    it("rejects a different file with the same size and CRC, by its SHA-256", async () => {
+        const c = connector(new FakeWatch());
+        // Size and CRC agree; only the SHA-256 on record differs.
+        const other = { ...info, sha256: "0".repeat(64) };
+        await expect(installWatchApp(other, { download: async () => bytes, connect: c.connect })).rejects.toThrow(
             /checksum/,
         );
         expect(c.opened).toHaveLength(0);

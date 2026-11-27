@@ -31,7 +31,11 @@ function seededWatch(): FakeWatch {
         .addText("/Workouts/Schedule/2026-11-25.fit", "plan")
         .add("/Apps/SleepLog/Sleep/20261123/231500.bin", { data: new Uint8Array([0x55, 0x53, 0x4c, 0x31]) })
         .add("/Apps/SleepLog/Sleep/20261123/232500-1.bin", { data: new Uint8Array([1]) })
-        .add("/Apps/SleepLog/Sleep/20261123/233500.part", { data: new Uint8Array([2]) });
+        .add("/Apps/SleepLog/Sleep/20261123/233500.part", { data: new Uint8Array([2]) })
+        .addText("/Apps/Drinks/Log/20261127/213000.json", '{"v":1,"kind":"drink","t":1795843800,"tz":-28800,"oz":12.0,"abv":5.0}')
+        .addText("/Apps/Drinks/Log/20261127/213000-2.json", '{"v":1,"kind":"undo","t":1795843800,"tz":-28800,"ref":"20261127/213000"}')
+        .addText("/Apps/Drinks/Log/20261127/214500.tmp", "{")
+        .addText("/Apps/Drinks/settings.json", '{"weight_lb":180}');
 }
 
 class MemoryApi implements WatchApi {
@@ -66,6 +70,8 @@ describe("discover", () => {
         const client = new FtsClient(w.transport());
         const paths = (await discover(client)).map((f) => f.path).sort();
         expect(paths).toEqual([
+            "/Apps/Drinks/Log/20261127/213000-2.json",
+            "/Apps/Drinks/Log/20261127/213000.json",
             "/Apps/Running/Activity/202611/activity_1.fit",
             "/Apps/Running/Activity/summary.json",
             "/Apps/SleepLog/Sleep/20261123/231500.bin",
@@ -82,12 +88,12 @@ describe("syncOnce", () => {
         const w = seededWatch();
         const api = new MemoryApi();
         const first = await syncOnce(new FtsClient(w.transport()), api);
-        expect(first.fetched).toHaveLength(7);
+        expect(first.fetched).toHaveLength(9);
         expect(first.skipped).toEqual([]);
 
         const second = await syncOnce(new FtsClient(w.transport()), api);
         expect(second.fetched).toEqual([]);
-        expect(second.unchanged).toBe(7);
+        expect(second.unchanged).toBe(9);
     });
 
     it("fetches a file again when the watch rewrites it", async () => {

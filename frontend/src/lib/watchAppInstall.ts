@@ -13,7 +13,7 @@ import { type ConnectOptions, MIN_FTS_VERSION, type WatchSession } from "./unaSy
 import type { WatchAppInfo } from "../types/watchApp";
 
 export interface InstallDeps {
-    download: (fileName: string) => Promise<Uint8Array>;
+    download: (folder: string, fileName: string) => Promise<Uint8Array>;
     connect: (options: ConnectOptions) => Promise<WatchSession>;
     onStep?: (s: InstallStep) => void;
     onProgress?: (written: number, total: number) => void;
@@ -26,14 +26,34 @@ function hex8(n: number): string {
     return n.toString(16).padStart(8, "0");
 }
 
+/**
+ * SHA-256 as hex, or null where the browser withholds SubtleCrypto (it does
+ * on a plain-http origin). The size and CRC check still runs either way.
+ */
+async function sha256Hex(bytes: Uint8Array): Promise<string | null> {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) return null;
+    try {
+        const digest = await subtle.digest("SHA-256", bytes as Uint8Array<ArrayBuffer>);
+        return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch {
+        return null;
+    }
+}
+
 export async function installWatchApp(app: WatchAppInfo, deps: InstallDeps): Promise<InstallResult> {
     if (!app.available || !app.folder || !app.file_name || !app.crc32) {
         throw new Error("Helf has no watch app to install. Is the helf-watch-app service built?");
     }
-    const bytes = await deps.download(app.file_name);
+    const bytes = await deps.download(app.folder, app.file_name);
     // The server's own record of the build, checked before anything is
-    // written: a truncated download must never reach the watch.
-    if (bytes.length !== app.size_bytes || hex8(crc32(bytes)) !== app.crc32.toLowerCase()) {
+    // written: a truncated or wrong download must never reach the watch.
+    const sha = await sha256Hex(bytes);
+    if (
+        bytes.length !== app.size_bytes ||
+        hex8(crc32(bytes)) !== app.crc32.toLowerCase() ||
+        (sha !== null && app.sha256 !== null && sha !== app.sha256.toLowerCase())
+    ) {
         throw new Error("The downloaded app does not match Helf's checksum. Try again.");
     }
 

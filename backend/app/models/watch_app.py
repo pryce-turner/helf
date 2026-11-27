@@ -1,13 +1,10 @@
-"""Watch app data models: what the install button needs to know (plan 0026)."""
+"""Watch app data models: what the install buttons need to know (plans 0026, 0027)."""
 
 from pydantic import BaseModel
 
 
 class WatchAppInfo(BaseModel):
-    """The watch app the image was built with, or `available: false` without one.
-
-    Nulls rather than a 404 when there is none, as for the APK: a development
-    checkout has none, and absence is an answer, not an error.
+    """One watch app the image was built with.
 
     `folder` and `file_name` are where it goes on the watch
     (`/Apps/<folder>/<file_name>`); the installer is scoped to that folder.
@@ -26,3 +23,9 @@ class WatchAppInfo(BaseModel):
     sdk_commit: str | None = None
     toolchain: str | None = None
     built_at: str | None = None
+
+
+class WatchAppList(BaseModel):
+    """Every published watch app. Empty, not a 404, in a checkout without any."""
+
+    apps: list[WatchAppInfo]

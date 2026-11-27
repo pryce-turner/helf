@@ -191,12 +191,26 @@ describe("installApp", () => {
         expect(w.files.get("/Apps/Other/Other.uapp")?.data).toHaveLength(10);
     });
 
-    it("does nothing when the watch already has this exact file", async () => {
-        const w = watchWithApps().add(`${APP}/SleepLog.uapp`, { data: app.bytes });
+    it("writes even a file the watch's DIGEST says it already has", async () => {
+        // Two different builds, same size, both ending in their own CRC-32 as
+        // a real .uapp does: DIGEST reports 0x2144DF1C for both, so it cannot
+        // tell them apart, and the install must not trust it to.
+        const withCrc = (seed: number) => {
+            const body = bytes(2996, seed);
+            const out = new Uint8Array(3000);
+            out.set(body);
+            new DataView(out.buffer).setUint32(2996, crc32(body), true);
+            return out;
+        };
+        const older = withCrc(1);
+        const newer = withCrc(2);
+        expect(crc32(older)).toBe(0x2144df1c);
+        expect(crc32(newer)).toBe(0x2144df1c);
+        const w = watchWithApps().add(`${APP}/SleepLog.uapp`, { data: older });
         const c = new FtsAppInstaller(w.transport(), "SleepLog");
-        const result = await installApp(c, app, opts);
-        expect(result.status).toBe("unchanged");
-        expect(w.requests.some((r) => r[0] === Command.WRITE)).toBe(false);
+        const result = await installApp(c, { ...app, bytes: newer }, opts);
+        expect(result.status).toBe("installed");
+        expect(w.files.get(`${APP}/SleepLog.uapp`)?.data).toEqual(newer);
     });
 
     it("replaces an older build and removes stray copies, leaving the recordings", async () => {

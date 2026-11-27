@@ -1,0 +1,26 @@
+# Every page once: main, the add-drink flow, the menu, undo, weight.
+# Run headless from build/bin with --fs-root pointing at a seeded log (see
+# the README), so the main screen has a BAC to colour.
+1500   screenshot main
++0     click R1
++600   screenshot volume
++0     hold L1 1200
++1600  screenshot volume-held
++0     click R1
++600   screenshot strength
++0     click R1
++600   screenshot confirm
++0     click R1
++1200  screenshot logged
++0     click L2
++600   screenshot menu
++0     click R1
++800   screenshot undo
++0     click R2
++400   click L2
++400   click R1
++600   screenshot weight
++0     click R2
++400   click R2
++600   screenshot back-main
++0     exit

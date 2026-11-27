@@ -35,8 +35,8 @@ Read from `una-kernel-public`, not the docs, which say nothing about it:
 | Piece | Where |
 |---|---|
 | Build | Dockerfile `watch-versions` → `watch-build` → `watch-publisher`. Resolves the UNA SDK's `main` commit and the newest Arm GNU Toolchain (probing Arm's download URLs, since the index page refuses scripts; SHA-256 checked against Arm's `.sha256asc`), runs the host tests, builds, checks the `.uapp` carries its APP_ID and autostart flag |
-| Publish | `helf-watch-app` compose service → `scripts/publish-watch-app.sh` → `data/watch-apps/SleepLog.uapp` + `watch-app.json` (size, SHA-256, CRC-32, SDK commit, toolchain). Skips an unchanged build |
-| Serve | `GET /api/app/watch`, `GET /download/watch/SleepLog.uapp` (`backend/app/api/watch_app.py`) |
+| Publish | `helf-watch-app` compose service → `scripts/publish-watch-app.sh` → `data/watch-apps/<Folder>/<File>.uapp` + `watch-app.json` (size, SHA-256, CRC-32, SDK commit, toolchain), one folder per app. Skips an unchanged build |
+| Serve | `GET /api/app/watch` (the list), `GET /download/watch/<Folder>/<File>.uapp` (`backend/app/api/watch_app.py`) |
 | Write | `FtsAppInstaller` (`frontend/src/lib/ftsInstall.ts`), a subclass of the read-only `FtsClient` |
 | Install | `installApp` (same file) and `installWatchApp` (`watchAppInstall.ts`) |
 | Restart | `frontend/src/lib/unaCommand.ts`, RESET only |
@@ -65,8 +65,9 @@ opcode, `0x02`, flashes firmware. 0023 §6's "never" stands for the sync.
 
 1. Download from Helf; check size and CRC-32 against `watch-app.json` before
    connecting. A truncated download never reaches the watch.
-2. If `/Apps/<folder>` is missing, MKDIR it. If `<file>.uapp` is already there,
-   the same size, and its DIGEST matches, stop: already installed.
+2. If `/Apps/<folder>` is missing, MKDIR it. Always write, even when a file
+   of the same size is there: see §9 for why DIGEST cannot say "already
+   installed".
 3. WRITE `<file>.uapp.part`, windowed (2048 bytes in flight), go-back-N on
    silence.
 4. DIGEST the `.part` and compare with our CRC. On a mismatch, delete it and
@@ -103,9 +104,8 @@ example glances, it does not exit on `EVENT_GLANCE_STOP`.
 
 The SDK stamps `BUILD_VERSION` from `apps-*` git tags; the image builds from a
 context without `.git`, so every build is `0.0.0-dev`. Helf does not rely on
-it: "already installed" is the watch's CRC of the file, and Helf shows the
-build date. The file on the watch is always `SleepLog.uapp`, whatever the
-build called it.
+it: it shows the build date, and installs whenever asked (§9). The file on
+the watch is always `<APP_FILE_NAME>.uapp`, whatever the build called it.
 
 ## 7. Not yet known — the first install answers these
 
@@ -137,3 +137,32 @@ Log tile reading "Idle". So, settled from §7:
 
 Still open: MTU and write speed on the real link (not captured), and everything
 in 0024 §7, which the first recorded night answers.
+
+## 9. Every intact .uapp has the same CRC-32 (2026-11-27)
+
+Found when Drinks (0027) became the second app: its `watch-app.json` gave the
+same `crc32` as Sleep Log's, `2144df1c`. That is CRC-32's residue: a `.uapp`
+ends with the CRC-32 of everything before it (little-endian), and the CRC-32
+of data followed by its own CRC is always `0x2144DF1C`.
+
+So the watch's DIGEST, a whole-file CRC-32, reads the same for every build of
+every app. What changed:
+
+- **No "already installed" shortcut.** §4 step 2 skipped the write when the
+  file on the watch had the same size and DIGEST; two builds of the same size
+  would have been taken for one. The install now always writes. Sleep Log is
+  28 KB and Drinks 257 KB, so re-sending costs seconds.
+- **The phone checks the download's SHA-256** against `watch-app.json` where
+  the browser offers SubtleCrypto, as well as size and CRC.
+- **DIGEST still catches corruption** after the write and the move: a damaged
+  file no longer ends in its own CRC, so it misses the residue.
+
+## 10. More than one app (2026-11-27)
+
+With Drinks (0027) the pipeline builds, publishes and offers every app under
+`watch/` (an app is a folder with `Software/App/*-CMake/CMakeLists.txt`).
+`data/watch-apps/<Folder>/` per app; the Watch page shows a card per app,
+each with its own **Install on watch**, and **Restart watch** after any
+install. The single-app files the first publish left at the top of
+`data/watch-apps/` are ignored, not deleted (nothing in `data/` is). The
+installer's write scope is unchanged: per app, its own folder's `.uapp`.

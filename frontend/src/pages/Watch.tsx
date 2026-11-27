@@ -5,7 +5,7 @@ import BodySectionTabs from "@/components/BodySectionTabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { watchApi, watchAppApi } from "@/lib/api";
-import { type PollOutcome, pollLoop, pollOnce } from "@/lib/unaSync";
+import { type PollOutcome, type SyncProgress, pollLoop, pollOnce } from "@/lib/unaSync";
 import { installWatchApp, restartWatch } from "@/lib/watchAppInstall";
 import { getWatchConnector, isSyncEnabled, setSyncEnabled } from "@/lib/watchConnector";
 import type { WatchAppInfo } from "@/types/watchApp";
@@ -29,6 +29,17 @@ function loadInterval(): number {
     } catch {
         return 15;
     }
+}
+
+function kb(bytes: number): string {
+    return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+}
+
+/** What the bar says: "Looking for new files", or "12 of 58 files · 180 of 900 KB". */
+function progressText(p: SyncProgress): string {
+    if (p.phase === "listing") return "Looking for new files on the watch";
+    if (p.total === 0) return "Nothing new";
+    return `${Math.min(p.done + 1, p.total)} of ${p.total} file${p.total === 1 ? "" : "s"} · ${kb(p.bytesDone)} of ${kb(p.bytesTotal)}`;
 }
 
 function describe(o: PollOutcome): string {
@@ -84,6 +95,9 @@ export default function Watch() {
     const [busy, setBusy] = useState(false);
     const [log, setLog] = useState<{ at: Date; text: string; color: string }[]>([]);
     const [held, setHeld] = useState<number | null>(null);
+    /** The sync in flight, for the bar; null when none is. */
+    const [progress, setProgress] = useState<SyncProgress | null>(null);
+    const lastProgressAt = useRef(0);
     const [watchApps, setWatchApps] = useState<WatchAppInfo[]>([]);
     /** The app being installed (or the watch restarted for) and what is happening, or null when idle. */
     const [installing, setInstalling] = useState<{ folder: string; text: string } | null>(null);
@@ -113,8 +127,21 @@ export default function Watch() {
             .catch(() => setWatchApps([]));
     }, [supported, connector, refreshHeld]);
 
+    // Byte updates arrive per Bluetooth packet; a few redraws a second is
+    // plenty. A change of phase or file always shows at once.
+    const onProgress = useCallback((p: SyncProgress) => {
+        const now = Date.now();
+        setProgress((prev) => {
+            const changed = !prev || prev.phase !== p.phase || prev.done !== p.done || prev.total !== p.total;
+            if (!changed && now - lastProgressAt.current < 150) return prev;
+            lastProgressAt.current = now;
+            return p;
+        });
+    }, []);
+
     const onOutcome = useCallback(
         (o: PollOutcome) => {
+            setProgress(null);
             append(describe(o), COLORS[o.kind]);
             if (o.kind === "synced") {
                 for (const s of o.report.skipped) append(`skipped ${s.path}: ${s.reason}`, "var(--warning)");
@@ -129,8 +156,9 @@ export default function Watch() {
             connect: () => connector.connect(),
             api: watchApi,
             log: (m: string) => append(m),
+            onProgress,
         }),
-        [connector, append],
+        [connector, append, onProgress],
     );
 
     // Keep the screen on while polling, and take the lock back when the page
@@ -365,6 +393,60 @@ export default function Watch() {
                                         </Button>
                                     ))}
                                 </div>
+
+                                {progress && (
+                                    <div style={{ marginTop: "var(--space-3)" }} aria-live="polite">
+                                        <div
+                                            className="flex justify-between"
+                                            style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}
+                                        >
+                                            <span>{progressText(progress)}</span>
+                                            {progress.phase === "fetching" && progress.bytesTotal > 0 && (
+                                                <span>{Math.floor((100 * progress.bytesDone) / progress.bytesTotal)}%</span>
+                                            )}
+                                        </div>
+                                        <div
+                                            role="progressbar"
+                                            aria-valuemin={0}
+                                            aria-valuemax={progress.bytesTotal || 1}
+                                            aria-valuenow={progress.bytesDone}
+                                            style={{
+                                                height: 6,
+                                                borderRadius: 3,
+                                                background: "var(--border)",
+                                                overflow: "hidden",
+                                            }}
+                                        >
+                                            <div
+                                                className={progress.phase === "listing" ? "animate-pulse" : undefined}
+                                                style={{
+                                                    height: "100%",
+                                                    borderRadius: 3,
+                                                    background: "var(--accent)",
+                                                    width:
+                                                        progress.phase === "listing"
+                                                            ? "30%"
+                                                            : `${progress.bytesTotal ? (100 * progress.bytesDone) / progress.bytesTotal : 100}%`,
+                                                    transition: "width 150ms linear",
+                                                }}
+                                            />
+                                        </div>
+                                        {progress.current && (
+                                            <div
+                                                style={{
+                                                    fontSize: 11,
+                                                    color: "var(--text-muted)",
+                                                    marginTop: 4,
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    whiteSpace: "nowrap",
+                                                }}
+                                            >
+                                                {progress.current}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {polling && (
                                     <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>

@@ -1,6 +1,6 @@
 # 0024 — Sleep from the watch
 
-**Status**: In progress — watch app written and host-tested, decoder landed; built in Docker and installable over Bluetooth (0026), not yet run on the watch
+**Status**: In progress — first night recorded 2026-11-26/27 (§9): HR and the start/stop rules work; acceleration was 1 Hz, fixed for the next night
 
 Sleep scored in Helf from heart rate and wrist motion recorded on the UNA
 Watch by our own app, using the Walch method. Builds on 0023, which already
@@ -168,3 +168,36 @@ From reading the source, untested on the watch:
   change.
 - **A watch GUI.** Headless. The status glance arrived with 0026 §5, because the
   app had to be a Glance anyway.
+
+## 9. The first night, 2026-11-26/27
+
+Installed over Bluetooth at 9:50 PM (0026), restarted again at 10:39 PM for
+the Drinks install. Nothing synced overnight (the phone's app is not kept
+alive in the background yet: 0025 phase 3), so the night arrived the next day
+in one catch-up sync: 46 chunks, decoded with `app/services/sleep_log.py`.
+Times are local (PST).
+
+| Check (§7) | Result |
+|---|---|
+| Starts at boot, headless | **Yes.** Each restart opened an idle chunk with `idle/startup`; the glance tile read "Idle" |
+| Recording starts after ~20 still minutes | **Yes.** `recording/still` at **2:53 AM**, with 245 idle MINUTE summaries before it |
+| Rolling over does not stop it; walking does | **Yes.** One recording from 2:53 to **10:04 AM** (`idle/walking`), as steps went 270 → 370 |
+| HR about once a second, not 5-minute bursts | **Yes.** 600 HR records per 10-minute chunk, all night; 44–103 bpm, mostly 50–60 |
+| Chunks every 10 min, `.part` → `.bin` | **Yes.** 41 recording chunks, no torn records |
+| Sensor time and wall clock agree | **Yes.** Chunk names, CLOCK records and mode times line up to the second |
+| Acceleration at ~50 Hz while recording | **No: 1 Hz.** 600 samples per chunk, the idle rate |
+| Battery cost of a night | Not noted |
+
+**The 1 Hz bug.** The SDK's `Connection::connect(period, latency)` returns
+without doing anything when the sensor is already connected
+(`SensorConnection.cpp`), and the accelerometer stays connected in both
+modes, so the switch to the recording rate never happened. Fixed: a rate
+change is now `disconnect()` then `connect()`, for the accelerometer and HR.
+That is also why chunks were 15.6 KB (~26 B/s) instead of §5's ~220 KB per
+10 minutes: expect that size, ~10 MB a night, from the next one, and a
+catch-up sync of a whole night to take correspondingly longer (§5 estimated
+the Bluetooth time).
+
+The night is still usable for the night view (§6 step 3): continuous HR, and
+1 Hz motion, which is enough to see stillness and movement, though not for
+Walch's activity counts, which want the full rate.

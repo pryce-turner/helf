@@ -231,10 +231,11 @@ export interface SyncReport {
 async function fetchVerified(
     client: FtsClient,
     file: WatchFile,
+    onRead?: (received: number) => void,
 ): Promise<{ bytes: Uint8Array; crc: number } | { reason: string }> {
     let reason = "";
     for (let attempt = 0; attempt < 2; attempt++) {
-        const bytes = await client.readFile(file.path);
+        const bytes = await client.readFile(file.path, { onProgress: onRead && ((n) => onRead(n)) });
         if (bytes.length !== file.size) {
             // Grew or shrank between LISTDIR and READ: being written right
             // now. Its next listing will carry the new size.
@@ -251,6 +252,21 @@ async function fetchVerified(
 }
 
 /**
+ * Where a sync is, for a progress bar. `listing` first (LISTDIR over the
+ * watch's folders, no total yet), then `fetching`: files and bytes done of
+ * those new or changed. Byte counts move within a file as it is read.
+ */
+export interface SyncProgress {
+    phase: "listing" | "fetching";
+    done: number;
+    total: number;
+    bytesDone: number;
+    bytesTotal: number;
+    /** The file being read, when there is one. */
+    current?: string;
+}
+
+/**
  * One sync over an open connection: list, diff against the manifest, fetch
  * what is new or changed, verify, upload.
  *
@@ -262,11 +278,29 @@ export async function syncOnce(
     client: FtsClient,
     api: WatchApi,
     log: (message: string) => void = () => {},
+    onProgress: (p: SyncProgress) => void = () => {},
 ): Promise<SyncReport> {
+    onProgress({ phase: "listing", done: 0, total: 0, bytesDone: 0, bytesTotal: 0 });
     const held = new Map((await api.manifest()).map((m) => [m.path, m]));
     const listed = await discover(client);
     const todo = listed.filter((f) => needsFetch(f, held));
     log(`${listed.length} files on the watch, ${todo.length} new or changed`);
+
+    // Bytes, not files, drive the bar: a night is dozens of 15 KB chunks
+    // beside a few 4 KB daily files, and a workout can be far larger.
+    const bytesTotal = todo.reduce((n, f) => n + f.size, 0);
+    let done = 0;
+    let bytesBefore = 0;
+    const progress = (current: string | undefined, received: number) =>
+        onProgress({
+            phase: "fetching",
+            done,
+            total: todo.length,
+            bytesDone: Math.min(bytesTotal, bytesBefore + received),
+            bytesTotal,
+            current,
+        });
+    progress(undefined, 0);
 
     const report: SyncReport = {
         listed: listed.length,
@@ -276,22 +310,29 @@ export async function syncOnce(
     };
 
     for (const file of todo) {
-        let result: Awaited<ReturnType<typeof fetchVerified>>;
+        progress(file.path, 0);
         try {
-            result = await fetchVerified(client, file);
-        } catch (e) {
-            if (e instanceof FtsDisconnectedError) throw e;
-            report.skipped.push({ path: file.path, reason: String((e as Error).message ?? e) });
-            continue;
+            let result: Awaited<ReturnType<typeof fetchVerified>>;
+            try {
+                result = await fetchVerified(client, file, (n) => progress(file.path, n));
+            } catch (e) {
+                if (e instanceof FtsDisconnectedError) throw e;
+                report.skipped.push({ path: file.path, reason: String((e as Error).message ?? e) });
+                continue;
+            }
+            if ("reason" in result) {
+                report.skipped.push({ path: file.path, reason: result.reason });
+                log(`skipped ${file.path}: ${result.reason}`);
+                continue;
+            }
+            await api.upload(file, result.bytes, result.crc);
+            report.fetched.push(file.path);
+            log(`uploaded ${file.path} (${file.size} bytes)`);
+        } finally {
+            done++;
+            bytesBefore += file.size;
+            progress(undefined, 0);
         }
-        if ("reason" in result) {
-            report.skipped.push({ path: file.path, reason: result.reason });
-            log(`skipped ${file.path}: ${result.reason}`);
-            continue;
-        }
-        await api.upload(file, result.bytes, result.crc);
-        report.fetched.push(file.path);
-        log(`uploaded ${file.path} (${file.size} bytes)`);
     }
     return report;
 }
@@ -348,6 +389,7 @@ export async function pollOnce(deps: {
     connect: () => Promise<WatchSession>;
     api: WatchApi;
     log?: (message: string) => void;
+    onProgress?: (p: SyncProgress) => void;
     now?: () => Date;
 }): Promise<PollOutcome> {
     const now = deps.now ?? (() => new Date());
@@ -370,7 +412,7 @@ export async function pollOnce(deps: {
                 message: `The watch speaks FTS version ${session.version}; DIGEST needs ${MIN_FTS_VERSION}, so nothing could be verified. Update the watch firmware.`,
             };
         }
-        const report = await syncOnce(session.client, deps.api, log);
+        const report = await syncOnce(session.client, deps.api, log, deps.onProgress);
         return { kind: "synced", at: now(), report };
     } catch (e) {
         const message = (e as Error)?.message ?? String(e);

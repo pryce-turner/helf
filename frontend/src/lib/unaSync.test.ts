@@ -12,6 +12,7 @@ import {
     needsFetch,
     pollLoop,
     pollOnce,
+    type SyncProgress,
     syncOnce,
 } from "./unaSync";
 
@@ -94,6 +95,30 @@ describe("syncOnce", () => {
         const second = await syncOnce(new FtsClient(w.transport()), api);
         expect(second.fetched).toEqual([]);
         expect(second.unchanged).toBe(9);
+    });
+
+    it("reports progress: listing, then files and bytes up to the totals", async () => {
+        const w = seededWatch();
+        const api = new MemoryApi();
+        const seen: SyncProgress[] = [];
+        await syncOnce(new FtsClient(w.transport()), api, undefined, (p) => seen.push({ ...p }));
+        expect(seen[0].phase).toBe("listing");
+        const fetching = seen.filter((p) => p.phase === "fetching");
+        const last = fetching.at(-1)!;
+        expect(last.done).toBe(9);
+        expect(last.total).toBe(9);
+        expect(last.bytesDone).toBe(last.bytesTotal);
+        expect(last.bytesTotal).toBe([...api.held.values()].reduce((n, f) => n + f.size, 0));
+        // Never backwards, never past the total.
+        for (let i = 1; i < fetching.length; i++) {
+            expect(fetching[i].bytesDone).toBeGreaterThanOrEqual(fetching[i - 1].bytesDone);
+            expect(fetching[i].done).toBeGreaterThanOrEqual(fetching[i - 1].done);
+            expect(fetching[i].bytesDone).toBeLessThanOrEqual(fetching[i].bytesTotal);
+        }
+        // Nothing new the second time: straight to an empty, finished fetch.
+        const again: SyncProgress[] = [];
+        await syncOnce(new FtsClient(w.transport()), api, undefined, (p) => again.push({ ...p }));
+        expect(again.at(-1)).toMatchObject({ phase: "fetching", done: 0, total: 0, bytesTotal: 0 });
     });
 
     it("fetches a file again when the watch rewrites it", async () => {

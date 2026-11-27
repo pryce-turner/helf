@@ -80,12 +80,19 @@ Service::~Service()
 
 // ------------------------------------------------------------------ sensors
 
+// The accelerometer stays connected in both modes, at a different rate. The
+// SDK's Connection::connect(period, latency) returns without doing anything
+// when already connected, so a rate change is a disconnect and a connect.
+// Calling connect() alone kept the first night's recording at the idle 1 Hz
+// (plan 0024 §9).
+
 void Service::connectIdle()
 {
     // HR off: holding it keeps the optical sensor on continuously
     // (SensorBody.cpp: a subscriber forces AUTO mode), which is the
     // recording's whole cost. Idle relies on the kernel's own bursts.
     mHr.disconnect();
+    mAccel.disconnect();
     mAccel.connect(kIdleAccelPeriodMs, kIdleAccelLatencyMs);
     mHavePrev = false;
     mMinuteSamples = 0;
@@ -93,7 +100,9 @@ void Service::connectIdle()
 
 void Service::connectRecording()
 {
+    mAccel.disconnect();
     mAccel.connect(kRecAccelPeriodMs, kRecAccelLatencyMs);
+    mHr.disconnect();
     mHr.connect(kHrPeriodMs, kHrLatencyMs);
 }
 

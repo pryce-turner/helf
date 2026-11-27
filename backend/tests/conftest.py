@@ -12,6 +12,7 @@ import app.repositories.exercise_repo as exercise_repo
 import app.repositories.upcoming_repo as upcoming_repo
 import app.repositories.workout_repo as workout_repo
 from app.api import (
+    android_app,
     body_comp,
     exercises,
     food,
@@ -113,4 +114,6 @@ def client(db_engine):
     app.include_router(programs.router, prefix="/api/programs")
     app.include_router(library.router, prefix="/api/library")
     app.include_router(watch.router, prefix="/api/watch")
+    app.include_router(android_app.router, prefix="/api/app")
+    app.include_router(android_app.download_router, prefix="/download")
     return TestClient(app)

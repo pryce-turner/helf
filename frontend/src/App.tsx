@@ -16,6 +16,7 @@ import Food from "./pages/Food";
 import Supplements from "./pages/Supplements";
 import Watch from "./pages/Watch";
 import { InstallPrompt } from "./components/PWA/InstallPrompt";
+import { AndroidAppPrompt } from "./components/PWA/AndroidAppPrompt";
 import { usePWA } from "./hooks/usePWA";
 import { WifiOff } from "lucide-react";
 
@@ -97,6 +98,7 @@ function App() {
                     </Routes>
                     </ErrorBoundary>
                     <InstallPrompt />
+                    <AndroidAppPrompt />
                 </div>
             </BrowserRouter>
         </QueryClientProvider>

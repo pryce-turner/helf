@@ -115,3 +115,27 @@ services:
             timeout: 10s
             start_period: 20s
             retries: 3
+
+    # Signs the Android app onto the data volume, then exits. Runs on every
+    # `up` (`pull_policy: build` rebuilds it; layer caching makes that free
+    # unless a native input changed) and skips work already done.
+    #
+    # The signing key, ${HELF_DATA_PATH}/android/signing.keystore, is generated
+    # on the first run and kept forever: Android installs an update only over an
+    # app signed by the same key, so losing it means uninstalling the app to
+    # update. It is never overwritten.
+    #
+    # No `depends_on` either way, on purpose. Helf serves whatever is in
+    # data/android/ and reports `available: false` until it exists, so a
+    # signing failure can never stop Helf starting.
+    helf-apk:
+        build:
+            context: .
+            target: android-signer
+        image: helf-apk:latest
+        pull_policy: build
+        container_name: helf-apk
+        volumes:
+            - ${HELF_DATA_PATH}:/app/data
+        restart: "no"
+        command: ["sh", "/usr/local/bin/sign-apk.sh"]

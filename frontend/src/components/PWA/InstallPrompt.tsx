@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Download } from "lucide-react";
+import { useAndroidAppOffer } from "@/hooks/useAndroidApp";
 
 interface BeforeInstallPromptEvent extends Event {
     prompt: () => Promise<void>;
@@ -30,6 +31,9 @@ export function InstallPrompt() {
     const [deferredPrompt, setDeferredPrompt] =
         useState<BeforeInstallPromptEvent | null>(null);
     const [showPrompt, setShowPrompt] = useState(false);
+    // On Android the native app supersedes the PWA, so the two prompts must
+    // not stack.
+    const androidApp = useAndroidAppOffer();
 
     useEffect(() => {
         const handler = (e: Event) => {
@@ -70,7 +74,7 @@ export function InstallPrompt() {
         );
     };
 
-    if (!showPrompt || !deferredPrompt) return null;
+    if (!showPrompt || !deferredPrompt || androidApp) return null;
 
     return (
         <div className="install-prompt animate-in" role="dialog" aria-label="Install Helf">

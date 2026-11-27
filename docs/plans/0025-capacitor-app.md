@@ -41,7 +41,7 @@ Android foreground service.
 | a | Load the UI **from the Helf server** (`server.url`) or **bundle it into the app** | **From the server** — chosen. The UI and the sync code update with every redeploy, as the PWA does, instead of a rebuilt, re-sideloaded APK per change. Capacitor still injects its plugin bridge into a remote page. The cost: the app needs the server to open, which Helf needs anyway, and Capacitor's docs call `server.url` a development setting. Bundling is more robust offline and is the fallback if the remote mode misbehaves |
 | b | The URL the phone uses for Helf | `https://helf.pryce.fyi` — chosen. HTTPS, so no cleartext exception |
 | c | App id | `app.helf` (reverse-DNS, no personal name, since the repo is on GitHub) |
-| d | Where native builds happen | **Your Mac**: Android Studio for the APK, Xcode for iOS. The admin container has no Android SDK, no Xcode and no Docker socket, and the repo deliberately has no remote CI |
+| d | Where native builds happen | **Android: the server** (amended 2026-11-26, §9): the Dockerfile builds the APK and a compose service signs it onto the data volume; the web UI offers it for download. Nothing is built on the Mac. **iOS: your Mac**, with Xcode, which cannot run anywhere else. Originally both were on the Mac (Android Studio and Xcode), because the admin container has no Android SDK, no Xcode and no Docker socket and the repo deliberately has no remote CI; the Mac turned out to have no JDK either, and a Dockerfile stage needed none of them |
 
 ## 4. Architecture
 
@@ -169,3 +169,28 @@ Generating the native projects needs a passwd entry, which uid 568 lacks
 same `package-lock.json` and copied in. Running `npx cap sync` on the Mac is
 unaffected.
 
+## 9. The APK built and signed on the server (2026-11-26)
+
+- The root `Dockerfile` has `frontend-deps` (Node 24, shared `npm ci`; the
+  Capacitor CLI needs Node >= 22), `android-prep` (`cap sync` over only
+  `capacitor.config.ts` and `android/`, with a placeholder `dist`, since
+  `server.url` means the bundled assets are never shown), `android-build`
+  (JDK 21 + SDK, `assembleDebug`, output `helf-unsigned.apk` plus version
+  metadata) and `android-signer`. `production` does not contain the APK, so the
+  web services never build any of this. Gradle reruns only for native changes.
+  Removing `server.url` would mean bundling the real `dist` into `android-prep`
+  and paying that rebuild every time.
+- Signing is a one-shot `helf-apk` compose service, not a build step, because a
+  build cannot write to the host and the key must be created on first run and
+  kept. `scripts/sign-apk.sh` generates `data/android/signing.keystore` if
+  absent (never overwritten), skips when the recorded source and certificate
+  hashes match, else `apksigner sign` + `verify` and writes `helf.apk` and
+  `helf-apk.json` atomically. A stable key is the only thing that lets an
+  installed app update. No `depends_on`: signing can never block Helf.
+- `GET /api/app/android` and `GET /download/helf.apk` (outside `/api/` so the
+  service worker does not cache it) read `data/android/`; `AndroidAppPrompt`
+  offers it to Android browsers outside the app and the PWA install prompt
+  steps aside there.
+- `scripts/build-android.sh` and `frontend/android/docker/` are gone: a
+  Mac-built APK with a different key would be a trap.
+- Still open: install on a phone, and iOS, which needs Xcode on the Mac.

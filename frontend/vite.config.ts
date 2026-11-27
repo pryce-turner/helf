@@ -47,6 +47,10 @@ export default defineConfig({
             },
             workbox: {
                 globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+                // /download/helf.apk is a link click, i.e. a navigation, and
+                // the precached index.html would otherwise answer it: the
+                // user would get the app's own page instead of the APK.
+                navigateFallbackDenylist: [/^\/download\//],
                 runtimeCaching: [
                     {
                         urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

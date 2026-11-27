@@ -53,3 +53,15 @@ uv.lock
 frontend/node_modules/
 frontend/dist/
 frontend/dev-dist/
+
+# Android: build output and files `cap sync` regenerates inside the image. Left
+# in, a host-side build would change the context and bust the APK's layer cache.
+frontend/android/**/build
+frontend/android/.gradle
+frontend/android/app/src/main/assets/public
+frontend/android/capacitor-cordova-android-plugins
+frontend/android/app/src/main/assets/capacitor.config.json
+frontend/android/app/src/main/assets/capacitor.plugins.json
+frontend/android/app/src/main/res/xml/config.xml
+frontend/android/local.properties
+frontend/ios/

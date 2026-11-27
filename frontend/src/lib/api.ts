@@ -20,6 +20,7 @@ import type {
     BodySpecSyncResult,
     ScaleSyncResult,
 } from "../types/bodyComposition";
+import type { AndroidAppInfo } from "../types/androidApp";
 import type { ScaleReading } from "./bcs";
 import type { ManifestEntry, WatchApi, WatchFile } from "./unaSync";
 import type {
@@ -471,6 +472,10 @@ export const watchApi: WatchApi = {
                 },
             })
             .then((r) => r.data),
+};
+
+export const androidAppApi = {
+    info: () => api.get<AndroidAppInfo>("/api/app/android"),
 };
 
 export const systemApi = {

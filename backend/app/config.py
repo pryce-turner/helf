@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # Paths - DATA_DIR for container, HELF_DATA_PATH for dev, fallback to ../data
     data_dir: Path = Path(os.getenv("DATA_DIR") or os.getenv("HELF_DATA_PATH") or "../data")
 
+    # The Android APK and its helf-apk.json, written onto the data volume by
+    # the `helf-apk` service (scripts/sign-apk.sh). Absent until it has run, and
+    # in a development checkout, which the app handles (`available: false`).
+    # Defaults to <data_dir>/android in __init__; the ANDROID_DIR env var overrides.
+    android_dir: Path | None = None
+
     # Database
     db_path: Path | None = None
 
@@ -48,6 +54,8 @@ class Settings(BaseSettings):
         # Set db_path if not provided
         if self.db_path is None:
             self.db_path = self.data_dir / "helf.db"
+        if self.android_dir is None:
+            self.android_dir = self.data_dir / "android"
         # Ensure data directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
 

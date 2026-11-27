@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
+    android_app,
     body_comp,
     exercises,
     food,
@@ -95,6 +96,10 @@ app.include_router(presets.router, prefix="/api/presets", tags=["presets"])
 app.include_router(programs.router, prefix="/api/programs", tags=["programs"])
 app.include_router(library.router, prefix="/api/library", tags=["library"])
 app.include_router(watch.router, prefix="/api/watch", tags=["watch"])
+app.include_router(android_app.router, prefix="/api/app", tags=["android-app"])
+# Not under /api/: see android_app.py. Registered here, ahead of the static
+# routes below, so no SPA route can answer it.
+app.include_router(android_app.download_router, prefix="/download", tags=["android-app"])
 
 
 @app.get("/api/health")

@@ -1,35 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Bluetooth, GlassWater, Moon, Watch as WatchIcon, type LucideIcon } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import BodySectionTabs from "@/components/BodySectionTabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { watchApi, watchAppApi } from "@/lib/api";
-import { type PollOutcome, type SyncProgress, pollLoop, pollOnce } from "@/lib/unaSync";
+import type { SyncProgress } from "@/lib/unaSync";
 import { installWatchApp, restartWatch } from "@/lib/watchAppInstall";
 import { getWatchConnector, isSyncEnabled, setSyncEnabled } from "@/lib/watchConnector";
+import { getWatchSync, needsAppUpdateForBackground } from "@/lib/watchSync";
+import { INTERVALS } from "@/lib/watchSyncRunner";
 import type { WatchAppInfo } from "@/types/watchApp";
 
 /**
- * Polling the UNA Watch from an always-on phone (plans 0023, 0025).
+ * The UNA Watch: pairing, the sync switch, the sync's state, and installing
+ * Helf's watch apps (plans 0023, 0025, 0026).
  *
- * In a browser this runs only while the page is open and in front (Web
- * Bluetooth has no background mode), holding a screen wake lock. Inside the
- * Capacitor app the same loop runs through the native plugin, and starts by
- * itself when this device has sync switched on.
+ * The sync itself is the app's (`lib/watchSync.ts`), not this page's: in the
+ * native app it starts at launch and keeps running under a foreground service
+ * whichever page is open. In a browser it runs while Helf is open and in
+ * front (Web Bluetooth has no background mode), with a screen wake lock.
  */
-
-const INTERVALS = [5, 15, 30, 60];
-const INTERVAL_KEY = "helf.watch.intervalMinutes";
-
-function loadInterval(): number {
-    try {
-        const v = Number(localStorage.getItem(INTERVAL_KEY));
-        return INTERVALS.includes(v) ? v : 15;
-    } catch {
-        return 15;
-    }
-}
 
 function kb(bytes: number): string {
     return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
@@ -41,34 +32,6 @@ function progressText(p: SyncProgress): string {
     if (p.total === 0) return "Nothing new";
     return `${Math.min(p.done + 1, p.total)} of ${p.total} file${p.total === 1 ? "" : "s"} · ${kb(p.bytesDone)} of ${kb(p.bytesTotal)}`;
 }
-
-function describe(o: PollOutcome): string {
-    switch (o.kind) {
-        case "synced": {
-            const { fetched, listed, skipped } = o.report;
-            const parts = [
-                fetched.length
-                    ? `${fetched.length} file${fetched.length === 1 ? "" : "s"} uploaded`
-                    : "nothing new",
-                `${listed} on the watch`,
-            ];
-            if (skipped.length) parts.push(`${skipped.length} skipped`);
-            return parts.join(", ");
-        }
-        default:
-            return o.message;
-    }
-}
-
-const COLORS: Record<PollOutcome["kind"], string> = {
-    synced: "var(--success)",
-    // The expected state of a watch on someone's wrist away from the phone,
-    // so plain text, not an error colour.
-    unreachable: "var(--text-secondary)",
-    unpaired: "var(--warning)",
-    unsupported: "var(--error)",
-    error: "var(--error)",
-};
 
 type WakeLockSentinelLike = { release(): Promise<void> };
 
@@ -88,27 +51,21 @@ export default function Watch() {
     const connector = getWatchConnector();
     const native = connector.kind === "native";
     const supported = connector.isSupported();
+    const runner = getWatchSync();
+    const { polling, busy, intervalMin, progress, log, lastOutcome } = useSyncExternalStore(
+        runner.subscribe,
+        runner.getState,
+    );
+    const append = runner.log;
     const [device, setDevice] = useState<{ name: string } | null>(null);
     const [syncOn, setSyncOn] = useState(isSyncEnabled);
-    const [intervalMin, setIntervalMin] = useState(loadInterval);
-    const [polling, setPolling] = useState(false);
-    const [busy, setBusy] = useState(false);
-    const [log, setLog] = useState<{ at: Date; text: string; color: string }[]>([]);
     const [held, setHeld] = useState<number | null>(null);
-    /** The sync in flight, for the bar; null when none is. */
-    const [progress, setProgress] = useState<SyncProgress | null>(null);
-    const lastProgressAt = useRef(0);
     const [watchApps, setWatchApps] = useState<WatchAppInfo[]>([]);
     /** The app being installed (or the watch restarted for) and what is happening, or null when idle. */
     const [installing, setInstalling] = useState<{ folder: string; text: string } | null>(null);
     /** An app was installed since the last restart: the watch registers apps only at boot. */
     const [needsRestart, setNeedsRestart] = useState<WatchAppInfo | null>(null);
-    const abort = useRef<AbortController | null>(null);
     const wakeLock = useRef<WakeLockSentinelLike | null>(null);
-
-    const append = useCallback((text: string, color = "var(--text-muted)") => {
-        setLog((l) => [{ at: new Date(), text, color }, ...l].slice(0, 40));
-    }, []);
 
     const refreshHeld = useCallback(() => {
         watchApi
@@ -120,52 +77,21 @@ export default function Watch() {
     useEffect(() => {
         if (!supported) return;
         connector.remembered().then((d) => d && setDevice(d));
-        refreshHeld();
         watchAppApi
             .list()
             .then(setWatchApps)
             .catch(() => setWatchApps([]));
-    }, [supported, connector, refreshHeld]);
+    }, [supported, connector]);
 
-    // Byte updates arrive per Bluetooth packet; a few redraws a second is
-    // plenty. A change of phase or file always shows at once.
-    const onProgress = useCallback((p: SyncProgress) => {
-        const now = Date.now();
-        setProgress((prev) => {
-            const changed = !prev || prev.phase !== p.phase || prev.done !== p.done || prev.total !== p.total;
-            if (!changed && now - lastProgressAt.current < 150) return prev;
-            lastProgressAt.current = now;
-            return p;
-        });
-    }, []);
-
-    const onOutcome = useCallback(
-        (o: PollOutcome) => {
-            setProgress(null);
-            append(describe(o), COLORS[o.kind]);
-            if (o.kind === "synced") {
-                for (const s of o.report.skipped) append(`skipped ${s.path}: ${s.reason}`, "var(--warning)");
-                refreshHeld();
-            }
-        },
-        [append, refreshHeld],
-    );
-
-    const deps = useCallback(
-        () => ({
-            connect: () => connector.connect(),
-            api: watchApi,
-            log: (m: string) => append(m),
-            onProgress,
-        }),
-        [connector, append, onProgress],
-    );
-
-    // Keep the screen on while polling, and take the lock back when the page
-    // returns to the front: Android drops it whenever the page is hidden.
+    // On open, and after every sync the runner finishes, wherever it ran.
     useEffect(() => {
-        // The native app keeps running with the screen off; only a browser
-        // tab needs the screen held on.
+        if (supported) refreshHeld();
+    }, [supported, lastOutcome, refreshHeld]);
+
+    // In a browser, keep the screen on while polling, and take the lock back
+    // when the page returns to the front: Android drops it whenever the page
+    // is hidden. The native app keeps running with the screen off.
+    useEffect(() => {
         if (!polling || native) return;
         const acquire = async () => {
             try {
@@ -189,8 +115,6 @@ export default function Watch() {
         };
     }, [polling, native, append]);
 
-    useEffect(() => () => abort.current?.abort(), []);
-
     const pair = async () => {
         // First thing in the tap: the chooser needs transient activation.
         try {
@@ -202,53 +126,16 @@ export default function Watch() {
         }
     };
 
-    const syncNow = async () => {
-        setBusy(true);
-        try {
-            onOutcome(await pollOnce(deps()));
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const start = useCallback(() => {
-        const controller = new AbortController();
-        abort.current = controller;
-        setPolling(true);
-        append(`Polling every ${intervalMin} min.`);
-        void pollLoop(
-            {
-                ...deps(),
-                onOutcome: (o) => {
-                    onOutcome(o);
-                    setBusy(false);
-                },
-            },
-            { intervalMs: intervalMin * 60_000, signal: controller.signal },
-        ).finally(() => setPolling(false));
-    }, [deps, onOutcome, intervalMin, append]);
-
-    // Native and switched on: poll from launch, no tap needed. (Background
-    // keep-alive is plan 0025 phase 3.)
-    const autoStarted = useRef(false);
-    useEffect(() => {
-        if (native && syncOn && device && !autoStarted.current) {
-            autoStarted.current = true;
-            start();
-        }
-    }, [native, syncOn, device, start]);
+    const syncNow = () => void runner.syncNow();
+    const start = () => runner.start();
+    const stop = () => runner.stop();
 
     const toggleSync = (on: boolean) => {
         setSyncEnabled(on);
         setSyncOn(on);
-        if (!on) stop();
-    };
-
-    const stop = () => {
-        abort.current?.abort();
-        abort.current = null;
-        setPolling(false);
-        append("Stopped polling.");
+        if (!on) runner.stop();
+        // Native: switching on is the opt-in for background polling, so start it.
+        else if (native && device) runner.start();
     };
 
     // Install and restart queue behind a running poll (watchConnector's
@@ -292,14 +179,7 @@ export default function Watch() {
         }
     };
 
-    const chooseInterval = (m: number) => {
-        setIntervalMin(m);
-        try {
-            localStorage.setItem(INTERVAL_KEY, String(m));
-        } catch {
-            // Private mode: the default comes back next time.
-        }
-    };
+    const chooseInterval = (m: number) => runner.setInterval(m);
 
     return (
         <>
@@ -448,12 +328,31 @@ export default function Watch() {
                                     </div>
                                 )}
 
-                                {polling && (
-                                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>
-                                        Keep this page open and in front, with the phone on a charger. Polling stops if
-                                        the page is closed.
+                                {native && needsAppUpdateForBackground() && (
+                                    <p style={{ fontSize: 12, color: "var(--warning)", marginTop: "var(--space-3)" }}>
+                                        This version of the Helf app cannot sync in the background, so polling stops when
+                                        Helf is not on screen. To update, open{" "}
+                                        <span style={{ userSelect: "all", wordBreak: "break-all" }}>
+                                            {window.location.origin}/download/helf.apk
+                                        </span>{" "}
+                                        in Chrome (this app cannot download it itself), install it over this one, then
+                                        open Helf and allow notifications.
                                     </p>
                                 )}
+
+                                {polling &&
+                                    (native && !needsAppUpdateForBackground() ? (
+                                        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>
+                                            Syncing in the background, with a notification while it does. Leave Helf in
+                                            recent apps (swiping it away stops it), and set Settings → Apps → Helf →
+                                            Battery to Unrestricted.
+                                        </p>
+                                    ) : (
+                                        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: "var(--space-3)" }}>
+                                            Keep this page open and in front, with the phone on a charger. Polling stops
+                                            if the page is closed.
+                                        </p>
+                                    ))}
                             </CardContent>
                         </Card>
                     )}

@@ -1,6 +1,6 @@
 # 0025 — Helf as a Capacitor app (Android and iOS)
 
-**Status**: In progress — phase 1 landed 2026-11-24 (§8); first native build on the Mac is next
+**Status**: In progress — phases 1–3 built (§8, §9, §11); the APK is built and signed on the server and installed on the phone. Phase 3 (background) needs its first night on the phone; phase 4 (start on boot) and 5 (iOS) are open
 
 One app for Android and iOS, wrapping the existing web frontend with
 [Capacitor](https://capacitorjs.com), so the UNA Watch can be synced in the
@@ -210,3 +210,48 @@ build-tools 37.0.0, compileSdk/targetSdk 37; aapt2 reads `app.helf`,
 targetSdk 37, and apksigner signs and verifies it. The backend suite passes on
 Python 3.15. Library versions (`variables.gradle`'s androidx set, the npm
 lockfile) are dependency locks, not toolchain pins, and were left alone.
+
+## 11. Phase 3: background sync, as built (2026-11-27)
+
+Prompted by the first night of Sleep Log (0024 §9): nothing synced from 10:38
+PM until the app was opened at noon. Two things stopped it, and both are fixed.
+
+**The loop belonged to the Watch page.** It started only when that page was
+open and was aborted when it was left, so "polling every 30 minutes" meant
+"while the Watch page is on screen". It is now the app's:
+`lib/watchSyncRunner.ts` (the loop, log, progress and the service, as a small
+store) and `lib/watchSync.ts` (the one instance). `App.tsx` starts it at
+launch when this phone's switch is on and a watch is paired, whatever page
+Helf opens on; turning the switch on starts it too. The Watch page only
+shows and steers it.
+
+**Nothing kept the app alive.** `lib/nativeBackground.ts` runs the Capawesome
+foreground service while polling: type connectedDevice (16; the plugin's enum
+lacks it but passes the integer through), a Low-importance channel ("Watch
+sync": no sound), the status-bar icon `res/drawable/ic_stat_watch_sync.xml`,
+a **Stop** button that stops polling, and a body updated after every sync
+("Last sync 2:10 AM: 3 files uploaded…"). Notification permission is asked
+for on Android 13+; refused, the service runs without a visible notification.
+
+**The JavaScript timer is kept, not moved into native code.** Capacitor's
+`KeepRunning` defaults to true, so pausing the activity does not pause the
+WebView's timers (`Bridge.onPause` → `handlePause(true)`), and the service
+keeps the process. If a night shows gaps anyway, §6's fallback stands.
+
+**Old APKs.** The UI comes from the server, so new web code meets old APKs.
+The plugin has no fallback for a missing icon (resource 0 → Android rejects
+the notification → the app crashes), and the APK installed on the phone
+predates the icon. So the new APK (1.1, versionCode 2) registers an in-app
+`HelfNative` plugin (`MainActivity`, `HelfNativePlugin.java`) whose presence
+says "this build can"; `canSyncInBackground()` checks it, and without it the
+runner polls in the foreground only and the Watch page says to update (open
+`/download/helf.apk` in Chrome: the app's WebView does not download). Every
+later native feature can be announced the same way, through `features()`.
+
+Limits, as on any Android phone: swiping Helf out of recent apps ends the
+WebView, and the loop with it (phase 4's boot receiver would not help there
+either); battery should be Unrestricted for Helf. The phone that syncs is on
+its charger, where Doze does not apply.
+
+Still to see on the phone: a whole night of polls with the screen off. Helf's
+access log shows each poll as `GET /api/watch/files`.

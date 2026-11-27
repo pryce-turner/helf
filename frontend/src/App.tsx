@@ -19,6 +19,8 @@ import { InstallPrompt } from "./components/PWA/InstallPrompt";
 import { AndroidAppPrompt } from "./components/PWA/AndroidAppPrompt";
 import { usePWA } from "./hooks/usePWA";
 import { WifiOff } from "lucide-react";
+import { useEffect } from "react";
+import { startWatchSyncIfEnabled } from "./lib/watchSync";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -32,6 +34,12 @@ const queryClient = new QueryClient({
 
 function App() {
     const { isOnline } = usePWA();
+
+    // The watch sync belongs to the app, not the Watch page: in the native
+    // app it starts here, whichever page opens (plan 0025 phase 3).
+    useEffect(() => {
+        void startWatchSyncIfEnabled();
+    }, []);
 
     return (
         <QueryClientProvider client={queryClient}>
